@@ -139,3 +139,7 @@ def report(project_dir: str | None):
     report_text = reporter.format_session_report(files_changed=0)
     output = json.dumps({"systemMessage": report_text, "continue": True})
     click.echo(output)
+
+
+if __name__ == "__main__":
+    main()
