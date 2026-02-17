@@ -7,8 +7,8 @@ stack: auto
 
 # Severity mode: strict | standard | relaxed
 # strict  — warnings become errors (blocks the agent)
-# standard — errors block, warnings inform
-# relaxed — warnings become info
+# standard — errors block, warnings inform (default)
+# relaxed — warnings become info (for prototyping)
 severity: standard
 
 # Active rule packs (auto-detected if stack: auto)
@@ -18,14 +18,32 @@ packs:
   # - react     (coming soon)
 
 # Per-rule overrides
-rules: {}
+rules:
+  # ── PreToolUse (can block the agent) ─────────────────────
   # no-secrets:
-  #   enabled: true
-  #   severity: error
-  # max-file-size:
-  #   limit: 300
+  #   enabled: true             # Block API keys, tokens, passwords
+  # no-env-commit:
+  #   enabled: true             # Block writing .env files
   # no-force-push:
-  #   enabled: false
+  #   enabled: true             # Block git push --force to main/master
+  # no-destructive-commands:
+  #   enabled: true             # Warn on rm -rf, DROP TABLE, git reset --hard
+  # dependency-hygiene:
+  #   enabled: true             # Warn on ad-hoc pip/npm install
+
+  # ── PostToolUse (warnings after the action) ─────────────
+  # max-file-size:
+  #   limit: 500                # Warn if file exceeds this many lines
+  # drift-detector:
+  #   threshold: 10             # Warn after this many edits without tests
+
+  # ── Stop (end-of-session report) ────────────────────────
+  # no-debug-artifacts:
+  #   enabled: true             # Detect console.log, print(), debugger
+  # test-with-changes:
+  #   enabled: true             # Warn if source changed but no tests updated
+  # no-todo-left:
+  #   enabled: true             # Report TODO/FIXME comments in changed files
 
 # Custom rules directory (relative to project root)
 # custom_rules_dir: .agentlint/rules/

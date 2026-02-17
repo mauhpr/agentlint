@@ -5,7 +5,7 @@ import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
-_BASH_TOOLS = {"Bash", "bash"}
+_BASH_TOOLS = {"Bash"}
 
 # Directories that are safe to rm -rf.
 _SAFE_RM_TARGETS = {

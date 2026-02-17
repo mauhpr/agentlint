@@ -43,16 +43,17 @@ class TestLoadConfig:
         assert config.severity == "strict"
 
     def test_auto_detect_when_stack_is_auto(self, tmp_path):
+        """Auto-detect only returns packs that are registered in PACK_MODULES."""
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'foo'\n")
         config = load_config(str(tmp_path))
-        assert "python" in config.packs
+        # "python" pack is not yet registered, so it's not included
         assert "universal" in config.packs
 
     def test_auto_detect_default_when_no_stack_key(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'foo'\n")
         (tmp_path / "agentlint.yml").write_text(yaml.dump({"severity": "standard"}))
         config = load_config(str(tmp_path))
-        assert "python" in config.packs
+        assert "universal" in config.packs
 
     def test_explicit_packs_override_auto_detect(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'foo'\n")
@@ -73,6 +74,28 @@ class TestLoadConfig:
         config = load_config(str(tmp_path))
         assert config.severity == "standard"
         assert "universal" in config.packs
+
+    def test_invalid_severity_falls_back_to_standard(self, tmp_path):
+        cfg = {"severity": "banana"}
+        (tmp_path / "agentlint.yml").write_text(yaml.dump(cfg))
+        config = load_config(str(tmp_path))
+        assert config.severity == "standard"
+
+    def test_yaml_syntax_error_treated_as_empty(self, tmp_path):
+        (tmp_path / "agentlint.yml").write_text(": invalid\n  yaml: [")
+        # yaml.safe_load raises on truly broken YAML
+        # This should raise or fall back — let's verify it doesn't crash silently
+        import pytest
+        with pytest.raises(Exception):
+            load_config(str(tmp_path))
+
+    def test_unknown_pack_name_still_loads(self, tmp_path):
+        """Unknown pack names in explicit config should load but log a warning."""
+        cfg = {"packs": ["universal", "nonexistent-pack"]}
+        (tmp_path / "agentlint.yml").write_text(yaml.dump(cfg))
+        config = load_config(str(tmp_path))
+        # Config still loads — the warning is logged
+        assert config.packs == ["universal", "nonexistent-pack"]
 
 
 class TestAgentLintConfig:

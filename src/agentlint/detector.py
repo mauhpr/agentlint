@@ -4,17 +4,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from agentlint.packs import PACK_MODULES
+
 
 def detect_stack(project_dir: str) -> list[str]:
     """Detect the tech stack of a project by scanning for config files.
     Returns a list of pack names to activate, always starting with 'universal'.
+    Only returns packs that are actually registered in PACK_MODULES.
     """
     root = Path(project_dir)
     packs = ["universal"]
 
-    if _has_python(root):
+    if _has_python(root) and "python" in PACK_MODULES:
         packs.append("python")
-    if _has_react(root):
+    if _has_react(root) and "react" in PACK_MODULES:
         packs.append("react")
 
     return packs

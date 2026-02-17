@@ -67,15 +67,62 @@ class TestInitCommand:
         assert config_path.exists()
         assert "agentlint" in config_path.read_text().lower()
 
-    def test_init_detects_python(self, tmp_path) -> None:
-        """init should detect Python stack when pyproject.toml exists."""
-        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'\n")
-
+    def test_init_detects_universal(self, tmp_path) -> None:
+        """init should always include universal pack."""
         runner = CliRunner()
         result = runner.invoke(main, ["init", "--project-dir", str(tmp_path)])
 
         assert result.exit_code == 0
-        assert "python" in result.output.lower()
+        assert "universal" in result.output.lower()
+
+
+class TestCheckErrorPaths:
+    def test_invalid_event_value(self, tmp_path) -> None:
+        """Invalid --event value should cause a ValueError."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "InvalidEvent", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        assert result.exit_code != 0
+
+    def test_malformed_json_stdin(self, tmp_path) -> None:
+        """Malformed JSON should not crash — treated as empty input."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input="not json at all {{{",
+        )
+        assert result.exit_code == 0
+
+    def test_binary_like_content(self, tmp_path) -> None:
+        """Binary-like content in stdin should not crash."""
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "test.bin",
+                "content": "\x00\x01\x02\x03binary content\xff\xfe",
+            },
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_missing_event_flag(self, tmp_path) -> None:
+        """--event is required."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        assert result.exit_code != 0
 
 
 class TestReportCommand:

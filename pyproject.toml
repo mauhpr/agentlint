@@ -6,9 +6,9 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "maupr92" }
+    { name = "mauhpr" }
 ]
-keywords = ["claude-code", "ai-agents", "guardrails", "linting", "hooks"]
+keywords = ["claude-code", "ai-agents", "guardrails", "linting", "hooks", "code-quality", "ai-safety", "agent-guardrails", "claude", "code-review", "pre-commit", "ai-linting"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -18,7 +18,6 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Quality Assurance",
 ]
-
 dependencies = [
     "click>=8.0",
     "pyyaml>=6.0",
@@ -29,6 +28,11 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mauhpr/agentlint"
+Repository = "https://github.com/mauhpr/agentlint"
+Issues = "https://github.com/mauhpr/agentlint/issues"
 
 [project.scripts]
 agentlint = "agentlint.cli:main"

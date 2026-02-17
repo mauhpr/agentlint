@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
-_WRITE_TOOLS = {"Write", "Edit", "write", "edit"}
-_BASH_TOOLS = {"Bash", "bash"}
+_WRITE_TOOLS = {"Write", "Edit"}
+_BASH_TOOLS = {"Bash"}
 
 _TEST_RUNNERS = ("pytest", "vitest", "jest", "npm test", "make test")
 

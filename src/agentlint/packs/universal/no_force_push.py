@@ -5,7 +5,7 @@ import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
-_BASH_TOOLS = {"Bash", "bash"}
+_BASH_TOOLS = {"Bash"}
 
 # Matches `git push` with --force or -f targeting main or master.
 _FORCE_PUSH_RE = re.compile(

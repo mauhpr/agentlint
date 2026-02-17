@@ -6,7 +6,7 @@ import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
-_WRITE_TOOLS = {"Write", "Edit", "write", "edit"}
+_WRITE_TOOLS = {"Write", "Edit"}
 
 # Patterns that are safe templates and should be allowed.
 _SAFE_SUFFIXES = (".example", ".template", ".sample")

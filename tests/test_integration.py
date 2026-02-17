@@ -94,15 +94,13 @@ class TestEndToEnd:
 
     def test_init_and_check_flow(self, tmp_path):
         """Init should create config, then check should work with it."""
-        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'")
-
         # Run init
         init_result = self._run_agentlint(["init"], project_dir=str(tmp_path))
         assert init_result.returncode == 0
         assert (tmp_path / "agentlint.yml").exists()
 
         config_content = (tmp_path / "agentlint.yml").read_text()
-        assert "python" in config_content
+        assert "universal" in config_content
 
         # Run check with the generated config
         check_result = self._run_agentlint(

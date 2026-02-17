@@ -1266,7 +1266,7 @@ class TestNoSecrets:
     def test_blocks_api_key_in_write(self, rule):
         ctx = _ctx("Write", {
             "file_path": "/tmp/config.py",
-            "content": 'API_KEY = "sk_live_TESTKEY000000"',
+            "content": 'API_KEY = "sk_live_FAKE_TEST_VALUE_0000"',
         })
         violations = rule.evaluate(ctx)
         assert len(violations) >= 1
@@ -1703,7 +1703,7 @@ class TestCheckCommand:
             "tool_name": "Write",
             "tool_input": {
                 "file_path": "/tmp/config.py",
-                "content": 'API_KEY = "sk_live_TESTKEY000000"',
+                "content": 'API_KEY = "sk_live_FAKE_TEST_VALUE_00000"',
             },
         })
         runner = CliRunner()
@@ -2106,7 +2106,7 @@ class TestEndToEnd:
                 "tool_name": "Write",
                 "tool_input": {
                     "file_path": "/tmp/config.py",
-                    "content": 'SECRET = "sk_live_TESTKEY000000"',
+                    "content": 'SECRET = "sk_live_FAKE_TEST_VALUE_000000"',
                 },
             },
             project_dir=str(tmp_path),

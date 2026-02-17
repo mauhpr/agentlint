@@ -175,3 +175,28 @@ class TestEngine:
         # strict mode promotes WARNING -> ERROR
         assert result.violations[0].severity == Severity.ERROR
         assert result.is_blocking is True
+
+    def test_rule_exception_does_not_crash_engine(
+        self, pre_tool_context: RuleContext, test_config: AgentLintConfig
+    ) -> None:
+        """If a rule raises, the engine should skip it and continue."""
+
+        class CrashingRule(Rule):
+            id = "crash-rule"
+            description = "Always crashes"
+            severity = Severity.ERROR
+            events = [HookEvent.PRE_TOOL_USE]
+            pack = "test"
+
+            def evaluate(self, context: RuleContext) -> list[Violation]:
+                raise RuntimeError("Rule exploded!")
+
+        engine = Engine(
+            config=test_config,
+            rules=[CrashingRule(), PassRule()],
+        )
+        result = engine.evaluate(pre_tool_context)
+
+        # CrashingRule should be skipped, PassRule should still run
+        assert result.rules_evaluated == 2
+        assert result.violations == []  # CrashingRule's exception caught, PassRule passes

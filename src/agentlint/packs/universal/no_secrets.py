@@ -5,7 +5,7 @@ import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
-_WRITE_TOOLS = {"Write", "Edit", "write", "edit"}
+_WRITE_TOOLS = {"Write", "Edit"}
 
 # Literal token prefixes that indicate a real secret.
 _TOKEN_PREFIXES = ("sk_live_", "sk_test_", "AKIA", "ghp_", "ghs_")

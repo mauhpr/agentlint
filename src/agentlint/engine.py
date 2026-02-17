@@ -1,10 +1,13 @@
 """AgentLint evaluation engine."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 from agentlint.config import AgentLintConfig
-from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
+from agentlint.models import Rule, RuleContext, Severity, Violation
+
+logger = logging.getLogger("agentlint")
 
 
 @dataclass
@@ -38,7 +41,12 @@ class Engine:
                 continue
 
             result.rules_evaluated += 1
-            violations = rule.evaluate(context)
+
+            try:
+                violations = rule.evaluate(context)
+            except Exception:
+                logger.exception("Rule %s raised an exception", rule.id)
+                continue
 
             for v in violations:
                 v.severity = self.config.effective_severity(v.severity)

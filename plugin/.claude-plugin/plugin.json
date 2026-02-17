@@ -1,0 +1,12 @@
+{
+  "name": "agentlint",
+  "description": "Real-time quality guardrails for AI coding agents. ESLint for agent behavior.",
+  "version": "0.1.0",
+  "author": {
+    "name": "mauhpr"
+  },
+  "homepage": "https://github.com/mauhpr/agentlint",
+  "repository": "https://github.com/mauhpr/agentlint",
+  "license": "MIT",
+  "keywords": ["guardrails", "linting", "code-quality", "hooks", "agent-safety"]
+}

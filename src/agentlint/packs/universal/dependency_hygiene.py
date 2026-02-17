@@ -5,7 +5,7 @@ import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
-_BASH_TOOLS = {"Bash", "bash"}
+_BASH_TOOLS = {"Bash"}
 
 # pip install <something> — but not `pip install -e .` (local dev).
 _PIP_INSTALL_RE = re.compile(r"\bpip\s+install\b", re.IGNORECASE)

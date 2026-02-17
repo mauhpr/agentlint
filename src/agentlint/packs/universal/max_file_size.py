@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
-_WRITE_TOOLS = {"Write", "Edit", "write", "edit"}
+_WRITE_TOOLS = {"Write", "Edit"}
 
 _DEFAULT_LIMIT = 500
 

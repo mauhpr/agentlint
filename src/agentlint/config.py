@@ -1,6 +1,7 @@
 """Configuration loading and parsing for AgentLint."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -8,8 +9,13 @@ import yaml
 
 from agentlint.detector import detect_stack
 from agentlint.models import Severity
+from agentlint.packs import PACK_MODULES
+
+logger = logging.getLogger("agentlint")
 
 CONFIG_FILENAMES = ["agentlint.yml", "agentlint.yaml", ".agentlint.yml"]
+
+VALID_SEVERITY_MODES = {"strict", "standard", "relaxed"}
 
 
 @dataclass
@@ -50,18 +56,29 @@ def load_config(project_dir: str) -> AgentLintConfig:
             raw = yaml.safe_load(config_path.read_text()) or {}
             break
 
+    # Validate severity
+    severity = raw.get("severity", "standard")
+    if severity not in VALID_SEVERITY_MODES:
+        logger.warning("Invalid severity '%s', falling back to 'standard'", severity)
+        severity = "standard"
+
+    # Determine packs
     stack_mode = raw.get("stack", "auto")
     explicit_packs = raw.get("packs")
 
     if explicit_packs:
         packs = explicit_packs
+        # Warn about unregistered packs
+        for p in packs:
+            if p not in PACK_MODULES:
+                logger.warning("Unknown pack '%s' in config (not registered)", p)
     elif stack_mode == "auto":
         packs = detect_stack(project_dir)
     else:
         packs = ["universal"]
 
     return AgentLintConfig(
-        severity=raw.get("severity", "standard"),
+        severity=severity,
         packs=packs,
         rules=raw.get("rules", {}),
         custom_rules_dir=raw.get("custom_rules_dir"),
