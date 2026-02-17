@@ -1,0 +1,43 @@
+{
+  "name": "agentlint",
+  "version": "0.1.0",
+  "description": "Real-time quality guardrails for AI coding agents. ESLint for agent behavior.",
+  "author": "maupr92",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentlint check --event PreToolUse --project-dir \"$CLAUDE_PROJECT_DIR\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentlint check --event PostToolUse --project-dir \"$CLAUDE_PROJECT_DIR\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentlint report --project-dir \"$CLAUDE_PROJECT_DIR\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
