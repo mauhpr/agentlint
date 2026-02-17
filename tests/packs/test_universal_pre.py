@@ -291,13 +291,18 @@ class TestPackLoader:
         from agentlint.packs import load_rules
 
         rules = load_rules(["universal"])
-        assert len(rules) == 5
+        assert len(rules) == 10
         ids = {r.id for r in rules}
         assert "no-secrets" in ids
         assert "no-env-commit" in ids
         assert "no-force-push" in ids
         assert "no-destructive-commands" in ids
         assert "dependency-hygiene" in ids
+        assert "max-file-size" in ids
+        assert "drift-detector" in ids
+        assert "no-debug-artifacts" in ids
+        assert "no-todo-left" in ids
+        assert "test-with-changes" in ids
 
     def test_load_unknown_pack(self):
         from agentlint.packs import load_rules
