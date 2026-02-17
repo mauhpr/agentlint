@@ -1,0 +1,31 @@
+# AgentLint Configuration
+# Docs: https://github.com/maupr92/agentlint
+
+# Stack detection: auto | manual
+# "auto" detects your stack from project files (pyproject.toml, package.json, etc.)
+stack: auto
+
+# Severity mode: strict | standard | relaxed
+# strict  — warnings become errors (blocks the agent)
+# standard — errors block, warnings inform
+# relaxed — warnings become info
+severity: standard
+
+# Active rule packs (auto-detected if stack: auto)
+packs:
+  - universal
+  # - python    (coming soon)
+  # - react     (coming soon)
+
+# Per-rule overrides
+rules: {}
+  # no-secrets:
+  #   enabled: true
+  #   severity: error
+  # max-file-size:
+  #   limit: 300
+  # no-force-push:
+  #   enabled: false
+
+# Custom rules directory (relative to project root)
+# custom_rules_dir: .agentlint/rules/
