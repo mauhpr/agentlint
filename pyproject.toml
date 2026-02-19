@@ -52,3 +52,7 @@ packages = ["src/agentlint"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.coverage.run]
+relative_files = true
+source = ["src/agentlint"]
