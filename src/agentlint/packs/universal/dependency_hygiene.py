@@ -7,9 +7,10 @@ from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _BASH_TOOLS = {"Bash"}
 
-# pip install <something> — but not `pip install -e .` (local dev).
-_PIP_INSTALL_RE = re.compile(r"\bpip\s+install\b", re.IGNORECASE)
-_PIP_LOCAL_DEV_RE = re.compile(r"\bpip\s+install\s+-e\s+\.", re.IGNORECASE)
+# pip install <something> — but not `pip install -e .` (local dev) or `pip install -r` (lockfile).
+_PIP_INSTALL_RE = re.compile(r"\bpip3?\s+install\b", re.IGNORECASE)
+_PIP_LOCAL_DEV_RE = re.compile(r"\bpip3?\s+install\s+-e\s+\.", re.IGNORECASE)
+_PIP_REQUIREMENTS_RE = re.compile(r"\bpip3?\s+install\s+-r\s+", re.IGNORECASE)
 
 # npm install <package> — but allow bare `npm install` and `npm ci`.
 _NPM_INSTALL_PKG_RE = re.compile(
@@ -36,7 +37,7 @@ class DependencyHygiene(Rule):
 
         violations: list[Violation] = []
 
-        if _PIP_INSTALL_RE.search(command) and not _PIP_LOCAL_DEV_RE.search(command):
+        if _PIP_INSTALL_RE.search(command) and not _PIP_LOCAL_DEV_RE.search(command) and not _PIP_REQUIREMENTS_RE.search(command):
             violations.append(
                 Violation(
                     rule_id=self.id,

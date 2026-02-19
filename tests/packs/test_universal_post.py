@@ -122,7 +122,7 @@ class TestDriftDetector:
         )
         violations = rule.evaluate(ctx)
         assert len(violations) == 0
-        assert session_state["files_edited"] == 0
+        assert session_state["edited_files"] == []
         assert session_state["last_test_run"] is True
 
         # Edit 5 more — should NOT warn (only 5, below threshold).
@@ -137,6 +137,23 @@ class TestDriftDetector:
             violations = rule.evaluate(ctx)
         assert len(violations) == 0
 
+    def test_same_file_edited_multiple_times_counts_once(self):
+        rule = self._make_rule()
+        session_state: dict = {}
+        # Edit the same file 15 times — should count as 1 unique file.
+        for i in range(15):
+            ctx = RuleContext(
+                event=HookEvent.POST_TOOL_USE,
+                tool_name="Write",
+                tool_input={"file_path": "same_file.py"},
+                project_dir="/tmp/project",
+                session_state=session_state,
+            )
+            violations = rule.evaluate(ctx)
+        # Only 1 unique file, well below threshold of 10.
+        assert len(violations) == 0
+        assert len(session_state["edited_files"]) == 1
+
     def test_no_warning_below_threshold(self):
         rule = self._make_rule()
         session_state: dict = {}
@@ -150,3 +167,21 @@ class TestDriftDetector:
             )
             violations = rule.evaluate(ctx)
         assert len(violations) == 0
+
+    def test_custom_threshold_from_config(self):
+        """Custom threshold from config should override default."""
+        rule = self._make_rule()
+        session_state: dict = {}
+        for i in range(6):
+            ctx = RuleContext(
+                event=HookEvent.POST_TOOL_USE,
+                tool_name="Write",
+                tool_input={"file_path": f"file_{i}.py"},
+                project_dir="/tmp/project",
+                config={"drift-detector": {"threshold": 5}},
+                session_state=session_state,
+            )
+            violations = rule.evaluate(ctx)
+        # 6 edits with threshold=5 should trigger warning
+        assert len(violations) == 1
+        assert "6" in violations[0].message

@@ -125,6 +125,43 @@ class TestCheckErrorPaths:
         assert result.exit_code != 0
 
 
+class TestCheckEdgeCases:
+    def test_empty_stdin_check(self, tmp_path) -> None:
+        """Empty stdin (EOFError) on check should not crash."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input="",
+        )
+        assert result.exit_code == 0
+
+    def test_project_dir_from_env(self, tmp_path, monkeypatch) -> None:
+        """CLAUDE_PROJECT_DIR env var is used when --project-dir not provided."""
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse"],
+            input="{}",
+        )
+        assert result.exit_code == 0
+
+    def test_path_traversal_blocked(self, tmp_path) -> None:
+        """File path outside project dir should be blocked in PostToolUse."""
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/etc/passwd"},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+
 class TestReportCommand:
     def test_report_outputs_summary(self) -> None:
         """report should output JSON with AgentLint session summary."""
@@ -135,5 +172,16 @@ class TestReportCommand:
             input="{}",
         )
 
+        assert result.exit_code == 0
+        assert "AgentLint" in result.output
+
+    def test_empty_stdin_report(self) -> None:
+        """Empty stdin (EOFError) on report should not crash."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--project-dir", "/tmp"],
+            input="",
+        )
         assert result.exit_code == 0
         assert "AgentLint" in result.output

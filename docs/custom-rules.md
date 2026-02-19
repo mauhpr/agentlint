@@ -142,8 +142,21 @@ def test_passes_orm_code():
     assert rule.evaluate(context) == []
 ```
 
-## File naming
+## Rule discovery
 
-- Files starting with `_` are skipped (e.g., `_helpers.py`)
-- Each `.py` file is scanned for `Rule` subclasses
-- Multiple rule classes per file are supported
+AgentLint auto-loads custom rules by scanning the configured directory:
+
+- **File naming**: Any `.py` file in the directory is loaded (non-recursive)
+- **Skipped files**: Files starting with `_` (e.g., `_helpers.py`, `__init__.py`) are ignored — use these for shared utilities
+- **Class detection**: Each file is scanned for subclasses of `Rule` — you can have multiple rule classes per file
+- **Pack attribute**: Set `pack = "custom"` on your rules to distinguish them from built-in rules
+
+### Debugging tips
+
+If your custom rule isn't loading:
+
+1. **Check the path**: Verify `custom_rules_dir` in `agentlint.yml` is relative to your project root
+2. **Check the filename**: Ensure it doesn't start with `_`
+3. **Check the class**: It must subclass `Rule` from `agentlint.models` and have all required attributes (`id`, `description`, `severity`, `events`, `pack`)
+4. **Enable debug logging**: Run with `AGENTLINT_LOG_LEVEL=DEBUG agentlint check --event PreToolUse` to see rule loading output
+5. **Test in isolation**: Import your rule file directly in a Python script to check for syntax errors

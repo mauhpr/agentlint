@@ -1,11 +1,13 @@
 """Rule: block secrets and credentials from being written to files."""
 from __future__ import annotations
 
+import os
 import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _WRITE_TOOLS = {"Write", "Edit"}
+_BASH_TOOLS = {"Bash"}
 
 # Literal token prefixes that indicate a real secret.
 _TOKEN_PREFIXES = ("sk_live_", "sk_test_", "AKIA", "ghp_", "ghs_")
@@ -51,17 +53,21 @@ class NoSecrets(Rule):
     pack = "universal"
 
     def evaluate(self, context: RuleContext) -> list[Violation]:
-        if context.tool_name not in _WRITE_TOOLS:
+        if context.tool_name not in _WRITE_TOOLS and context.tool_name not in _BASH_TOOLS:
             return []
 
         violations: list[Violation] = []
-        content: str = context.tool_input.get("content", "")
-        file_path: str | None = context.file_path
 
-        # Check for sensitive filenames.
-        if file_path:
-            import os
+        # Extract content to scan: file content for Write/Edit, command for Bash.
+        if context.tool_name in _BASH_TOOLS:
+            content = context.command or ""
+            file_path = None
+        else:
+            content = context.tool_input.get("content", "")
+            file_path = context.file_path
 
+        # Check for sensitive filenames (only for Write/Edit).
+        if file_path and context.tool_name in _WRITE_TOOLS:
             basename = os.path.basename(file_path).lower()
             for name in _SENSITIVE_FILENAMES:
                 if name in basename:
