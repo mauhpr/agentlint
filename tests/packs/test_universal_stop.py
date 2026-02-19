@@ -89,6 +89,30 @@ class TestNoDebugArtifacts:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
+    def test_ignores_cli_py(self, tmp_path: Path):
+        cli_file = tmp_path / "cli.py"
+        cli_file.write_text('print("Starting server...")\n')
+        ctx = _stop_ctx()
+        ctx.session_state = {"changed_files": [str(cli_file)]}
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_ignores_main_module(self, tmp_path: Path):
+        main_file = tmp_path / "__main__.py"
+        main_file.write_text('print("Running")\n')
+        ctx = _stop_ctx()
+        ctx.session_state = {"changed_files": [str(main_file)]}
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_ignores_file_with_name_main(self, tmp_path: Path):
+        py_file = tmp_path / "app.py"
+        py_file.write_text('def run():\n    print("hello")\n\nif __name__ == "__main__":\n    run()\n')
+        ctx = _stop_ctx()
+        ctx.session_state = {"changed_files": [str(py_file)]}
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
     def test_no_changed_files(self):
         ctx = _stop_ctx()
         ctx.session_state = {}

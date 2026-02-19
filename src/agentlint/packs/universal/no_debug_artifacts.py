@@ -23,6 +23,20 @@ def _is_test_file(path: str) -> bool:
     return "test" in name or any(p.lower() in ("tests", "test", "__tests__") for p in parts)
 
 
+# Python files where print() is legitimate.
+_PRINT_ALLOWED_NAMES = {"cli.py", "__main__.py", "manage.py", "setup.py"}
+
+
+def _allows_print(path: str, content: str) -> bool:
+    """Return True if print() is legitimate in this file."""
+    name = Path(path).name.lower()
+    if name in _PRINT_ALLOWED_NAMES:
+        return True
+    if 'if __name__' in content:
+        return True
+    return False
+
+
 class NoDebugArtifacts(Rule):
     """Warn about debug artifacts left in changed files at session end."""
 
@@ -59,7 +73,7 @@ class NoDebugArtifacts(Rule):
                     artifacts.append("debugger")
 
             if suffix in _PY_EXTENSIONS:
-                if _PRINT_RE.search(content):
+                if _PRINT_RE.search(content) and not _allows_print(file_path, content):
                     artifacts.append("print()")
                 if _PDB_RE.search(content):
                     artifacts.append("pdb.set_trace()")

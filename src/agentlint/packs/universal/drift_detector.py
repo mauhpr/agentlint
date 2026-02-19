@@ -28,16 +28,20 @@ class DriftDetector(Rule):
         if context.tool_name in _BASH_TOOLS:
             command = context.command or ""
             if any(runner in command for runner in _TEST_RUNNERS):
-                state["files_edited"] = 0
+                state["edited_files"] = []
                 state["last_test_run"] = True
                 return []
 
-        # Track file edits.
+        # Track unique file edits.
         if context.tool_name in _WRITE_TOOLS:
-            state["files_edited"] = state.get("files_edited", 0) + 1
+            edited = set(state.get("edited_files", []))
+            file_path = context.file_path or context.tool_input.get("file_path", "")
+            if file_path:
+                edited.add(file_path)
+            state["edited_files"] = list(edited)
             state["last_test_run"] = False
 
-        files_edited = state.get("files_edited", 0)
+        files_edited = len(state.get("edited_files", []))
         last_test_run = state.get("last_test_run", True)
 
         if files_edited > threshold and not last_test_run:

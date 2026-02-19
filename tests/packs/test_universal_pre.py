@@ -94,9 +94,23 @@ class TestNoSecrets:
         # changeme is 8 chars — below the 10-char threshold, so no match anyway
         assert len(violations) == 0
 
-    def test_ignores_non_write_tool(self):
+    def test_detects_secret_in_bash_command(self):
         ctx = _ctx("Bash", {
             "command": 'echo "api_key = sk_live_supersecret12345"',
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) >= 1
+
+    def test_detects_bearer_in_bash_curl(self):
+        ctx = _ctx("Bash", {
+            "command": 'curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abc"',
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) >= 1
+
+    def test_ignores_non_write_non_bash_tool(self):
+        ctx = _ctx("Read", {
+            "file_path": "config.py",
         })
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
@@ -149,6 +163,12 @@ class TestNoEnvCommit:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
+    def test_blocks_nested_env_file(self):
+        """Nested path like config/.env.production should be blocked."""
+        ctx = _ctx("Write", {"file_path": "config/.env.production", "content": "SECRET=x"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
 
 # ---------------------------------------------------------------------------
 # NoForcePush
@@ -174,10 +194,30 @@ class TestNoForcePush:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
-    def test_allows_force_push_to_feature_branch(self):
+    def test_warns_force_push_to_feature_branch(self):
         ctx = _ctx("Bash", {"command": "git push --force origin feature/my-branch"})
         violations = self.rule.evaluate(ctx)
-        assert len(violations) == 0
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.WARNING
+
+    def test_blocks_force_with_lease_to_main(self):
+        ctx = _ctx("Bash", {"command": "git push --force-with-lease origin main"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.ERROR
+
+    def test_warns_force_push_no_branch(self):
+        ctx = _ctx("Bash", {"command": "git push -f"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.WARNING
+
+    def test_blocks_force_push_case_insensitive_branch(self):
+        """Branch names Main, MAIN should also be blocked."""
+        ctx = _ctx("Bash", {"command": "git push --force origin Main"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.ERROR
 
     def test_ignores_non_bash_tool(self):
         ctx = _ctx("Write", {"file_path": "x.sh", "content": "git push --force origin main"})
@@ -279,6 +319,22 @@ class TestDependencyHygiene:
         ctx = _ctx("Bash", {"command": "uv add requests"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
+
+    def test_allows_pip_install_requirements(self):
+        ctx = _ctx("Bash", {"command": "pip install -r requirements.txt"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allows_pip_install_r_dev(self):
+        ctx = _ctx("Bash", {"command": "pip install -r requirements-dev.txt"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_warns_pip3_install(self):
+        """pip3 install should also be caught."""
+        ctx = _ctx("Bash", {"command": "pip3 install requests"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
 
 
 # ---------------------------------------------------------------------------

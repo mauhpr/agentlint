@@ -82,12 +82,18 @@ class TestLoadConfig:
         assert config.severity == "standard"
 
     def test_yaml_syntax_error_treated_as_empty(self, tmp_path):
+        """Invalid YAML should gracefully fall back to defaults."""
         (tmp_path / "agentlint.yml").write_text(": invalid\n  yaml: [")
-        # yaml.safe_load raises on truly broken YAML
-        # This should raise or fall back — let's verify it doesn't crash silently
-        import pytest
-        with pytest.raises(Exception):
-            load_config(str(tmp_path))
+        config = load_config(str(tmp_path))
+        assert config.severity == "standard"
+        assert "universal" in config.packs
+
+    def test_whitespace_only_config_file(self, tmp_path):
+        """Config file with only whitespace should use defaults."""
+        (tmp_path / "agentlint.yml").write_text("   \n\n  \n")
+        config = load_config(str(tmp_path))
+        assert config.severity == "standard"
+        assert "universal" in config.packs
 
     def test_unknown_pack_name_still_loads(self, tmp_path):
         """Unknown pack names in explicit config should load but log a warning."""

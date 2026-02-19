@@ -2,6 +2,29 @@
 
 AgentLint is configured via `agentlint.yml` (or `agentlint.yaml`, `.agentlint.yml`) in your project root. Run `agentlint init` to generate one with auto-detected defaults.
 
+## Quick reference
+
+```yaml
+# All options with their defaults
+stack: auto                    # auto | manual
+severity: standard             # strict | standard | relaxed
+packs:
+  - universal                  # Rule packs to activate
+# custom_rules_dir: .agentlint/rules/   # Path to custom rule files
+
+rules:
+  no-secrets:        { enabled: true }                  # ERROR - blocks secrets in writes
+  no-env-commit:     { enabled: true }                  # ERROR - blocks .env file writes
+  no-force-push:     { enabled: true }                  # ERROR - blocks force-push to main
+  no-destructive-commands: { enabled: true }             # WARNING - warns on rm -rf, DROP TABLE
+  dependency-hygiene: { enabled: true }                  # WARNING - warns on ad-hoc pip/npm install
+  max-file-size:     { enabled: true, limit: 500 }      # WARNING - warns on large files
+  drift-detector:    { enabled: true, threshold: 10 }    # WARNING - warns on many edits without tests
+  no-debug-artifacts: { enabled: true }                  # WARNING - detects leftover debug statements
+  test-with-changes: { enabled: true }                   # WARNING - warns if no tests updated
+  no-todo-left:      { enabled: true }                   # INFO - reports TODO/FIXME in changed files
+```
+
 ## Top-level options
 
 ### `stack`

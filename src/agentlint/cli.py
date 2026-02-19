@@ -48,7 +48,7 @@ def check(event: str, project_dir: str | None):
     # Read tool input from stdin
     try:
         raw = json.load(sys.stdin)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, EOFError):
         raw = {}
 
     config = load_config(project_dir)
@@ -168,7 +168,7 @@ def report(project_dir: str | None):
 
     try:
         json.load(sys.stdin)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, EOFError):
         pass
 
     # Load session and populate changed_files via git

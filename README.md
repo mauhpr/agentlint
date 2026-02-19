@@ -36,7 +36,18 @@ cd your-project
 agentlint setup
 ```
 
-That's it! AgentLint hooks are now active in Claude Code. The `setup` command:
+That's it! AgentLint hooks are now active in Claude Code.
+
+When AgentLint blocks a dangerous action, the agent sees:
+
+```
+⛔ [no-secrets] Possible secret token detected (prefix 'sk_live_')
+💡 Use environment variables instead of hard-coded secrets.
+```
+
+The agent's action is blocked before it can write the secret into your codebase.
+
+The `setup` command:
 - Installs hooks into `.claude/settings.json`
 - Creates `agentlint.yml` with auto-detected settings (if it doesn't exist)
 
@@ -177,6 +188,20 @@ Each invocation loads your config, evaluates matching rules, and returns JSON th
 | claude-code-guardrails | Uses external API. AgentLint is local-first, no network dependency. |
 | Custom hooks | Copy-paste scripts. AgentLint is a composable engine with config + plugins. |
 | Codacy Guardrails | Commercial, proprietary. AgentLint is fully open source. |
+
+## FAQ
+
+**Does AgentLint slow down Claude Code?**
+No. Rules evaluate in <10ms. AgentLint runs locally as a subprocess — no network calls, no API dependencies.
+
+**What if a rule is too strict for my project?**
+Disable it in `agentlint.yml`: `rules: { no-secrets: { enabled: false } }`. Or switch to `severity: relaxed` to downgrade warnings to informational.
+
+**Is my code sent anywhere?**
+No. AgentLint is fully offline. It reads stdin from Claude Code's hook system and evaluates rules locally. No telemetry, no network requests.
+
+**Can I use AgentLint outside Claude Code?**
+The CLI works standalone — you can pipe JSON to `agentlint check` in any CI pipeline. However, the hook integration (blocking actions in real-time) is specific to Claude Code.
 
 ## Contributing
 

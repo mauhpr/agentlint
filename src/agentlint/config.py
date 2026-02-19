@@ -53,7 +53,11 @@ def load_config(project_dir: str) -> AgentLintConfig:
     for filename in CONFIG_FILENAMES:
         config_path = root / filename
         if config_path.exists():
-            raw = yaml.safe_load(config_path.read_text()) or {}
+            try:
+                raw = yaml.safe_load(config_path.read_text()) or {}
+            except yaml.YAMLError:
+                logger.warning("Invalid YAML in %s, using defaults", config_path)
+                raw = {}
             break
 
     # Validate severity
