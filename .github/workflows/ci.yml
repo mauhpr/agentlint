@@ -36,4 +36,6 @@ jobs:
           files: ./coverage.xml
           flags: unittests
           name: agentlint-coverage
+          slug: mauhpr/agentlint
           fail_ci_if_error: false
+          verbose: true
