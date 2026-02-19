@@ -12,7 +12,7 @@ If you discover a security vulnerability in AgentLint, please report it responsi
 
 **Do not open a public GitHub issue.**
 
-Instead, email **mauhpr@users.noreply.github.com** with:
+Instead, email **mauricio_perez_r@hotmail.com** with:
 
 - A description of the vulnerability
 - Steps to reproduce
