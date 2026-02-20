@@ -2,45 +2,66 @@
 from __future__ import annotations
 
 import json
+import shutil
+import sys
 from pathlib import Path
 
-AGENTLINT_HOOKS: dict = {
-    "PreToolUse": [
-        {
-            "matcher": "Bash|Edit|Write",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "agentlint check --event PreToolUse",
-                    "timeout": 5,
-                }
-            ],
-        }
-    ],
-    "PostToolUse": [
-        {
-            "matcher": "Edit|Write",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "agentlint check --event PostToolUse",
-                    "timeout": 10,
-                }
-            ],
-        }
-    ],
-    "Stop": [
-        {
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "agentlint report",
-                    "timeout": 30,
-                }
-            ],
-        }
-    ],
-}
+
+def _resolve_command() -> str:
+    """Resolve the absolute command to invoke agentlint.
+
+    Tries shutil.which first (works for global/pipx/uv-tool installs),
+    then falls back to sys.executable -m agentlint (works for venvs).
+    """
+    found = shutil.which("agentlint")
+    if found:
+        return found
+    return f"{sys.executable} -m agentlint"
+
+
+def build_hooks(cmd: str) -> dict:
+    """Build the agentlint hooks dict with the given command."""
+    return {
+        "PreToolUse": [
+            {
+                "matcher": "Bash|Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f"{cmd} check --event PreToolUse",
+                        "timeout": 5,
+                    }
+                ],
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f"{cmd} check --event PostToolUse",
+                        "timeout": 10,
+                    }
+                ],
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f"{cmd} report",
+                        "timeout": 30,
+                    }
+                ],
+            }
+        ],
+    }
+
+
+# Backward-compatible alias for external consumers
+AGENTLINT_HOOKS: dict = build_hooks("agentlint")
 
 
 def settings_path(scope: str, project_dir: str | None = None) -> Path:
@@ -77,17 +98,20 @@ def _is_agentlint_entry(entry: dict) -> bool:
     return False
 
 
-def merge_hooks(existing: dict) -> dict:
+def merge_hooks(existing: dict, agentlint_cmd: str | None = None) -> dict:
     """Merge agentlint hooks into existing settings (idempotent).
 
     - Removes any existing agentlint entries first (for clean updates)
-    - Appends our entries from AGENTLINT_HOOKS
+    - Builds hook entries using the resolved agentlint command
     - Preserves all non-agentlint entries
     """
+    cmd = agentlint_cmd or _resolve_command()
+    hooks_template = build_hooks(cmd)
+
     settings = dict(existing)
     hooks = dict(settings.get("hooks", {}))
 
-    for event, our_entries in AGENTLINT_HOOKS.items():
+    for event, our_entries in hooks_template.items():
         current = list(hooks.get(event, []))
         # Remove existing agentlint entries
         current = [e for e in current if not _is_agentlint_entry(e)]

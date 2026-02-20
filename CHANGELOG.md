@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 (2026-02-20)
+
+### Fixes
+
+- `agentlint setup` now resolves the absolute path to the `agentlint` binary at install time, fixing `command not found` errors when Claude Code runs hooks via `/bin/sh` with a minimal PATH
+- Fallback chain: `shutil.which("agentlint")` → `sys.executable -m agentlint` → bare `agentlint`
+- Works with all installation methods: pip, pipx, uv tool, uv pip (venv), poetry, system Python
+
+### Tests
+
+- 429 tests (19 new), 95% coverage
+
 ## 0.2.0 (2026-02-20)
 
 ### New packs — 21 new rules

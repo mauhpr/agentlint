@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import sys
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
@@ -9,6 +11,8 @@ from agentlint.cli import main
 from agentlint.setup import (
     AGENTLINT_HOOKS,
     _is_agentlint_entry,
+    _resolve_command,
+    build_hooks,
     merge_hooks,
     read_settings,
     remove_hooks,
@@ -70,6 +74,14 @@ class TestIsAgentlintEntry:
         entry = {"hooks": [{"type": "command", "command": "agentlint check --event PreToolUse"}]}
         assert _is_agentlint_entry(entry) is True
 
+    def test_identifies_absolute_path_entry(self) -> None:
+        entry = {"hooks": [{"type": "command", "command": "/usr/local/bin/agentlint check --event PreToolUse"}]}
+        assert _is_agentlint_entry(entry) is True
+
+    def test_identifies_python_m_entry(self) -> None:
+        entry = {"hooks": [{"type": "command", "command": "/usr/bin/python -m agentlint check --event PreToolUse"}]}
+        assert _is_agentlint_entry(entry) is True
+
     def test_rejects_third_party_entry(self) -> None:
         entry = {"hooks": [{"type": "command", "command": "my-other-tool check"}]}
         assert _is_agentlint_entry(entry) is False
@@ -79,9 +91,72 @@ class TestIsAgentlintEntry:
         assert _is_agentlint_entry({"hooks": []}) is False
 
 
+class TestResolveCommand:
+    def test_returns_absolute_path_when_which_succeeds(self) -> None:
+        with patch("agentlint.setup.shutil.which", return_value="/usr/local/bin/agentlint"):
+            result = _resolve_command()
+        assert result == "/usr/local/bin/agentlint"
+
+    def test_falls_back_to_sys_executable_when_which_fails(self) -> None:
+        with patch("agentlint.setup.shutil.which", return_value=None):
+            result = _resolve_command()
+        assert result == f"{sys.executable} -m agentlint"
+
+    def test_which_none_uses_current_python(self) -> None:
+        with patch("agentlint.setup.shutil.which", return_value=None), \
+             patch("agentlint.setup.sys") as mock_sys:
+            mock_sys.executable = "/opt/venv/bin/python"
+            result = _resolve_command()
+        assert result == "/opt/venv/bin/python -m agentlint"
+
+    def test_returns_string(self) -> None:
+        result = _resolve_command()
+        assert isinstance(result, str)
+        assert "agentlint" in result
+
+
+class TestBuildHooks:
+    def test_builds_all_three_events(self) -> None:
+        hooks = build_hooks("agentlint")
+        assert set(hooks.keys()) == {"PreToolUse", "PostToolUse", "Stop"}
+
+    def test_embeds_bare_command(self) -> None:
+        hooks = build_hooks("agentlint")
+        pre_cmd = hooks["PreToolUse"][0]["hooks"][0]["command"]
+        post_cmd = hooks["PostToolUse"][0]["hooks"][0]["command"]
+        stop_cmd = hooks["Stop"][0]["hooks"][0]["command"]
+        assert pre_cmd == "agentlint check --event PreToolUse"
+        assert post_cmd == "agentlint check --event PostToolUse"
+        assert stop_cmd == "agentlint report"
+
+    def test_embeds_absolute_path(self) -> None:
+        hooks = build_hooks("/usr/local/bin/agentlint")
+        pre_cmd = hooks["PreToolUse"][0]["hooks"][0]["command"]
+        post_cmd = hooks["PostToolUse"][0]["hooks"][0]["command"]
+        stop_cmd = hooks["Stop"][0]["hooks"][0]["command"]
+        assert pre_cmd == "/usr/local/bin/agentlint check --event PreToolUse"
+        assert post_cmd == "/usr/local/bin/agentlint check --event PostToolUse"
+        assert stop_cmd == "/usr/local/bin/agentlint report"
+
+    def test_embeds_python_m_command(self) -> None:
+        hooks = build_hooks("/opt/venv/bin/python -m agentlint")
+        pre_cmd = hooks["PreToolUse"][0]["hooks"][0]["command"]
+        assert pre_cmd == "/opt/venv/bin/python -m agentlint check --event PreToolUse"
+
+    def test_matches_agentlint_hooks_constant(self) -> None:
+        """AGENTLINT_HOOKS backward-compat alias equals build_hooks('agentlint')."""
+        assert build_hooks("agentlint") == AGENTLINT_HOOKS
+
+    def test_timeouts_are_correct(self) -> None:
+        hooks = build_hooks("agentlint")
+        assert hooks["PreToolUse"][0]["hooks"][0]["timeout"] == 5
+        assert hooks["PostToolUse"][0]["hooks"][0]["timeout"] == 10
+        assert hooks["Stop"][0]["hooks"][0]["timeout"] == 30
+
+
 class TestMergeHooks:
     def test_merges_into_empty_settings(self) -> None:
-        result = merge_hooks({})
+        result = merge_hooks({}, agentlint_cmd="agentlint")
         assert "hooks" in result
         assert set(result["hooks"].keys()) == {"PreToolUse", "PostToolUse", "Stop"}
 
@@ -93,7 +168,7 @@ class TestMergeHooks:
                 ]
             }
         }
-        result = merge_hooks(existing)
+        result = merge_hooks(existing, agentlint_cmd="agentlint")
         pre_hooks = result["hooks"]["PreToolUse"]
         # Should have the third-party entry + our entry
         assert len(pre_hooks) == 2
@@ -101,8 +176,8 @@ class TestMergeHooks:
         assert _is_agentlint_entry(pre_hooks[1])
 
     def test_idempotent_merge(self) -> None:
-        first = merge_hooks({})
-        second = merge_hooks(first)
+        first = merge_hooks({}, agentlint_cmd="agentlint")
+        second = merge_hooks(first, agentlint_cmd="agentlint")
         assert first == second
 
     def test_replaces_existing_agentlint_entries(self) -> None:
@@ -117,20 +192,54 @@ class TestMergeHooks:
                 ]
             }
         }
-        result = merge_hooks(existing)
+        result = merge_hooks(existing, agentlint_cmd="agentlint")
         pre_hooks = result["hooks"]["PreToolUse"]
         assert len(pre_hooks) == 1
         assert pre_hooks[0]["hooks"][0]["timeout"] == 5  # Updated to current
 
     def test_preserves_non_hook_settings(self) -> None:
         existing = {"other_key": "value", "hooks": {}}
-        result = merge_hooks(existing)
+        result = merge_hooks(existing, agentlint_cmd="agentlint")
         assert result["other_key"] == "value"
+
+    def test_embeds_absolute_path_in_hooks(self) -> None:
+        result = merge_hooks({}, agentlint_cmd="/usr/local/bin/agentlint")
+        pre_cmd = result["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        post_cmd = result["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+        stop_cmd = result["hooks"]["Stop"][0]["hooks"][0]["command"]
+        assert pre_cmd == "/usr/local/bin/agentlint check --event PreToolUse"
+        assert post_cmd == "/usr/local/bin/agentlint check --event PostToolUse"
+        assert stop_cmd == "/usr/local/bin/agentlint report"
+
+    def test_replaces_bare_with_absolute_path(self) -> None:
+        """Re-running setup upgrades bare 'agentlint' to an absolute path."""
+        old = merge_hooks({}, agentlint_cmd="agentlint")
+        updated = merge_hooks(old, agentlint_cmd="/usr/local/bin/agentlint")
+        pre_cmd = updated["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        assert pre_cmd == "/usr/local/bin/agentlint check --event PreToolUse"
+        # Only one entry (old one replaced)
+        assert len(updated["hooks"]["PreToolUse"]) == 1
+
+    def test_uses_resolve_command_when_no_cmd_given(self) -> None:
+        with patch("agentlint.setup._resolve_command", return_value="/mock/bin/agentlint"):
+            result = merge_hooks({})
+        pre_cmd = result["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        assert pre_cmd == "/mock/bin/agentlint check --event PreToolUse"
 
 
 class TestRemoveHooks:
     def test_removes_agentlint_entries(self) -> None:
-        installed = merge_hooks({})
+        installed = merge_hooks({}, agentlint_cmd="agentlint")
+        result = remove_hooks(installed)
+        assert "hooks" not in result
+
+    def test_removes_absolute_path_entries(self) -> None:
+        installed = merge_hooks({}, agentlint_cmd="/usr/local/bin/agentlint")
+        result = remove_hooks(installed)
+        assert "hooks" not in result
+
+    def test_removes_python_m_entries(self) -> None:
+        installed = merge_hooks({}, agentlint_cmd="/opt/venv/bin/python -m agentlint")
         result = remove_hooks(installed)
         assert "hooks" not in result
 
@@ -141,14 +250,14 @@ class TestRemoveHooks:
                     {"matcher": "Bash", "hooks": [{"type": "command", "command": "other-tool lint"}]}
                 ]
             }
-        })
+        }, agentlint_cmd="agentlint")
         result = remove_hooks(existing)
         assert "PreToolUse" in result["hooks"]
         assert len(result["hooks"]["PreToolUse"]) == 1
         assert result["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "other-tool lint"
 
     def test_removes_empty_event_keys(self) -> None:
-        installed = merge_hooks({})
+        installed = merge_hooks({}, agentlint_cmd="agentlint")
         result = remove_hooks(installed)
         assert "hooks" not in result
 
@@ -157,7 +266,7 @@ class TestRemoveHooks:
         assert result == {}
 
     def test_preserves_non_hook_settings(self) -> None:
-        installed = merge_hooks({"other_key": "value"})
+        installed = merge_hooks({"other_key": "value"}, agentlint_cmd="agentlint")
         result = remove_hooks(installed)
         assert result == {"other_key": "value"}
 
@@ -169,6 +278,7 @@ class TestSetupCLI:
 
         assert result.exit_code == 0
         assert "Installed" in result.output
+        assert "Resolved agentlint:" in result.output
 
         settings_file = tmp_path / ".claude" / "settings.json"
         assert settings_file.exists()
@@ -177,6 +287,19 @@ class TestSetupCLI:
         assert "PreToolUse" in data["hooks"]
         assert "PostToolUse" in data["hooks"]
         assert "Stop" in data["hooks"]
+
+    def test_setup_embeds_resolved_path(self, tmp_path) -> None:
+        runner = CliRunner()
+        with patch("agentlint.cli._resolve_command", return_value="/mock/bin/agentlint"):
+            result = runner.invoke(main, ["setup", "--project-dir", str(tmp_path)])
+
+        assert result.exit_code == 0
+        assert "/mock/bin/agentlint" in result.output
+
+        settings_file = tmp_path / ".claude" / "settings.json"
+        data = json.loads(settings_file.read_text())
+        pre_cmd = data["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        assert pre_cmd == "/mock/bin/agentlint check --event PreToolUse"
 
     def test_setup_also_creates_config(self, tmp_path) -> None:
         runner = CliRunner()
@@ -215,6 +338,16 @@ class TestSetupCLI:
 
         settings_file = tmp_path / ".claude" / "settings.json"
         # File should be deleted since no other settings remain
+        assert not settings_file.exists()
+
+    def test_uninstall_removes_absolute_path_hooks(self, tmp_path) -> None:
+        runner = CliRunner()
+        with patch("agentlint.cli._resolve_command", return_value="/usr/local/bin/agentlint"):
+            runner.invoke(main, ["setup", "--project-dir", str(tmp_path)])
+        result = runner.invoke(main, ["uninstall", "--project-dir", str(tmp_path)])
+
+        assert result.exit_code == 0
+        settings_file = tmp_path / ".claude" / "settings.json"
         assert not settings_file.exists()
 
     def test_uninstall_preserves_other_settings(self, tmp_path) -> None:

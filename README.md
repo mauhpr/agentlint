@@ -103,7 +103,7 @@ cd your-project
 agentlint setup
 ```
 
-That's it! AgentLint hooks are now active in Claude Code.
+That's it! AgentLint hooks are now active in Claude Code. `agentlint setup` resolves the absolute path to the binary, so hooks work regardless of your shell's PATH — whether you installed via pip, pipx, uv, poetry, or a virtual environment.
 
 When AgentLint blocks a dangerous action, the agent sees:
 
@@ -150,6 +150,8 @@ claude --plugin-dir /path/to/agentlint/plugin
 ```
 
 ### Manual hook configuration
+
+> **Note:** The manual configuration below uses the bare `agentlint` command and requires it to be on your shell's PATH. For reliable resolution across all installation methods, use `agentlint setup` instead — it embeds the absolute path automatically.
 
 Add to your project's `.claude/settings.json`:
 
