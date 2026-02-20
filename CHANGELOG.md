@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.0 (2026-02-20)
+
+### New packs — 21 new rules
+
+- **Python** (6 rules): `no-bare-except`, `no-unsafe-shell`, `no-dangerous-migration`, `no-wildcard-import`, `no-unnecessary-async`, `no-sql-injection`
+- **Frontend** (8 rules): `a11y-image-alt`, `a11y-form-labels`, `a11y-interactive-elements`, `a11y-heading-hierarchy`, `mobile-touch-targets`, `mobile-responsive-patterns`, `style-no-arbitrary-values`, `style-focus-visible`
+- **React** (3 rules): `react-query-loading-state`, `react-empty-state`, `react-lazy-loading`
+- **SEO** (4 rules): `seo-page-metadata`, `seo-open-graph`, `seo-semantic-html`, `seo-structured-data`
+
+### Infrastructure
+
+- Stack auto-detection: packs activate based on project files (`pyproject.toml`, `package.json`, SSR/SSG framework dependencies)
+- Shared `_helpers.py` modules for frontend and SEO file type detection
+- All packs registered in `PACK_MODULES` with lazy detection functions
+
+### Tests
+
+- 410 tests (172 new), 95% coverage
+
 ## 0.1.1 (2026-02-19)
 
 ### Fixes

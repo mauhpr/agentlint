@@ -13,6 +13,10 @@ logger = logging.getLogger("agentlint")
 
 PACK_MODULES = {
     "universal": "agentlint.packs.universal",
+    "python": "agentlint.packs.python",
+    "frontend": "agentlint.packs.frontend",
+    "react": "agentlint.packs.react",
+    "seo": "agentlint.packs.seo",
 }
 
 
