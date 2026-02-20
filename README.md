@@ -12,7 +12,7 @@ AI coding agents drift during long sessions — they introduce API keys into sou
 
 ## What it catches
 
-AgentLint ships with 10 universal rules that work with any tech stack:
+AgentLint ships with 31 rules across 5 packs. The 10 **universal** rules work with any tech stack; 4 additional packs auto-activate based on your project files:
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -28,6 +28,72 @@ AgentLint ships with 10 universal rules that work with any tech stack:
 | `no-todo-left` | INFO | Reports TODO/FIXME comments in changed files |
 
 **ERROR** rules block the agent's action. **WARNING** rules inject advice into the agent's context. **INFO** rules appear in the session report.
+
+<details>
+<summary><strong>Python pack</strong> (6 rules) — auto-activates when <code>pyproject.toml</code> or <code>setup.py</code> exists</summary>
+
+| Rule | Severity | What it does |
+|------|----------|-------------|
+| `no-bare-except` | WARNING | Prevents bare `except:` clauses that swallow all exceptions |
+| `no-unsafe-shell` | ERROR | Blocks unsafe shell execution via subprocess or os module |
+| `no-dangerous-migration` | WARNING | Warns on risky Alembic migration operations |
+| `no-wildcard-import` | WARNING | Prevents `from module import *` |
+| `no-unnecessary-async` | INFO | Flags async functions that never use `await` |
+| `no-sql-injection` | ERROR | Blocks SQL via string interpolation (f-strings, `.format()`) |
+
+</details>
+
+<details>
+<summary><strong>Frontend pack</strong> (8 rules) — auto-activates when <code>package.json</code> exists</summary>
+
+| Rule | Severity | What it does |
+|------|----------|-------------|
+| `a11y-image-alt` | WARNING | Ensures images have alt text (WCAG 1.1.1) |
+| `a11y-form-labels` | WARNING | Ensures form inputs have labels or `aria-label` |
+| `a11y-interactive-elements` | WARNING | Checks ARIA attributes and link anti-patterns |
+| `a11y-heading-hierarchy` | INFO | Ensures no skipped heading levels or multiple h1s |
+| `mobile-touch-targets` | WARNING | Ensures 44x44px minimum touch targets (WCAG 2.5.5) |
+| `mobile-responsive-patterns` | INFO | Warns about desktop-only layout patterns |
+| `style-no-arbitrary-values` | INFO | Warns about arbitrary Tailwind values bypassing tokens |
+| `style-focus-visible` | WARNING | Ensures focus indicators are not removed (WCAG 2.4.7) |
+
+</details>
+
+<details>
+<summary><strong>React pack</strong> (3 rules) — auto-activates when <code>react</code> is in <code>package.json</code> dependencies</summary>
+
+| Rule | Severity | What it does |
+|------|----------|-------------|
+| `react-query-loading-state` | WARNING | Ensures `useQuery` results handle loading and error states |
+| `react-empty-state` | INFO | Suggests empty state handling for `array.map()` in JSX |
+| `react-lazy-loading` | INFO | Suggests lazy loading for heavy components in page files |
+
+</details>
+
+<details>
+<summary><strong>SEO pack</strong> (4 rules) — auto-activates when an SSR/SSG framework (Next.js, Nuxt, Gatsby, Astro, etc.) is detected</summary>
+
+| Rule | Severity | What it does |
+|------|----------|-------------|
+| `seo-page-metadata` | WARNING | Ensures page files include title and description |
+| `seo-open-graph` | INFO | Ensures pages with metadata include Open Graph tags |
+| `seo-semantic-html` | INFO | Encourages semantic HTML over excessive divs |
+| `seo-structured-data` | INFO | Suggests JSON-LD structured data for content pages |
+
+</details>
+
+### Stack auto-detection
+
+When `stack: auto` (the default), AgentLint detects your project and activates matching packs:
+
+| Detected file | Pack activated |
+|--------------|----------------|
+| `pyproject.toml` or `setup.py` | `python` |
+| `package.json` | `frontend` |
+| `react` in package.json dependencies | `react` |
+| SSR/SSG framework in dependencies (Next.js, Nuxt, Gatsby, Astro, SvelteKit, Remix) | `seo` |
+
+The `universal` pack is always active. To override auto-detection, list packs explicitly in `agentlint.yml`.
 
 ## Quick start
 
@@ -126,6 +192,10 @@ severity: standard
 
 packs:
   - universal
+  # - python          # Auto-detected from pyproject.toml / setup.py
+  # - frontend        # Auto-detected from package.json
+  # - react           # Auto-detected from react in dependencies
+  # - seo             # Auto-detected from SSR/SSG framework in dependencies
 
 rules:
   max-file-size:
@@ -134,6 +204,12 @@ rules:
     threshold: 5        # Warn after 5 edits without tests (default: 10)
   no-secrets:
     enabled: false      # Disable a rule entirely
+  # Python pack examples:
+  # no-bare-except:
+  #   allow_reraise: true
+  # Frontend pack examples:
+  # a11y-heading-hierarchy:
+  #   max_h1: 1
 
 # Load custom rules from a directory
 # custom_rules_dir: .agentlint/rules/
