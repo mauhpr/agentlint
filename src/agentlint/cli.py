@@ -15,7 +15,7 @@ from agentlint.models import HookEvent, RuleContext
 from agentlint.packs import load_custom_rules, load_rules
 from agentlint.reporter import Reporter
 from agentlint.session import cleanup_session, load_session, save_session
-from agentlint.setup import merge_hooks, read_settings, remove_hooks, settings_path, write_settings
+from agentlint.setup import _resolve_command, merge_hooks, read_settings, remove_hooks, settings_path, write_settings
 from agentlint.utils.git import get_changed_files
 
 logger = logging.getLogger("agentlint")
@@ -213,9 +213,12 @@ def setup(scope: str, project_dir: str | None):
     """Install AgentLint hooks into Claude Code settings."""
     project_dir = project_dir or os.getcwd()
 
+    agentlint_cmd = _resolve_command()
+    click.echo(f"Resolved agentlint: {agentlint_cmd}")
+
     path = settings_path(scope, project_dir)
     existing = read_settings(path)
-    updated = merge_hooks(existing)
+    updated = merge_hooks(existing, agentlint_cmd=agentlint_cmd)
     write_settings(path, updated)
 
     click.echo(f"Installed AgentLint hooks in {path}")

@@ -1,7 +1,7 @@
 {
   "name": "agentlint",
   "description": "Real-time quality guardrails for AI coding agents. ESLint for agent behavior.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": {
     "name": "mauhpr"
   },
