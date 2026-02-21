@@ -139,7 +139,7 @@ agentlint setup --global
 Add the AgentLint marketplace and install the plugin:
 
 ```
-/plugin marketplace add mauhpr/agentlint
+/plugin marketplace add mauhpr/agentlint-plugin
 /plugin install agentlint@agentlint
 ```
 
