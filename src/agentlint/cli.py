@@ -12,7 +12,7 @@ from agentlint.config import load_config
 from agentlint.detector import detect_stack
 from agentlint.engine import Engine
 from agentlint.models import HookEvent, RuleContext
-from agentlint.packs import load_custom_rules, load_rules
+from agentlint.packs import PACK_MODULES, load_custom_rules, load_rules
 from agentlint.reporter import Reporter
 from agentlint.session import cleanup_session, load_session, save_session
 from agentlint.setup import _resolve_command, merge_hooks, read_settings, remove_hooks, settings_path, write_settings
@@ -142,6 +142,7 @@ severity: standard  # strict | standard | relaxed
 
 packs:
 {pack_lines}
+  # - security  # opt-in: blocks Bash file writes, network exfiltration
 
 rules: {{}}
   # Override individual rules:
@@ -228,6 +229,36 @@ def setup(scope: str, project_dir: str | None):
     if not os.path.exists(config_path):
         ctx = click.Context(init)
         ctx.invoke(init, project_dir=project_dir)
+
+
+@main.command("list-rules")
+@click.option("--pack", default=None, help="Filter rules by pack name")
+def list_rules(pack: str | None):
+    """List all available rules."""
+    all_packs = sorted(PACK_MODULES.keys()) if pack is None else [pack]
+    rules = load_rules(all_packs)
+
+    if not rules:
+        if pack:
+            click.echo(f"No rules found for pack '{pack}'.")
+        else:
+            click.echo("No rules found.")
+        return
+
+    # Sort by pack, then by event, then by id.
+    rules.sort(key=lambda r: (r.pack, r.events[0].value if r.events else "", r.id))
+
+    # Table header.
+    click.echo(f"{'Rule ID':<30} {'Pack':<12} {'Event':<14} {'Severity':<10} Description")
+    click.echo("-" * 100)
+
+    for rule in rules:
+        event_str = rule.events[0].value if rule.events else "—"
+        click.echo(
+            f"{rule.id:<30} {rule.pack:<12} {event_str:<14} {rule.severity.value:<10} {rule.description}"
+        )
+
+    click.echo(f"\n{len(rules)} rules total.")
 
 
 @main.command()

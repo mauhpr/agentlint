@@ -18,11 +18,30 @@ _SAFE_RM_TARGETS = {
     ".pytest_cache",
 }
 
+# Protected git branches.
+_PROTECTED_BRANCHES = {"main", "master", "develop", "production", "release"}
+
 _RM_RF_RE = re.compile(r"\brm\s+-[^\s]*r[^\s]*f|\brm\s+-[^\s]*f[^\s]*r", re.IGNORECASE)
 _DROP_TABLE_RE = re.compile(r"\bDROP\s+TABLE\b", re.IGNORECASE)
 _DROP_DB_RE = re.compile(r"\bDROP\s+DATABASE\b", re.IGNORECASE)
 _GIT_RESET_HARD_RE = re.compile(r"\bgit\s+reset\s+--hard\b", re.IGNORECASE)
 _GIT_CLEAN_RE = re.compile(r"\bgit\s+clean\s+-fd\b", re.IGNORECASE)
+
+# Catastrophic rm patterns — always ERROR.
+_RM_ROOT_RE = re.compile(r"\brm\s+-[^\s]*r[^\s]*f\s+/(?:\s|$)|\brm\s+-[^\s]*f[^\s]*r\s+/(?:\s|$)")
+_RM_HOME_RE = re.compile(
+    r"\brm\s+-[^\s]*(?:rf|fr)\s+(?:~|\$HOME)(?:\s|/|$)",
+    re.IGNORECASE,
+)
+
+# New patterns.
+_CHMOD_777_RE = re.compile(r"\bchmod\s+(?:-R\s+)?777\b", re.IGNORECASE)
+_MKFS_RE = re.compile(r"\bmkfs\b", re.IGNORECASE)
+_DD_ZERO_RE = re.compile(r"\bdd\b.*\bif=/dev/zero\b", re.IGNORECASE)
+_FORK_BOMB_RE = re.compile(r":\(\)\s*\{\s*:\|:\s*&\s*\}\s*;|\./:0\b|/dev/null\s*\|")
+_DOCKER_PRUNE_RE = re.compile(r"\bdocker\s+system\s+prune\s+-a\b.*--volumes\b|\bdocker\s+system\s+prune\b.*-a\b.*--volumes\b", re.IGNORECASE)
+_KUBECTL_DELETE_NS_RE = re.compile(r"\bkubectl\s+delete\s+namespace\b", re.IGNORECASE)
+_GIT_BRANCH_DELETE_RE = re.compile(r"\bgit\s+branch\s+-D\s+(\S+)", re.IGNORECASE)
 
 
 def _rm_targets_safe(command: str) -> bool:
@@ -41,7 +60,12 @@ def _rm_targets_safe(command: str) -> bool:
 
     import os
 
-    return all(os.path.basename(t.rstrip("/")) in _SAFE_RM_TARGETS for t in targets)
+    return all(os.path.basename(t.strip("'\"").rstrip("/")) in _SAFE_RM_TARGETS for t in targets)
+
+
+def _is_catastrophic_rm(command: str) -> bool:
+    """Return True if rm -rf targets root, home, or $HOME."""
+    return bool(_RM_ROOT_RE.search(command) or _RM_HOME_RE.search(command))
 
 
 class NoDestructiveCommands(Rule):
@@ -63,7 +87,17 @@ class NoDestructiveCommands(Rule):
 
         violations: list[Violation] = []
 
-        if _RM_RF_RE.search(command) and not _rm_targets_safe(command):
+        # Catastrophic rm -rf targets (ERROR severity).
+        if _RM_RF_RE.search(command) and _is_catastrophic_rm(command):
+            violations.append(
+                Violation(
+                    rule_id=self.id,
+                    message="Catastrophic command detected: rm -rf on root or home directory",
+                    severity=Severity.ERROR,
+                    suggestion="This would destroy critical system or user files. Never run rm -rf on / or ~.",
+                )
+            )
+        elif _RM_RF_RE.search(command) and not _rm_targets_safe(command):
             violations.append(
                 Violation(
                     rule_id=self.id,
@@ -112,5 +146,85 @@ class NoDestructiveCommands(Rule):
                     suggestion="Run git clean -n first to preview what will be removed.",
                 )
             )
+
+        # chmod 777 — overly permissive.
+        if _CHMOD_777_RE.search(command):
+            violations.append(
+                Violation(
+                    rule_id=self.id,
+                    message="Overly permissive command detected: chmod 777",
+                    severity=self.severity,
+                    suggestion="Use more restrictive permissions (e.g. chmod 755 for dirs, 644 for files).",
+                )
+            )
+
+        # mkfs — filesystem formatting (ERROR).
+        if _MKFS_RE.search(command):
+            violations.append(
+                Violation(
+                    rule_id=self.id,
+                    message="Catastrophic command detected: mkfs (filesystem format)",
+                    severity=Severity.ERROR,
+                    suggestion="mkfs will destroy all data on the target device.",
+                )
+            )
+
+        # dd if=/dev/zero — disk wiping (ERROR).
+        if _DD_ZERO_RE.search(command):
+            violations.append(
+                Violation(
+                    rule_id=self.id,
+                    message="Catastrophic command detected: dd if=/dev/zero (disk wipe)",
+                    severity=Severity.ERROR,
+                    suggestion="dd if=/dev/zero will overwrite data irreversibly.",
+                )
+            )
+
+        # Fork bomb detection (ERROR).
+        if _FORK_BOMB_RE.search(command):
+            violations.append(
+                Violation(
+                    rule_id=self.id,
+                    message="Fork bomb detected",
+                    severity=Severity.ERROR,
+                    suggestion="This command will exhaust system resources.",
+                )
+            )
+
+        # docker system prune -a --volumes.
+        if _DOCKER_PRUNE_RE.search(command):
+            violations.append(
+                Violation(
+                    rule_id=self.id,
+                    message="Destructive command detected: docker system prune -a --volumes",
+                    severity=self.severity,
+                    suggestion="This removes all unused containers, images, networks, and volumes.",
+                )
+            )
+
+        # kubectl delete namespace.
+        if _KUBECTL_DELETE_NS_RE.search(command):
+            violations.append(
+                Violation(
+                    rule_id=self.id,
+                    message="Destructive command detected: kubectl delete namespace",
+                    severity=self.severity,
+                    suggestion="Verify you are not targeting a production namespace.",
+                )
+            )
+
+        # git branch -D on protected branches.
+        branch_match = _GIT_BRANCH_DELETE_RE.search(command)
+        if branch_match:
+            branch_name = branch_match.group(1).lower()
+            if branch_name in _PROTECTED_BRANCHES:
+                violations.append(
+                    Violation(
+                        rule_id=self.id,
+                        message=f"Destructive command detected: git branch -D {branch_match.group(1)}",
+                        severity=Severity.ERROR,
+                        suggestion=f"Deleting the '{branch_match.group(1)}' branch is dangerous. Use a feature branch instead.",
+                    )
+                )
 
         return violations

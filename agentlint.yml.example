@@ -14,6 +14,7 @@ severity: standard
 # Active rule packs (auto-detected if stack: auto)
 packs:
   - universal
+  # - security        # Opt-in: blocks Bash file writes, network exfiltration
   - python
   - frontend
   - react
@@ -23,15 +24,29 @@ packs:
 rules:
   # ── PreToolUse (can block the agent) ─────────────────────
   # no-secrets:
-  #   enabled: true             # Block API keys, tokens, passwords
+  #   enabled: true             # Block API keys, tokens, passwords, private keys
+  #   extra_prefixes: []        # Additional token prefixes to detect
   # no-env-commit:
-  #   enabled: true             # Block writing .env files
+  #   enabled: true             # Block writing .env files (including via Bash)
   # no-force-push:
   #   enabled: true             # Block git push --force to main/master
+  # no-push-to-main:
+  #   enabled: true             # Warn on direct push to main/master
+  # no-skip-hooks:
+  #   enabled: true             # Warn on git commit --no-verify
   # no-destructive-commands:
-  #   enabled: true             # Warn on rm -rf, DROP TABLE, git reset --hard
+  #   enabled: true             # Warn on rm -rf, DROP TABLE, chmod 777, mkfs, etc.
+  # no-test-weakening:
+  #   enabled: true             # Warn on skipped tests, assert True, etc.
   # dependency-hygiene:
   #   enabled: true             # Warn on ad-hoc pip/npm install
+
+  # ── Security pack (opt-in) ───────────────────────────────
+  # no-bash-file-write:
+  #   allow_patterns: []        # Regex patterns to allow (e.g., ["echo.*>>.*\\.log"])
+  #   allow_paths: []           # Glob patterns for allowed targets (e.g., ["*.log", "/tmp/*"])
+  # no-network-exfil:
+  #   allowed_hosts: []         # Additional allowed hosts (github.com, pypi.org already allowed)
 
   # ── PostToolUse (warnings after the action) ─────────────
   # max-file-size:

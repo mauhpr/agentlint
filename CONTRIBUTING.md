@@ -6,7 +6,7 @@
 2. **Run the tests**: `uv sync --dev && uv run pytest -v` — everything should pass
 3. **Pick a rule to read**: Start with `src/agentlint/packs/universal/no_env_commit.py` — it's the simplest rule (~55 lines) and shows the full pattern
 4. **Try a small change**: Add a test case to an existing rule in `tests/packs/test_universal_pre.py`
-5. **Run tests again**: `uv run pytest -v --cov=agentlint` — verify your test runs and coverage stays above 93%
+5. **Run tests again**: `uv run pytest -v --cov=agentlint` — verify your test runs and coverage stays above 95%
 
 That's it! You now understand the full loop. Pick an issue or propose a new rule.
 
@@ -25,7 +25,7 @@ uv run pytest -v
 uv run pytest --cov=agentlint --cov-report=term-missing
 ```
 
-Coverage should stay at or above 93%.
+Coverage should stay at or above 95%.
 
 ## Code style
 

@@ -14,6 +14,7 @@ packs:
   # - frontend                 # Auto-detected from package.json
   # - react                    # Auto-detected from react in dependencies
   # - seo                      # Auto-detected from SSR/SSG framework
+  # - security                 # Opt-in: blocks Bash file writes, network exfiltration
 # custom_rules_dir: .agentlint/rules/   # Path to custom rule files
 
 rules:
@@ -28,6 +29,12 @@ rules:
   no-debug-artifacts: { enabled: true }                  # WARNING - detects leftover debug statements
   test-with-changes: { enabled: true }                   # WARNING - warns if no tests updated
   no-todo-left:      { enabled: true }                   # INFO - reports TODO/FIXME in changed files
+  no-push-to-main:   { enabled: true }                   # WARNING - warns on direct push to main/master
+  no-skip-hooks:     { enabled: true }                   # WARNING - warns on git commit --no-verify
+  no-test-weakening: { enabled: true }                   # WARNING - warns on skipped tests, assert True
+  # === Security pack (opt-in) ===
+  # no-bash-file-write: { enabled: true }                # ERROR - blocks Bash file writes (cat >, tee, etc.)
+  # no-network-exfil:   { enabled: true }                # ERROR - blocks potential data exfiltration
   # === Python pack ===
   # no-bare-except:    { enabled: true, allow_reraise: true }
   # no-unsafe-shell:   { enabled: true }
@@ -64,7 +71,7 @@ Global severity mode. Transforms all violation severities:
 
 Explicit list of rule packs to activate. Overrides auto-detection.
 
-Available packs: `universal`, `python`, `frontend`, `react`, `seo`.
+Available packs: `universal`, `python`, `frontend`, `react`, `seo`, `security`.
 
 ```yaml
 packs:
@@ -104,25 +111,47 @@ Blocks writes containing API keys, tokens, or passwords.
 Detects patterns:
 - Stripe keys (`sk_live_`, `sk_test_`)
 - AWS keys (`AKIA...`)
+- GitHub tokens (`ghp_`, `github_pat_`)
+- Slack tokens (`xoxb-`, `xoxp-`)
 - Generic API key assignments
-- Bearer tokens
+- Bearer tokens and JWTs
 - Password string assignments
+- Private keys (RSA, EC, DSA)
+- Database connection strings with credentials
+- GCP service account files
+- Terraform state files
+- Sensitive filenames (`.npmrc`, `credentials.json`, etc.)
+- Curl with authentication (`-u`, `-H "Authorization: ..."`)
+
+**Config options:**
+- `extra_prefixes` — Additional token prefixes to detect (e.g. `["myco_secret_"]`)
 
 ### `no-env-commit` (PreToolUse, ERROR)
 
-Blocks writing `.env`, `.env.local`, `.env.production`, and similar credential files.
+Blocks writing `.env`, `.env.local`, `.env.production`, and similar credential files. Also detects Bash commands that write to `.env` files (e.g. `echo "SECRET=val" > .env`, `cp .env.example .env`, `tee .env`, `sed -i ... .env`).
 
 ### `no-force-push` (PreToolUse, ERROR)
 
 Blocks `git push --force` or `git push -f` to `main` or `master` branches.
 
-### `no-destructive-commands` (PreToolUse, WARNING)
+### `no-destructive-commands` (PreToolUse, WARNING/ERROR)
 
-Warns on destructive shell commands:
+Warns on destructive shell commands. Some patterns escalate to ERROR severity:
+
+**WARNING:**
 - `rm -rf` (except safe targets like `node_modules`, `dist`, `__pycache__`)
 - `DROP TABLE`, `DROP DATABASE`
-- `git reset --hard`
-- `git clean -fd`
+- `git reset --hard`, `git clean -fd`
+- `chmod 777` (overly permissive)
+- `docker system prune -a --volumes`
+- `kubectl delete namespace`
+
+**ERROR (catastrophic):**
+- `rm -rf /` or `rm -rf ~` (root/home deletion)
+- `mkfs` (filesystem format)
+- `dd if=/dev/zero` (disk wipe)
+- Fork bombs
+- `git branch -D main/master` (protected branch deletion)
 
 ### `dependency-hygiene` (PreToolUse, WARNING)
 
@@ -161,6 +190,44 @@ Skips migrations, configs, and settings files.
 ### `no-todo-left` (Stop, INFO)
 
 At session end, reports any `TODO`, `FIXME`, `HACK`, or `XXX` comments found in changed files.
+
+### `no-push-to-main` (PreToolUse, WARNING)
+
+Warns on direct `git push` to `main` or `master` branches (excluding force pushes, which are handled by `no-force-push`).
+
+### `no-skip-hooks` (PreToolUse, WARNING)
+
+Warns when git commands use `--no-verify` or `--no-gpg-sign` flags to skip safety hooks.
+
+### `no-test-weakening` (PreToolUse, WARNING)
+
+Detects patterns that weaken test suites when writing to test files:
+- Skip markers (`@pytest.mark.skip`, `@unittest.skip`, `it.skip()`, `describe.skip()`)
+- Trivially passing assertions (`assert True`, `assertTrue(True)`, `expect(true).toBe(true)`)
+- Commented-out assertions (`# assert ...`, `// expect(...)`)
+- `@pytest.mark.xfail` without a reason
+- Empty test functions (`def test_...: pass`)
+
+## Security rules reference
+
+The security pack is **opt-in** — add `security` to your `packs` list to enable it. These rules provide stricter enforcement for sensitive environments.
+
+### `no-bash-file-write` (PreToolUse, ERROR)
+
+Blocks file writes via Bash commands, enforcing use of the Write/Edit tools instead. Detects: `cat >`, `echo >`, `tee`, `sed -i`, `cp`, `mv`, `perl -pi`, `awk >`, `dd of=`, `python -c ... open(...).write()`, and heredocs.
+
+**Config options:**
+- `allow_paths` — Glob patterns for allowed write targets (e.g. `["*.log", "/tmp/*"]`)
+- `allow_patterns` — Regex patterns for allowed commands (e.g. `["echo.*>>.*\\.log"]`)
+
+### `no-network-exfil` (PreToolUse, ERROR)
+
+Blocks potential data exfiltration via network commands. Detects: `curl POST/PUT` with data, `curl -d @file`, piping secrets to curl, `nc` with sensitive files, `scp` of credential files, `wget --post-file`, `python requests.post()`, and `rsync` of sensitive files to remote.
+
+Default allowed hosts: `github.com`, `pypi.org`, `registry.npmjs.org`, `rubygems.org`.
+
+**Config options:**
+- `allowed_hosts` — Additional allowed destination hosts
 
 ## Python rules reference
 
@@ -317,14 +384,22 @@ packs:
   # - frontend
   # - react
   # - seo
+  # - security          # Opt-in: blocks Bash file writes, network exfiltration
 
 rules:
   # Universal
   no-secrets:
     enabled: true
+    extra_prefixes: []        # Additional token prefixes to detect
   no-env-commit:
     enabled: true
   no-force-push:
+    enabled: true
+  no-push-to-main:
+    enabled: true
+  no-skip-hooks:
+    enabled: true
+  no-test-weakening:
     enabled: true
   no-destructive-commands:
     enabled: true
@@ -340,6 +415,13 @@ rules:
     enabled: true
   no-todo-left:
     enabled: true
+
+  # Security (opt-in)
+  no-bash-file-write:
+    allow_paths: []           # Glob patterns for allowed targets
+    allow_patterns: []        # Regex patterns for allowed commands
+  no-network-exfil:
+    allowed_hosts: []         # Additional allowed hosts
 
   # Python
   no-bare-except:
