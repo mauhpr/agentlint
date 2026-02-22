@@ -150,6 +150,22 @@ class TestNoBashFileWrite:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
+    def test_blocks_despite_non_matching_allow_paths(self):
+        """When allow_paths is set but doesn't match, write should still be blocked."""
+        ctx = _ctx("Bash", {"command": 'echo "data" > secret.py'}, config={
+            "no-bash-file-write": {"allow_paths": ["*.log"]},
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_blocks_despite_non_matching_allow_patterns(self):
+        """When allow_patterns is set but doesn't match, write should still be blocked."""
+        ctx = _ctx("Bash", {"command": 'echo "data" > secret.py'}, config={
+            "no-bash-file-write": {"allow_patterns": [r"echo.*>>.*\.log"]},
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
     def test_one_violation_per_command(self):
         """Even with multiple write patterns, only one violation is returned."""
         ctx = _ctx("Bash", {"command": 'echo "a" > x.txt && cp x.txt y.txt'})

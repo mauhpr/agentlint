@@ -401,6 +401,22 @@ class TestNoEnvCommitBash:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
+    def test_allows_write_with_no_file_path(self):
+        ctx = _ctx("Write", {"content": "SECRET=abc"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allows_empty_bash_command(self):
+        ctx = _ctx("Bash", {"command": ""})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_deduplicates_same_env_target(self):
+        """Bash command referencing .env twice should produce one violation."""
+        ctx = _ctx("Bash", {"command": 'echo "A=1" > .env && echo "B=2" >> .env'})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
 
 # ---------------------------------------------------------------------------
 # NoDestructiveCommands — new patterns
@@ -861,6 +877,14 @@ class TestNoTestWeakening:
         })
         violations = self.rule.evaluate(ctx)
         assert any("skip" in v.message.lower() for v in violations)
+
+    def test_ignores_empty_content_in_test_file(self):
+        ctx = _ctx("Write", {
+            "file_path": "tests/test_core.py",
+            "content": "",
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
 
     def test_allows_meaningful_test(self):
         ctx = _ctx("Write", {
