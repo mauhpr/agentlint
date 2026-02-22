@@ -17,6 +17,9 @@ CONFIG_FILENAMES = ["agentlint.yml", "agentlint.yaml", ".agentlint.yml"]
 
 VALID_SEVERITY_MODES = {"strict", "standard", "relaxed"}
 
+# Rules that are disabled unless explicitly enabled in config.
+_DISABLED_BY_DEFAULT = {"git-checkpoint"}
+
 
 @dataclass
 class AgentLintConfig:
@@ -28,7 +31,8 @@ class AgentLintConfig:
 
     def is_rule_enabled(self, rule_id: str) -> bool:
         rule_cfg = self.rules.get(rule_id, {})
-        return rule_cfg.get("enabled", True)
+        default = rule_id not in _DISABLED_BY_DEFAULT
+        return rule_cfg.get("enabled", default)
 
     def get_rule_config(self, rule_id: str) -> dict:
         return self.rules.get(rule_id, {})

@@ -32,6 +32,12 @@ rules:
   no-push-to-main:   { enabled: true }                   # WARNING - warns on direct push to main/master
   no-skip-hooks:     { enabled: true }                   # WARNING - warns on git commit --no-verify
   no-test-weakening: { enabled: true }                   # WARNING - warns on skipped tests, assert True
+  git-checkpoint:    { enabled: false }                  # INFO - creates git stash before destructive ops (opt-in)
+  # === Quality pack (always-active) ===
+  commit-message-format: { enabled: true }               # WARNING - validates conventional commits
+  no-error-handling-removal: { enabled: true }            # WARNING - warns when error handling removed
+  no-dead-imports:   { enabled: true }                   # INFO - detects unused imports
+  self-review-prompt: { enabled: true }                  # INFO - adversarial self-review at session end
   # === Security pack (opt-in) ===
   # no-bash-file-write: { enabled: true }                # ERROR - blocks Bash file writes (cat >, tee, etc.)
   # no-network-exfil:   { enabled: true }                # ERROR - blocks potential data exfiltration
@@ -207,6 +213,65 @@ Detects patterns that weaken test suites when writing to test files:
 - Commented-out assertions (`# assert ...`, `// expect(...)`)
 - `@pytest.mark.xfail` without a reason
 - Empty test functions (`def test_...: pass`)
+
+### `git-checkpoint` (PreToolUse + Stop, INFO) — disabled by default
+
+Creates a git safety checkpoint (`git stash push`) before destructive operations. At session end, cleans up old checkpoints. **Opt-in** — must be explicitly enabled.
+
+**Config options:**
+- `enabled` — Enable the rule (default: `false`)
+- `cleanup_hours` — Remove checkpoints older than N hours (default: `24`)
+- `triggers` — Custom list of regex patterns that trigger checkpoints (overrides defaults)
+
+**Default triggers:** `rm -rf`, `git reset --hard`, `git checkout .`, `git clean -fd`, `DROP TABLE`, `DROP DATABASE`
+
+```yaml
+rules:
+  git-checkpoint:
+    enabled: true
+    cleanup_hours: 48
+    # Custom triggers (overrides defaults):
+    # triggers:
+    #   - "\\bmy-dangerous-cmd\\b"
+```
+
+### `token-budget` (PostToolUse + Stop, WARNING/INFO)
+
+Tracks session activity (tool invocations, content bytes, duration). Warns at configurable threshold.
+
+**Config options:**
+- `max_tool_invocations` — Maximum tool calls before warning (default: `200`)
+- `max_content_bytes` — Maximum content bytes (default: `500000`)
+- `warn_at_percent` — Warning threshold (default: `80`)
+
+## AGENTS.md Integration
+
+AgentLint can import conventions from your project's [AGENTS.md](https://agents.md/) file — the industry standard for AI agent instructions.
+
+### `agentlint import-agents-md`
+
+```bash
+# Preview what would be generated
+agentlint import-agents-md --dry-run
+
+# Generate agentlint.yml from AGENTS.md
+agentlint import-agents-md
+
+# Merge AGENTS.md conventions into existing config
+agentlint import-agents-md --merge
+
+# Specify project directory
+agentlint import-agents-md --project-dir /path/to/project
+```
+
+**How mapping works:**
+- Section headings and body text are scanned for keywords
+- Keywords map to packs: "Python" / "pytest" -> python pack, "React" / "JSX" -> react pack, etc.
+- Keywords map to rules: ".env" -> no-env-commit, "commit message" -> commit-message-format, etc.
+- Inferred rules use INFO severity (conservative defaults)
+
+**Auto-detection integration:**
+When `AGENTS.md` exists and `stack: auto` is set, AgentLint uses AGENTS.md hints to discover additional packs during stack detection. This is additive — existing detection logic is not affected.
 
 ## Security rules reference
 
@@ -414,6 +479,22 @@ rules:
   test-with-changes:
     enabled: true
   no-todo-left:
+    enabled: true
+  git-checkpoint:
+    enabled: false            # Opt-in: creates git stash before destructive ops
+    cleanup_hours: 24
+  token-budget:
+    max_tool_invocations: 200
+    warn_at_percent: 80
+
+  # Quality (always-active)
+  commit-message-format:
+    enabled: true
+  no-dead-imports:
+    enabled: true
+  no-error-handling-removal:
+    enabled: true
+  self-review-prompt:
     enabled: true
 
   # Security (opt-in)

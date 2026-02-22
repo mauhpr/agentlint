@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from agentlint.packs import PACK_MODULES
+
+logger = logging.getLogger("agentlint")
 
 _SSR_SSG_FRAMEWORKS = {
     "next", "nuxt", "gatsby", "astro", "@sveltejs/kit", "remix",
@@ -29,6 +32,9 @@ def detect_stack(project_dir: str) -> list[str]:
     if _has_seo_framework(root) and "seo" in PACK_MODULES:
         packs.append("seo")
 
+    # Additive: use AGENTS.md hints to discover additional packs.
+    _add_agents_md_hints(root, packs)
+
     return packs
 
 
@@ -50,6 +56,26 @@ def _has_react(root: Path) -> bool:
         return "react" in deps
     except (json.JSONDecodeError, OSError):
         return False
+
+
+def _add_agents_md_hints(root: Path, packs: list[str]) -> None:
+    """If AGENTS.md exists, scan for pack-related keywords to enrich detection."""
+    from agentlint.agents_md import find_agents_md, map_to_config, parse_agents_md
+
+    agents_path = find_agents_md(str(root))
+    if agents_path is None:
+        return
+
+    try:
+        sections = parse_agents_md(agents_path)
+        if not sections:
+            return
+        mapped = map_to_config(sections)
+        for pack in mapped.get("packs", []):
+            if pack not in packs and pack in PACK_MODULES:
+                packs.append(pack)
+    except Exception:
+        logger.debug("Failed to parse AGENTS.md for detection hints", exc_info=True)
 
 
 def _has_seo_framework(root: Path) -> bool:
