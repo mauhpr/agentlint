@@ -37,7 +37,7 @@ def main():
 
 
 @main.command()
-@click.option("--event", required=True, help="Hook event type (PreToolUse, PostToolUse, Stop)")
+@click.option("--event", required=True, help="Hook event type (e.g. PreToolUse, PostToolUse, UserPromptSubmit)")
 @click.option("--project-dir", default=None, help="Project directory")
 def check(event: str, project_dir: str | None):
     """Evaluate rules against a tool call from stdin."""
@@ -59,7 +59,7 @@ def check(event: str, project_dir: str | None):
     # Load persisted session state
     session_state = load_session()
 
-    # Build context
+    # Build context with event-specific fields
     tool_input = raw.get("tool_input", {})
     context = RuleContext(
         event=hook_event,
@@ -68,7 +68,43 @@ def check(event: str, project_dir: str | None):
         project_dir=project_dir,
         config=config.rules,
         session_state=session_state,
+        prompt=raw.get("prompt"),
+        subagent_output=raw.get("subagent_output"),
+        notification_type=raw.get("notification_type"),
+        compact_source=raw.get("compact_source"),
     )
+
+    # For PreToolUse Write/Edit, cache current file content for diff-based rules
+    if hook_event == HookEvent.PRE_TOOL_USE and context.tool_name in ("Write", "Edit"):
+        file_path = context.file_path
+        file_content_before = None
+        if file_path:
+            try:
+                with open(file_path, encoding="utf-8", errors="replace") as f:
+                    file_content_before = f.read()
+            except OSError:
+                pass
+            if file_content_before is not None:
+                file_cache = session_state.setdefault("file_cache", {})
+                file_cache[file_path] = file_content_before
+
+        # For Write, the new content is in tool_input
+        content = tool_input.get("content", "")
+        if content:
+            context = RuleContext(
+                event=context.event,
+                tool_name=context.tool_name,
+                tool_input=context.tool_input,
+                project_dir=context.project_dir,
+                file_content=content,
+                file_content_before=file_content_before,
+                config=context.config,
+                session_state=session_state,
+                prompt=context.prompt,
+                subagent_output=context.subagent_output,
+                notification_type=context.notification_type,
+                compact_source=context.compact_source,
+            )
 
     # For PostToolUse on file operations, try to read file content
     if hook_event == HookEvent.POST_TOOL_USE and context.file_path:
@@ -86,6 +122,10 @@ def check(event: str, project_dir: str | None):
         except OSError:
             file_content = None
 
+        # Retrieve cached pre-edit content for diff-based rules
+        file_cache = session_state.get("file_cache", {})
+        file_content_before = file_cache.pop(file_path, None)
+
         if file_content is not None:
             context = RuleContext(
                 event=context.event,
@@ -93,22 +133,13 @@ def check(event: str, project_dir: str | None):
                 tool_input=context.tool_input,
                 project_dir=context.project_dir,
                 file_content=file_content,
+                file_content_before=file_content_before,
                 config=context.config,
                 session_state=session_state,
-            )
-
-    # For PreToolUse Write, content is in tool_input
-    if hook_event == HookEvent.PRE_TOOL_USE and context.tool_name == "Write":
-        content = tool_input.get("content", "")
-        if content:
-            context = RuleContext(
-                event=context.event,
-                tool_name=context.tool_name,
-                tool_input=context.tool_input,
-                project_dir=context.project_dir,
-                file_content=content,
-                config=context.config,
-                session_state=session_state,
+                prompt=context.prompt,
+                subagent_output=context.subagent_output,
+                notification_type=context.notification_type,
+                compact_source=context.compact_source,
             )
 
     engine = Engine(config=config, rules=rules)
@@ -259,6 +290,94 @@ def list_rules(pack: str | None):
         )
 
     click.echo(f"\n{len(rules)} rules total.")
+
+
+@main.command()
+@click.option("--project-dir", default=None, help="Project directory")
+def status(project_dir: str | None):
+    """Show AgentLint status for the current project."""
+    from importlib.metadata import version as get_version
+
+    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+
+    try:
+        ver = get_version("agentlint")
+    except Exception:
+        ver = "dev"
+
+    config = load_config(project_dir)
+    rules = load_rules(config.packs)
+    if config.custom_rules_dir:
+        rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
+
+    session_state = load_session()
+    budget = session_state.get("token_budget", {})
+    total_calls = budget.get("total_calls", 0)
+
+    packs_str = ", ".join(config.packs)
+    click.echo(f"AgentLint v{ver} | Severity: {config.severity} | Packs: {packs_str}")
+    click.echo(f"Rules: {len(rules)} active | Session: {total_calls} tool calls tracked")
+
+
+@main.command()
+@click.option("--project-dir", default=None, help="Project directory")
+def doctor(project_dir: str | None):
+    """Diagnose common AgentLint misconfigurations."""
+    project_dir = project_dir or os.getcwd()
+    issues: list[str] = []
+    checks_ok: list[str] = []
+
+    # Check agentlint.yml exists
+    config_path = os.path.join(project_dir, "agentlint.yml")
+    alt_paths = [
+        os.path.join(project_dir, "agentlint.yaml"),
+        os.path.join(project_dir, ".agentlint.yml"),
+    ]
+    if os.path.exists(config_path):
+        checks_ok.append("Config file: agentlint.yml found")
+    elif any(os.path.exists(p) for p in alt_paths):
+        checks_ok.append("Config file: found (alternate name)")
+    else:
+        issues.append("Config file: agentlint.yml not found. Run 'agentlint init' to create one.")
+
+    # Check hooks registered
+    hook_path = settings_path("project", project_dir)
+    hook_data = read_settings(hook_path)
+    if "hooks" in hook_data and any(
+        "agentlint" in str(hook_data["hooks"].get(evt, []))
+        for evt in ("PreToolUse", "PostToolUse", "Stop")
+    ):
+        checks_ok.append("Hooks: installed in .claude/settings.json")
+    else:
+        issues.append("Hooks: not installed. Run 'agentlint setup' to install.")
+
+    # Check Python version
+    import sys as _sys
+    py_ver = _sys.version_info
+    if py_ver >= (3, 11):
+        checks_ok.append(f"Python: {py_ver.major}.{py_ver.minor}.{py_ver.micro} (OK)")
+    else:
+        issues.append(f"Python: {py_ver.major}.{py_ver.minor} (requires >=3.11)")
+
+    # Check session cache writable
+    from agentlint.session import _cache_dir
+    cache_dir = _cache_dir()
+    if cache_dir.exists() and os.access(str(cache_dir), os.W_OK):
+        checks_ok.append(f"Session cache: {cache_dir} (writable)")
+    elif not cache_dir.exists():
+        checks_ok.append(f"Session cache: {cache_dir} (will be created)")
+    else:
+        issues.append(f"Session cache: {cache_dir} is not writable")
+
+    for item in checks_ok:
+        click.echo(f"  OK  {item}")
+    for item in issues:
+        click.echo(f"  !!  {item}")
+
+    if issues:
+        click.echo(f"\n{len(issues)} issue(s) found.")
+    else:
+        click.echo("\nAll checks passed.")
 
 
 @main.command()

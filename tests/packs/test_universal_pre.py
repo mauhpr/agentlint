@@ -913,7 +913,7 @@ class TestPackLoader:
         from agentlint.packs import load_rules
 
         rules = load_rules(["universal"])
-        assert len(rules) == 13
+        assert len(rules) == 14  # 13 original + token-budget
         ids = {r.id for r in rules}
         assert "no-secrets" in ids
         assert "no-env-commit" in ids

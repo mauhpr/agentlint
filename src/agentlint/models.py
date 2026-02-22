@@ -18,11 +18,27 @@ class Severity(Enum):
 
 
 class HookEvent(Enum):
-    """Claude Code hook lifecycle events."""
+    """Claude Code hook lifecycle events.
+
+    Covers all 17 events supported by the Claude Code hook system.
+    """
     PRE_TOOL_USE = "PreToolUse"
     POST_TOOL_USE = "PostToolUse"
     STOP = "Stop"
     SESSION_START = "SessionStart"
+    SESSION_END = "SessionEnd"
+    USER_PROMPT_SUBMIT = "UserPromptSubmit"
+    SUB_AGENT_START = "SubagentStart"
+    SUB_AGENT_STOP = "SubagentStop"
+    NOTIFICATION = "Notification"
+    PRE_COMPACT = "PreCompact"
+    POST_TOOL_USE_FAILURE = "PostToolUseFailure"
+    PERMISSION_REQUEST = "PermissionRequest"
+    CONFIG_CHANGE = "ConfigChange"
+    WORKTREE_CREATE = "WorktreeCreate"
+    WORKTREE_REMOVE = "WorktreeRemove"
+    TEAMMATE_IDLE = "TeammateIdle"
+    TASK_COMPLETED = "TaskCompleted"
 
     @classmethod
     def from_string(cls, value: str) -> HookEvent:
@@ -63,6 +79,12 @@ class RuleContext:
     file_content: str | None = None
     config: dict = field(default_factory=dict)
     session_state: dict = field(default_factory=dict)
+    # v0.4.0 — additional context for new hook events
+    prompt: str | None = None              # UserPromptSubmit
+    subagent_output: str | None = None     # SubagentStop
+    notification_type: str | None = None   # Notification
+    compact_source: str | None = None      # PreCompact (manual/auto)
+    file_content_before: str | None = None # PostToolUse diff support
 
     @property
     def file_path(self) -> str | None:

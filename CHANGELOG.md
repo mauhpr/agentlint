@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.4.0 (2026-02-22) — "The Platform Release"
+
+### Full lifecycle coverage — 17 hook events
+
+AgentLint now supports all 17 Claude Code hook events (up from 4), making it the first guardrail tool with complete lifecycle coverage:
+- **New events**: SessionEnd, UserPromptSubmit, SubagentStart, SubagentStop, Notification, PreCompact, PostToolUseFailure, PermissionRequest, ConfigChange, WorktreeCreate, WorktreeRemove, TeammateIdle, TaskCompleted
+- Events without dedicated rules pass through gracefully (exit 0)
+
+### New: Quality pack (always-active)
+
+- **`commit-message-format`** (WARNING) — Validates git commit messages follow conventional commits format. Configurable `max_subject_length` and `format` (conventional/freeform).
+- **`no-dead-imports`** (INFO) — Detects unused imports in Python and JS/TS files. Skips `__init__.py`, `index.ts`, and configurable ignore list.
+- **`no-error-handling-removal`** (WARNING) — Warns when error handling patterns (try/except, .catch, ErrorBoundary) are completely removed from code. Uses file content caching for diff-based detection.
+- **`self-review-prompt`** (INFO) — Injects an adversarial self-review prompt at session end to catch bugs. Customizable via `custom_prompt` config.
+
+### New universal rule
+
+- **`token-budget`** (WARNING/INFO) — Tracks session activity (tool invocations, content bytes, duration). Warns at configurable threshold (default: 80% of 200 calls). Reports session activity summary at Stop.
+
+### New CLI commands
+
+- **`agentlint status`** — Shows version, severity mode, active packs, rule count, and session activity
+- **`agentlint doctor`** — Diagnoses common misconfigurations: config file, hooks installation, Python version, session cache
+
+### Engine enhancements
+
+- **File content caching** — PreToolUse for Write/Edit now caches current file content in session state. PostToolUse provides `file_content_before` for diff-based rules.
+- **Extended RuleContext** — New fields: `prompt` (UserPromptSubmit), `subagent_output` (SubagentStop), `notification_type` (Notification), `compact_source` (PreCompact), `file_content_before` (diff support).
+
+### Hook registration
+
+- `agentlint setup` now registers hooks for UserPromptSubmit, SubagentStop, and Notification events in addition to PreToolUse, PostToolUse, and Stop.
+
+### Tests
+
+- 639 tests (82 new), 96% coverage
+
 ## 0.3.0 (2026-02-22) — "The Security Release"
 
 ### New: Security pack (opt-in)
