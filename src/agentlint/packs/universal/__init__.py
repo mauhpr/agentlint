@@ -12,6 +12,7 @@ from agentlint.packs.universal.no_skip_hooks import NoSkipHooks
 from agentlint.packs.universal.no_test_weakening import NoTestWeakening
 from agentlint.packs.universal.no_todo_left import NoTodoLeft
 from agentlint.packs.universal.test_with_changes import TestWithChanges
+from agentlint.packs.universal.token_budget import TokenBudget
 
 RULES = [
     # PreToolUse
@@ -26,7 +27,8 @@ RULES = [
     # PostToolUse
     MaxFileSize(),
     DriftDetector(),
-    # Stop
+    TokenBudget(),
+    # Stop (TokenBudget also fires on Stop)
     NoDebugArtifacts(),
     NoTodoLeft(),
     TestWithChanges(),

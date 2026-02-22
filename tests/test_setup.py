@@ -116,18 +116,22 @@ class TestResolveCommand:
 
 
 class TestBuildHooks:
-    def test_builds_all_three_events(self) -> None:
+    EXPECTED_EVENTS = {"PreToolUse", "PostToolUse", "UserPromptSubmit", "SubagentStop", "Notification", "Stop"}
+
+    def test_builds_all_events(self) -> None:
         hooks = build_hooks("agentlint")
-        assert set(hooks.keys()) == {"PreToolUse", "PostToolUse", "Stop"}
+        assert set(hooks.keys()) == self.EXPECTED_EVENTS
 
     def test_embeds_bare_command(self) -> None:
         hooks = build_hooks("agentlint")
         pre_cmd = hooks["PreToolUse"][0]["hooks"][0]["command"]
         post_cmd = hooks["PostToolUse"][0]["hooks"][0]["command"]
         stop_cmd = hooks["Stop"][0]["hooks"][0]["command"]
+        prompt_cmd = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
         assert pre_cmd == "agentlint check --event PreToolUse"
         assert post_cmd == "agentlint check --event PostToolUse"
         assert stop_cmd == "agentlint report"
+        assert prompt_cmd == "agentlint check --event UserPromptSubmit"
 
     def test_embeds_absolute_path(self) -> None:
         hooks = build_hooks("/usr/local/bin/agentlint")
@@ -151,14 +155,23 @@ class TestBuildHooks:
         hooks = build_hooks("agentlint")
         assert hooks["PreToolUse"][0]["hooks"][0]["timeout"] == 5
         assert hooks["PostToolUse"][0]["hooks"][0]["timeout"] == 10
+        assert hooks["UserPromptSubmit"][0]["hooks"][0]["timeout"] == 5
+        assert hooks["SubagentStop"][0]["hooks"][0]["timeout"] == 10
+        assert hooks["Notification"][0]["hooks"][0]["timeout"] == 5
         assert hooks["Stop"][0]["hooks"][0]["timeout"] == 30
+
+    def test_new_events_use_check_command(self) -> None:
+        hooks = build_hooks("agentlint")
+        for event in ("UserPromptSubmit", "SubagentStop", "Notification"):
+            cmd = hooks[event][0]["hooks"][0]["command"]
+            assert cmd == f"agentlint check --event {event}"
 
 
 class TestMergeHooks:
     def test_merges_into_empty_settings(self) -> None:
         result = merge_hooks({}, agentlint_cmd="agentlint")
         assert "hooks" in result
-        assert set(result["hooks"].keys()) == {"PreToolUse", "PostToolUse", "Stop"}
+        assert set(result["hooks"].keys()) == TestBuildHooks.EXPECTED_EVENTS
 
     def test_preserves_third_party_hooks(self) -> None:
         existing = {
@@ -284,9 +297,7 @@ class TestSetupCLI:
         assert settings_file.exists()
         data = json.loads(settings_file.read_text())
         assert "hooks" in data
-        assert "PreToolUse" in data["hooks"]
-        assert "PostToolUse" in data["hooks"]
-        assert "Stop" in data["hooks"]
+        assert set(data["hooks"].keys()) == TestBuildHooks.EXPECTED_EVENTS
 
     def test_setup_embeds_resolved_path(self, tmp_path) -> None:
         runner = CliRunner()

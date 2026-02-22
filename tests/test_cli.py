@@ -125,6 +125,85 @@ class TestCheckErrorPaths:
         assert result.exit_code != 0
 
 
+class TestCheckNewEvents:
+    """New v0.4.0 hook events pass through gracefully."""
+
+    def test_user_prompt_submit_passthrough(self, tmp_path) -> None:
+        payload = json.dumps({"prompt": "delete everything"})
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "UserPromptSubmit", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_subagent_stop_passthrough(self, tmp_path) -> None:
+        payload = json.dumps({"subagent_output": "done"})
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "SubagentStop", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_notification_passthrough(self, tmp_path) -> None:
+        payload = json.dumps({"notification_type": "warning"})
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "Notification", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_session_end_passthrough(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "SessionEnd", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        assert result.exit_code == 0
+
+    def test_pre_compact_passthrough(self, tmp_path) -> None:
+        payload = json.dumps({"compact_source": "auto"})
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreCompact", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_post_tool_use_failure_passthrough(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PostToolUseFailure", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        assert result.exit_code == 0
+
+    def test_all_new_events_accept_empty_input(self, tmp_path) -> None:
+        """Every new event should accept empty JSON input without crashing."""
+        new_events = [
+            "SessionEnd", "UserPromptSubmit", "SubagentStart", "SubagentStop",
+            "Notification", "PreCompact", "PostToolUseFailure", "PermissionRequest",
+            "ConfigChange", "WorktreeCreate", "WorktreeRemove", "TeammateIdle",
+            "TaskCompleted",
+        ]
+        runner = CliRunner()
+        for event in new_events:
+            result = runner.invoke(
+                main,
+                ["check", "--event", event, "--project-dir", str(tmp_path)],
+                input="{}",
+            )
+            assert result.exit_code == 0, f"Event {event} failed with exit code {result.exit_code}"
+
+
 class TestCheckEdgeCases:
     def test_empty_stdin_check(self, tmp_path) -> None:
         """Empty stdin (EOFError) on check should not crash."""
@@ -187,7 +266,17 @@ class TestListRulesCommand:
         result = runner.invoke(main, ["list-rules", "--pack", "universal"])
         assert result.exit_code == 0
         assert "no-secrets" in result.output
-        assert "13 rules total" in result.output
+        assert "14 rules total" in result.output
+
+    def test_list_rules_quality_pack(self) -> None:
+        """list-rules --pack quality should show only quality rules."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules", "--pack", "quality"])
+        assert result.exit_code == 0
+        assert "commit-message-format" in result.output
+        assert "no-dead-imports" in result.output
+        assert "no-error-handling-removal" in result.output
+        assert "4 rules total" in result.output
 
     def test_list_rules_unknown_pack(self) -> None:
         """list-rules with unknown pack should show no rules."""
@@ -205,6 +294,52 @@ class TestListRulesCommand:
         assert "Event" in result.output
         assert "Severity" in result.output
         assert "Description" in result.output
+
+
+class TestStatusCommand:
+    def test_status_outputs_version_and_rules(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "AgentLint" in result.output
+        assert "Rules:" in result.output
+        assert "Packs:" in result.output
+
+    def test_status_shows_pack_names(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
+        assert "universal" in result.output
+
+
+class TestDoctorCommand:
+    def test_doctor_all_checks_pass(self, tmp_path) -> None:
+        # Create config and hooks so checks pass
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir()
+        (settings_dir / "settings.json").write_text(
+            json.dumps({"hooks": {"PreToolUse": [{"hooks": [{"command": "agentlint check"}]}]}})
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "All checks passed" in result.output
+
+    def test_doctor_warns_missing_config(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "not found" in result.output
+
+    def test_doctor_warns_missing_hooks(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "not installed" in result.output
+
+    def test_doctor_checks_python_version(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "Python:" in result.output
 
 
 class TestReportCommand:

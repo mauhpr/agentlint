@@ -18,7 +18,7 @@ def detect_stack(project_dir: str) -> list[str]:
     Only returns packs that are actually registered in PACK_MODULES.
     """
     root = Path(project_dir)
-    packs = ["universal"]
+    packs = ["universal", "quality"]
 
     if _has_python(root) and "python" in PACK_MODULES:
         packs.append("python")

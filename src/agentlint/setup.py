@@ -46,6 +46,39 @@ def build_hooks(cmd: str) -> dict:
                 ],
             }
         ],
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f"{cmd} check --event UserPromptSubmit",
+                        "timeout": 5,
+                    }
+                ],
+            }
+        ],
+        "SubagentStop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f"{cmd} check --event SubagentStop",
+                        "timeout": 10,
+                    }
+                ],
+            }
+        ],
+        "Notification": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f"{cmd} check --event Notification",
+                        "timeout": 5,
+                    }
+                ],
+            }
+        ],
         "Stop": [
             {
                 "hooks": [

@@ -12,7 +12,7 @@ AI coding agents drift during long sessions — they introduce API keys into sou
 
 ## What it catches
 
-AgentLint ships with 36 rules across 6 packs. The 13 **universal** rules work with any tech stack; 4 additional packs auto-activate based on your project files, and the **security** pack is opt-in for maximum protection:
+AgentLint ships with 41 rules across 7 packs, covering all 17 Claude Code hook events. The 14 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files, and the **security** pack is opt-in for maximum protection:
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -28,9 +28,22 @@ AgentLint ships with 36 rules across 6 packs. The 13 **universal** rules work wi
 | `drift-detector` | WARNING | Warns after many edits without running tests |
 | `no-debug-artifacts` | WARNING | Detects `console.log`, `print()`, `debugger` left in code |
 | `test-with-changes` | WARNING | Warns if source changed but no tests were updated |
+| `token-budget` | WARNING | Tracks session activity and warns on excessive tool usage |
 | `no-todo-left` | INFO | Reports TODO/FIXME comments in changed files |
 
 **ERROR** rules block the agent's action. **WARNING** rules inject advice into the agent's context. **INFO** rules appear in the session report.
+
+<details>
+<summary><strong>Quality pack</strong> (4 rules) — always active alongside universal</summary>
+
+| Rule | Severity | What it does |
+|------|----------|-------------|
+| `commit-message-format` | WARNING | Validates commit messages follow conventional format |
+| `no-error-handling-removal` | WARNING | Warns when try/except or .catch() blocks are removed |
+| `no-dead-imports` | INFO | Detects unused imports in Python and JS/TS files |
+| `self-review-prompt` | INFO | Injects adversarial self-review prompt at session end |
+
+</details>
 
 <details>
 <summary><strong>Python pack</strong> (6 rules) — auto-activates when <code>pyproject.toml</code> or <code>setup.py</code> exists</summary>
@@ -258,6 +271,12 @@ agentlint list-rules
 
 # List rules in a specific pack
 agentlint list-rules --pack security
+
+# Show current status (version, packs, rule count, session activity)
+agentlint status
+
+# Diagnose common misconfigurations
+agentlint doctor
 ```
 
 ## Custom rules

@@ -8,9 +8,9 @@ from agentlint.packs import PACK_MODULES
 
 
 class TestDetectStack:
-    def test_empty_project_returns_universal(self, tmp_path):
+    def test_empty_project_returns_universal_and_quality(self, tmp_path):
         result = detect_stack(str(tmp_path))
-        assert result == ["universal"]
+        assert result == ["universal", "quality"]
 
     def test_python_detected_only_if_pack_registered(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'foo'\n")
@@ -168,4 +168,4 @@ class TestDetectStack:
         pkg = {"dependencies": {"react": "^18.0.0", "next": "^14.0.0"}}
         (tmp_path / "package.json").write_text(json.dumps(pkg))
         result = detect_stack(str(tmp_path))
-        assert result == ["universal", "python", "frontend", "react", "seo"]
+        assert result == ["universal", "quality", "python", "frontend", "react", "seo"]
