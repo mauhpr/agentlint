@@ -162,6 +162,51 @@ class TestCheckEdgeCases:
         assert result.exit_code == 0
 
 
+class TestListRulesCommand:
+    def test_list_all_rules(self) -> None:
+        """list-rules should output a table of all rules."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules"])
+        assert result.exit_code == 0
+        assert "no-secrets" in result.output
+        assert "no-env-commit" in result.output
+        assert "rules total" in result.output
+
+    def test_list_rules_security_pack(self) -> None:
+        """list-rules --pack security should show only security rules."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules", "--pack", "security"])
+        assert result.exit_code == 0
+        assert "no-bash-file-write" in result.output
+        assert "no-network-exfil" in result.output
+        assert "2 rules total" in result.output
+
+    def test_list_rules_universal_pack(self) -> None:
+        """list-rules --pack universal should show only universal rules."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules", "--pack", "universal"])
+        assert result.exit_code == 0
+        assert "no-secrets" in result.output
+        assert "13 rules total" in result.output
+
+    def test_list_rules_unknown_pack(self) -> None:
+        """list-rules with unknown pack should show no rules."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules", "--pack", "nonexistent"])
+        assert result.exit_code == 0
+        assert "No rules found" in result.output
+
+    def test_list_rules_columns(self) -> None:
+        """list-rules should show Rule ID, Pack, Event, Severity, Description columns."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules"])
+        assert "Rule ID" in result.output
+        assert "Pack" in result.output
+        assert "Event" in result.output
+        assert "Severity" in result.output
+        assert "Description" in result.output
+
+
 class TestReportCommand:
     def test_report_outputs_summary(self) -> None:
         """report should output JSON with AgentLint session summary."""

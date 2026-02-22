@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.0 (2026-02-22) — "The Security Release"
+
+### New: Security pack (opt-in)
+
+- **`no-bash-file-write`** (ERROR) — Blocks file writes via Bash that bypass Write/Edit guardrails: `cat >`, `tee`, `echo >`, `sed -i`, `printf >`, `cp`, `mv`, `perl -pi -e`, `awk >`, `dd of=`, heredocs, `python -c`. Configurable `allow_patterns` and `allow_paths`.
+- **`no-network-exfil`** (ERROR) — Blocks potential data exfiltration via `curl POST`, `curl -d @file`, `nc`, `scp`, `wget --post-file`, `python requests.post()`, `rsync` with sensitive files. Configurable `allowed_hosts`.
+
+### New universal rules
+
+- **`no-push-to-main`** (WARNING) — Warns on direct `git push origin main/master`
+- **`no-skip-hooks`** (WARNING) — Warns on `git commit --no-verify` or `--no-gpg-sign`
+- **`no-test-weakening`** (WARNING) — Detects patterns that weaken test suites: `@pytest.mark.skip`, `assert True`, commented-out assertions, empty test functions, `@pytest.mark.xfail` without reason
+
+### Enhanced existing rules
+
+- **`no-secrets`** — New patterns: Slack tokens (`xoxb-`, `xoxp-`, `xoxs-`), private keys (`-----BEGIN...PRIVATE KEY-----`), GCP service accounts, database connection strings, JWT tokens, `.npmrc` auth tokens, Terraform state, `curl` with embedded credentials, `github_pat_` prefix. New `extra_prefixes` config option.
+- **`no-destructive-commands`** — New patterns: `chmod 777`, `mkfs`, `dd if=/dev/zero`, fork bombs, `docker system prune -a --volumes`, `kubectl delete namespace`, `git branch -D` on protected branches. Per-pattern severity: catastrophic patterns (`rm -rf /`, `mkfs`, fork bombs) now return ERROR instead of WARNING.
+- **`no-env-commit`** — Now detects `.env` writes via Bash (`echo > .env`, `cat > .env`, `tee .env`, `cp`, `sed -i`, heredocs)
+
+### New CLI command
+
+- **`agentlint list-rules`** — Lists all available rules with pack, event, severity, and description. Supports `--pack` filter.
+
+### Tests
+
+- 547 tests (118 new), 95% coverage
+
 ## 0.2.1 (2026-02-20)
 
 ### Fixes

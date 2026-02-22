@@ -6,7 +6,10 @@ from agentlint.packs.universal.no_debug_artifacts import NoDebugArtifacts
 from agentlint.packs.universal.no_destructive_commands import NoDestructiveCommands
 from agentlint.packs.universal.no_env_commit import NoEnvCommit
 from agentlint.packs.universal.no_force_push import NoForcePush
+from agentlint.packs.universal.no_push_to_main import NoPushToMain
 from agentlint.packs.universal.no_secrets import NoSecrets
+from agentlint.packs.universal.no_skip_hooks import NoSkipHooks
+from agentlint.packs.universal.no_test_weakening import NoTestWeakening
 from agentlint.packs.universal.no_todo_left import NoTodoLeft
 from agentlint.packs.universal.test_with_changes import TestWithChanges
 
@@ -15,8 +18,11 @@ RULES = [
     NoSecrets(),
     NoEnvCommit(),
     NoForcePush(),
+    NoPushToMain(),
+    NoSkipHooks(),
     NoDestructiveCommands(),
     DependencyHygiene(),
+    NoTestWeakening(),
     # PostToolUse
     MaxFileSize(),
     DriftDetector(),

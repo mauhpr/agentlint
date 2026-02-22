@@ -1,7 +1,7 @@
 {
   "name": "agentlint",
-  "description": "Real-time quality guardrails for AI coding agents. ESLint for agent behavior.",
-  "version": "0.2.1",
+  "description": "Real-time quality guardrails for AI coding agents. 36 rules across 6 packs — universal, Python, frontend, React, SEO, and security (opt-in).",
+  "version": "0.3.0",
   "author": {
     "name": "mauhpr"
   },

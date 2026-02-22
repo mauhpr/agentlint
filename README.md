@@ -12,14 +12,17 @@ AI coding agents drift during long sessions — they introduce API keys into sou
 
 ## What it catches
 
-AgentLint ships with 31 rules across 5 packs. The 10 **universal** rules work with any tech stack; 4 additional packs auto-activate based on your project files:
+AgentLint ships with 36 rules across 6 packs. The 13 **universal** rules work with any tech stack; 4 additional packs auto-activate based on your project files, and the **security** pack is opt-in for maximum protection:
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
-| `no-secrets` | ERROR | Blocks writes containing API keys, tokens, passwords |
-| `no-env-commit` | ERROR | Blocks writing `.env` and credential files |
+| `no-secrets` | ERROR | Blocks writes containing API keys, tokens, passwords, private keys, JWTs |
+| `no-env-commit` | ERROR | Blocks writing `.env` files (including via Bash) |
 | `no-force-push` | ERROR | Blocks `git push --force` to main/master |
-| `no-destructive-commands` | WARNING | Warns on `rm -rf`, `DROP TABLE`, `git reset --hard` |
+| `no-push-to-main` | WARNING | Warns on direct push to main/master |
+| `no-skip-hooks` | WARNING | Warns on `git commit --no-verify` |
+| `no-destructive-commands` | WARNING | Warns on `rm -rf`, `DROP TABLE`, `chmod 777`, `mkfs`, and more |
+| `no-test-weakening` | WARNING | Detects skipped tests, `assert True`, commented-out assertions |
 | `dependency-hygiene` | WARNING | Warns on ad-hoc `pip install` / `npm install` |
 | `max-file-size` | WARNING | Warns when a file exceeds 500 lines |
 | `drift-detector` | WARNING | Warns after many edits without running tests |
@@ -79,6 +82,35 @@ AgentLint ships with 31 rules across 5 packs. The 10 **universal** rules work wi
 | `seo-open-graph` | INFO | Ensures pages with metadata include Open Graph tags |
 | `seo-semantic-html` | INFO | Encourages semantic HTML over excessive divs |
 | `seo-structured-data` | INFO | Suggests JSON-LD structured data for content pages |
+
+</details>
+
+<details>
+<summary><strong>Security pack</strong> (2 rules) — opt-in, add <code>security</code> to your packs list</summary>
+
+| Rule | Severity | What it does |
+|------|----------|-------------|
+| `no-bash-file-write` | ERROR | Blocks file writes via Bash (`cat >`, `tee`, `sed -i`, `cp`, heredocs, etc.) |
+| `no-network-exfil` | ERROR | Blocks data exfiltration via `curl POST`, `nc`, `scp`, `wget --post-file` |
+
+The security pack addresses the most common agent escape hatch: bypassing Write/Edit guardrails via the Bash tool. Enable it by adding `security` to your packs list:
+
+```yaml
+packs:
+  - universal
+  - security  # Blocks Bash file writes and network exfiltration
+```
+
+Configure allowlists for legitimate use cases:
+
+```yaml
+rules:
+  no-bash-file-write:
+    allow_patterns: ["echo.*>>.*\\.log"]  # Allow appending to logs
+    allow_paths: ["*.log", "/tmp/*"]       # Allow writes to temp/log
+  no-network-exfil:
+    allowed_hosts: ["internal.corp.com"]   # Allow specific hosts
+```
 
 </details>
 
@@ -194,6 +226,7 @@ severity: standard
 
 packs:
   - universal
+  # - security        # Opt-in: blocks Bash file writes, network exfiltration
   # - python          # Auto-detected from pyproject.toml / setup.py
   # - frontend        # Auto-detected from package.json
   # - react           # Auto-detected from react in dependencies
@@ -215,6 +248,16 @@ rules:
 
 # Load custom rules from a directory
 # custom_rules_dir: .agentlint/rules/
+```
+
+## Discovering rules
+
+```bash
+# List all available rules
+agentlint list-rules
+
+# List rules in a specific pack
+agentlint list-rules --pack security
 ```
 
 ## Custom rules

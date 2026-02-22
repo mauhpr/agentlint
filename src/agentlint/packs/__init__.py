@@ -17,6 +17,7 @@ PACK_MODULES = {
     "frontend": "agentlint.packs.frontend",
     "react": "agentlint.packs.react",
     "seo": "agentlint.packs.seo",
+    "security": "agentlint.packs.security",
 }
 
 
