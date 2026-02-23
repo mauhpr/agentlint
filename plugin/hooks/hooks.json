@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "agentlint check --event PreToolUse --project-dir \"$CLAUDE_PROJECT_DIR\"",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/resolve-and-run.sh check --event PreToolUse --project-dir \"$CLAUDE_PROJECT_DIR\"",
             "timeout": 5
           }
         ]
@@ -18,8 +18,41 @@
         "hooks": [
           {
             "type": "command",
-            "command": "agentlint check --event PostToolUse --project-dir \"$CLAUDE_PROJECT_DIR\"",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/resolve-and-run.sh check --event PostToolUse --project-dir \"$CLAUDE_PROJECT_DIR\"",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/resolve-and-run.sh check --event UserPromptSubmit --project-dir \"$CLAUDE_PROJECT_DIR\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/resolve-and-run.sh check --event SubagentStop --project-dir \"$CLAUDE_PROJECT_DIR\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/resolve-and-run.sh check --event Notification --project-dir \"$CLAUDE_PROJECT_DIR\"",
+            "timeout": 5
           }
         ]
       }
@@ -29,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "agentlint report --project-dir \"$CLAUDE_PROJECT_DIR\"",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/resolve-and-run.sh report --project-dir \"$CLAUDE_PROJECT_DIR\"",
             "timeout": 30
           }
         ]

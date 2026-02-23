@@ -4,18 +4,44 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import sysconfig
 from pathlib import Path
 
 
 def _resolve_command() -> str:
     """Resolve the absolute command to invoke agentlint.
 
-    Tries shutil.which first (works for global/pipx/uv-tool installs),
-    then falls back to sys.executable -m agentlint (works for venvs).
+    Probes multiple well-known locations in order:
+    1. shutil.which() — PATH lookup
+    2. ~/.local/bin/agentlint — pipx location
+    3. ~/.local/share/uv/tools/agentlint/bin/agentlint — uv tool location
+    4. sysconfig scripts dir — where pip puts console_scripts
+       (covers Framework installs like /Library/Frameworks/Python.framework/)
+    5. sys.executable -m agentlint — guaranteed to work with __main__.py
     """
+    # 1. PATH lookup
     found = shutil.which("agentlint")
     if found:
         return found
+
+    # 2. pipx location
+    pipx = Path.home() / ".local" / "bin" / "agentlint"
+    if pipx.is_file():
+        return str(pipx)
+
+    # 3. uv tool location
+    uv_tool = Path.home() / ".local" / "share" / "uv" / "tools" / "agentlint" / "bin" / "agentlint"
+    if uv_tool.is_file():
+        return str(uv_tool)
+
+    # 4. sysconfig scripts dir (where pip installs console_scripts)
+    scripts_dir = sysconfig.get_path("scripts")
+    if scripts_dir:
+        scripts_bin = Path(scripts_dir) / "agentlint"
+        if scripts_bin.is_file():
+            return str(scripts_bin)
+
+    # 5. python -m fallback (works with __main__.py)
     return f"{sys.executable} -m agentlint"
 
 

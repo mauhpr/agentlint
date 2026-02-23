@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1 (2026-02-22) — "It Just Works"
+
+Fix installation UX so `pip install agentlint` + plugin install works with zero manual PATH hacking.
+
+### Fixes
+
+- **Add `__main__.py`** — `python -m agentlint` now works, fixing the broken fallback in `_resolve_command()`
+- **Robust binary resolution** — `_resolve_command()` now probes 5 locations: `shutil.which()`, `~/.local/bin/` (pipx), `~/.local/share/uv/tools/` (uv), `sysconfig.get_path("scripts")` (pip console_scripts), and `sys.executable -m agentlint`. The sysconfig probe is the key fix for macOS Framework Python installs (e.g. `/Library/Frameworks/Python.framework/Versions/3.13/bin/`)
+- **Sync plugin directory** — `plugin/hooks/hooks.json` now uses `resolve-and-run.sh` instead of bare `agentlint`, and includes all 6 events (was missing UserPromptSubmit, SubagentStop, Notification)
+- **Add `plugin/bin/resolve-and-run.sh`** — binary resolver script with sysconfig probe, matching the agentlint-plugin repo
+
 ## 0.5.0 (2026-02-22) — "The Standards Release"
 
 AgentLint aligns with the AGENTS.md industry standard, adds git safety checkpoints, and ships plugin agent definitions.
