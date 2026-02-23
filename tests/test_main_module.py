@@ -6,6 +6,13 @@ import sys
 
 
 class TestMainModule:
+    def test_module_imports_main(self) -> None:
+        """__main__.py should import the cli main function."""
+        import agentlint.__main__ as m
+
+        assert hasattr(m, "main")
+        assert callable(m.main)
+
     def test_python_m_agentlint_help(self) -> None:
         """python -m agentlint --help should exit 0."""
         result = subprocess.run(
