@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.5.0 (2026-02-22) — "The Standards Release"
+
+AgentLint aligns with the AGENTS.md industry standard, adds git safety checkpoints, and ships plugin agent definitions.
+
+### New: AGENTS.md Compatibility
+
+- **`agentlint import-agents-md`** — New CLI command that reads AGENTS.md from project root, extracts conventions, and generates/merges agentlint.yml config
+- `--dry-run` flag to preview without writing
+- `--merge` flag to merge with existing agentlint.yml
+- Stack auto-detection now uses AGENTS.md hints to discover additional packs
+- Conservative mapping: inferred rules use INFO severity
+
+### New: Git Auto-Checkpoint
+
+- **`git-checkpoint`** (INFO) — Creates a `git stash` safety checkpoint before destructive operations (`rm -rf`, `git reset --hard`, `git checkout .`, `git clean -fd`, `DROP TABLE/DATABASE`)
+- **Disabled by default** — opt in with `git-checkpoint: { enabled: true }` in config
+- Configurable trigger patterns and cleanup schedule
+- Automatic cleanup of old checkpoints (default: 24h) on session Stop
+- First guardrail tool to offer automatic pre-destructive recovery points
+
+### New: Plugin Agent Definitions
+
+- **`/agentlint:security-audit`** — Comprehensive security audit agent that scans for secrets, unsafe patterns, and env file issues
+- **`/agentlint:doctor`** — Diagnostic agent for configuration and hook installation issues
+- **`/agentlint:fix`** — Auto-fix agent for common violations (debug artifacts, accessibility, dead imports)
+
+### Tests
+
+- 729 tests (90 new), 96% coverage
+
 ## 0.4.0 (2026-02-22) — "The Platform Release"
 
 ### Full lifecycle coverage — 17 hook events

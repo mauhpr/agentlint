@@ -12,7 +12,7 @@ AI coding agents drift during long sessions — they introduce API keys into sou
 
 ## What it catches
 
-AgentLint ships with 41 rules across 7 packs, covering all 17 Claude Code hook events. The 14 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files, and the **security** pack is opt-in for maximum protection:
+AgentLint ships with 42 rules across 7 packs, covering all 17 Claude Code hook events. The 15 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files, and the **security** pack is opt-in for maximum protection:
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -29,6 +29,7 @@ AgentLint ships with 41 rules across 7 packs, covering all 17 Claude Code hook e
 | `no-debug-artifacts` | WARNING | Detects `console.log`, `print()`, `debugger` left in code |
 | `test-with-changes` | WARNING | Warns if source changed but no tests were updated |
 | `token-budget` | WARNING | Tracks session activity and warns on excessive tool usage |
+| `git-checkpoint` | INFO | Creates git stash before destructive ops (opt-in, disabled by default) |
 | `no-todo-left` | INFO | Reports TODO/FIXME comments in changed files |
 
 **ERROR** rules block the agent's action. **WARNING** rules inject advice into the agent's context. **INFO** rules appear in the session report.
@@ -137,8 +138,9 @@ When `stack: auto` (the default), AgentLint detects your project and activates m
 | `package.json` | `frontend` |
 | `react` in package.json dependencies | `react` |
 | SSR/SSG framework in dependencies (Next.js, Nuxt, Gatsby, Astro, SvelteKit, Remix) | `seo` |
+| `AGENTS.md` with relevant keywords | Additional packs based on content |
 
-The `universal` pack is always active. To override auto-detection, list packs explicitly in `agentlint.yml`.
+The `universal` and `quality` packs are always active. To override auto-detection, list packs explicitly in `agentlint.yml`.
 
 ## Quick start
 
@@ -193,6 +195,14 @@ Add the AgentLint marketplace and install the plugin:
 ```bash
 claude --plugin-dir /path/to/agentlint/plugin
 ```
+
+### Plugin agents
+
+The AgentLint plugin includes specialized agents for multi-step operations:
+
+- **`/agentlint:security-audit`** — Scan your codebase for security vulnerabilities, hardcoded secrets, and unsafe patterns
+- **`/agentlint:doctor`** — Diagnose configuration issues, verify hook installation, suggest optimal pack settings
+- **`/agentlint:fix`** — Auto-fix common violations (debug artifacts, accessibility, dead imports) with confirmation
 
 ### Manual hook configuration
 
@@ -262,6 +272,23 @@ rules:
 # Load custom rules from a directory
 # custom_rules_dir: .agentlint/rules/
 ```
+
+### AGENTS.md integration
+
+AgentLint supports the [AGENTS.md](https://agents.md/) industry standard. Import conventions from your project's AGENTS.md into AgentLint config:
+
+```bash
+# Preview what would be generated
+agentlint import-agents-md --dry-run
+
+# Generate agentlint.yml from AGENTS.md
+agentlint import-agents-md
+
+# Merge with existing config
+agentlint import-agents-md --merge
+```
+
+When `AGENTS.md` exists and `stack: auto` is set, AgentLint also uses it for pack auto-detection.
 
 ## Discovering rules
 

@@ -8,6 +8,7 @@ import sys
 
 import click
 
+from agentlint.agents_md import find_agents_md, generate_config, map_to_config, merge_with_existing, parse_agents_md
 from agentlint.config import load_config
 from agentlint.detector import detect_stack
 from agentlint.engine import Engine
@@ -378,6 +379,49 @@ def doctor(project_dir: str | None):
         click.echo(f"\n{len(issues)} issue(s) found.")
     else:
         click.echo("\nAll checks passed.")
+
+
+@main.command("import-agents-md")
+@click.option("--project-dir", default=None, help="Project directory")
+@click.option("--dry-run", is_flag=True, help="Preview config without writing")
+@click.option("--merge", "merge_mode", is_flag=True, help="Merge with existing agentlint.yml")
+def import_agents_md(project_dir: str | None, dry_run: bool, merge_mode: bool):
+    """Import conventions from AGENTS.md into AgentLint config."""
+    project_dir = project_dir or os.getcwd()
+
+    agents_path = find_agents_md(project_dir)
+    if agents_path is None:
+        click.echo("No AGENTS.md found in project root.", err=True)
+        sys.exit(1)
+
+    sections = parse_agents_md(agents_path)
+    if not sections:
+        click.echo("AGENTS.md is empty or has no sections.", err=True)
+        sys.exit(1)
+
+    mapped = map_to_config(sections)
+
+    click.echo(f"Found AGENTS.md: {agents_path}")
+    click.echo(f"Detected packs: {', '.join(mapped.get('packs', []))}")
+    rules = mapped.get("rules", {})
+    if rules:
+        click.echo(f"Detected rules: {', '.join(rules.keys())}")
+
+    config_path = os.path.join(project_dir, "agentlint.yml")
+
+    if merge_mode and os.path.exists(config_path):
+        existing_yaml = open(config_path, encoding="utf-8").read()
+        output = merge_with_existing(existing_yaml, mapped)
+    else:
+        output = generate_config(mapped)
+
+    if dry_run:
+        click.echo("\n--- Generated config (dry run) ---")
+        click.echo(output)
+    else:
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(output)
+        click.echo(f"Wrote config to {config_path}")
 
 
 @main.command()

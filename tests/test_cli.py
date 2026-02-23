@@ -266,7 +266,7 @@ class TestListRulesCommand:
         result = runner.invoke(main, ["list-rules", "--pack", "universal"])
         assert result.exit_code == 0
         assert "no-secrets" in result.output
-        assert "14 rules total" in result.output
+        assert "15 rules total" in result.output
 
     def test_list_rules_quality_pack(self) -> None:
         """list-rules --pack quality should show only quality rules."""
