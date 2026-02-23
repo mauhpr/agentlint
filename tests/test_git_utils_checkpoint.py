@@ -150,6 +150,60 @@ class TestGitCleanStashes:
         result = git_clean_stashes("/tmp/project", "agentlint-checkpoint", 24)
         assert result == 0
 
+    @patch("agentlint.utils.git.subprocess.run")
+    def test_skips_malformed_stash_lines(self, mock_run):
+        """Malformed stash line (no index) should be skipped gracefully."""
+        def run_side_effect(cmd, **kwargs):
+            if "stash" in cmd and "list" in cmd:
+                return MagicMock(
+                    returncode=0,
+                    stdout="malformed-line agentlint-checkpoint-123\n",
+                )
+            return MagicMock(returncode=0, stdout="")
+
+        mock_run.side_effect = run_side_effect
+        result = git_clean_stashes("/tmp/project", "agentlint-checkpoint", 24)
+        assert result == 0
+
+    @patch("agentlint.utils.git.subprocess.run")
+    def test_skips_stash_when_log_fails(self, mock_run):
+        """If git log for a stash timestamp returns non-zero, skip that stash."""
+
+        def run_side_effect(cmd, **kwargs):
+            if "stash" in cmd and "list" in cmd:
+                return MagicMock(
+                    returncode=0,
+                    stdout="stash@{0}: On main: agentlint-checkpoint-123\n",
+                )
+            if "log" in cmd:
+                return MagicMock(returncode=1, stdout="", stderr="error")
+            return MagicMock(returncode=0, stdout="")
+
+        mock_run.side_effect = run_side_effect
+        result = git_clean_stashes("/tmp/project", "agentlint-checkpoint", 24)
+        assert result == 0
+
+    @patch("agentlint.utils.git.subprocess.run")
+    def test_handles_timeout_during_stash_cleanup(self, mock_run):
+        """Timeout during per-stash git log should be caught gracefully."""
+        call_count = 0
+
+        def run_side_effect(cmd, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if "stash" in cmd and "list" in cmd:
+                return MagicMock(
+                    returncode=0,
+                    stdout="stash@{0}: On main: agentlint-checkpoint-123\n",
+                )
+            if "log" in cmd:
+                raise subprocess.TimeoutExpired("git", 5)
+            return MagicMock(returncode=0, stdout="")
+
+        mock_run.side_effect = run_side_effect
+        result = git_clean_stashes("/tmp/project", "agentlint-checkpoint", 24)
+        assert result == 0
+
 
 class TestGitCheckpointIntegration:
     """Integration tests with real git repo."""

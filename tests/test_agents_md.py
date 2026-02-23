@@ -383,3 +383,15 @@ class TestDetectorAgentsMdIntegration:
         (tmp_path / "AGENTS.md").write_text("")
         result = detect_stack(str(tmp_path))
         assert result == ["universal", "quality"]
+
+    def test_agents_md_parse_error_handled_gracefully(self, tmp_path, monkeypatch):
+        """If AGENTS.md parsing throws, detection should continue without error."""
+        (tmp_path / "AGENTS.md").write_text("## Security\nNever expose credentials\n")
+
+        def bad_parse(_path):
+            raise RuntimeError("parse failed")
+
+        monkeypatch.setattr("agentlint.agents_md.parse_agents_md", bad_parse)
+        result = detect_stack(str(tmp_path))
+        # Should fall back to base packs without crashing.
+        assert result == ["universal", "quality"]
