@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 from click.testing import CliRunner
@@ -92,22 +93,100 @@ class TestIsAgentlintEntry:
 
 
 class TestResolveCommand:
-    def test_returns_absolute_path_when_which_succeeds(self) -> None:
+    """Test the multi-location probe chain in _resolve_command()."""
+
+    def _no_which(self):
+        """Patch shutil.which to return None (not on PATH)."""
+        return patch("agentlint.setup.shutil.which", return_value=None)
+
+    def test_step1_which_succeeds(self) -> None:
+        """Step 1: shutil.which finds the binary on PATH."""
         with patch("agentlint.setup.shutil.which", return_value="/usr/local/bin/agentlint"):
             result = _resolve_command()
         assert result == "/usr/local/bin/agentlint"
 
-    def test_falls_back_to_sys_executable_when_which_fails(self) -> None:
-        with patch("agentlint.setup.shutil.which", return_value=None):
+    def test_step2_pipx_location(self, tmp_path, monkeypatch) -> None:
+        """Step 2: Falls back to ~/.local/bin/agentlint (pipx)."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        pipx_bin = tmp_path / ".local" / "bin" / "agentlint"
+        pipx_bin.parent.mkdir(parents=True)
+        pipx_bin.write_text("#!/bin/sh\n")
+
+        with self._no_which():
+            result = _resolve_command()
+        assert result == str(pipx_bin)
+
+    def test_step3_uv_tool_location(self, tmp_path, monkeypatch) -> None:
+        """Step 3: Falls back to uv tool install location."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        uv_bin = tmp_path / ".local" / "share" / "uv" / "tools" / "agentlint" / "bin" / "agentlint"
+        uv_bin.parent.mkdir(parents=True)
+        uv_bin.write_text("#!/bin/sh\n")
+
+        with self._no_which():
+            result = _resolve_command()
+        assert result == str(uv_bin)
+
+    def test_step4_sysconfig_scripts_dir(self, tmp_path, monkeypatch) -> None:
+        """Step 4: Falls back to sysconfig scripts dir (pip console_scripts)."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        scripts_bin = scripts_dir / "agentlint"
+        scripts_bin.write_text("#!/bin/sh\n")
+
+        with self._no_which(), \
+             patch("agentlint.setup.sysconfig.get_path", return_value=str(scripts_dir)):
+            result = _resolve_command()
+        assert result == str(scripts_bin)
+
+    def test_step5_python_m_fallback(self, tmp_path, monkeypatch) -> None:
+        """Step 5: Falls back to sys.executable -m agentlint."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        with self._no_which(), \
+             patch("agentlint.setup.sysconfig.get_path", return_value=None):
             result = _resolve_command()
         assert result == f"{sys.executable} -m agentlint"
 
-    def test_which_none_uses_current_python(self) -> None:
-        with patch("agentlint.setup.shutil.which", return_value=None), \
-             patch("agentlint.setup.sys") as mock_sys:
-            mock_sys.executable = "/opt/venv/bin/python"
+    def test_step5_python_m_when_sysconfig_binary_missing(self, tmp_path, monkeypatch) -> None:
+        """Step 5: sysconfig dir exists but binary isn't there."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        # No binary created
+
+        with self._no_which(), \
+             patch("agentlint.setup.sysconfig.get_path", return_value=str(scripts_dir)):
             result = _resolve_command()
-        assert result == "/opt/venv/bin/python -m agentlint"
+        assert result == f"{sys.executable} -m agentlint"
+
+    def test_priority_which_over_pipx(self, tmp_path, monkeypatch) -> None:
+        """shutil.which takes priority over pipx location."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        pipx_bin = tmp_path / ".local" / "bin" / "agentlint"
+        pipx_bin.parent.mkdir(parents=True)
+        pipx_bin.write_text("#!/bin/sh\n")
+
+        with patch("agentlint.setup.shutil.which", return_value="/usr/local/bin/agentlint"):
+            result = _resolve_command()
+        assert result == "/usr/local/bin/agentlint"
+
+    def test_priority_pipx_over_sysconfig(self, tmp_path, monkeypatch) -> None:
+        """pipx location takes priority over sysconfig."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        pipx_bin = tmp_path / ".local" / "bin" / "agentlint"
+        pipx_bin.parent.mkdir(parents=True)
+        pipx_bin.write_text("#!/bin/sh\n")
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "agentlint").write_text("#!/bin/sh\n")
+
+        with self._no_which(), \
+             patch("agentlint.setup.sysconfig.get_path", return_value=str(scripts_dir)):
+            result = _resolve_command()
+        assert result == str(pipx_bin)
 
     def test_returns_string(self) -> None:
         result = _resolve_command()
