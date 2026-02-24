@@ -500,6 +500,33 @@ class TestNoDestructiveCommandsExpanded:
         violations = self.rule.evaluate(ctx)
         assert not any("dd if=/dev/zero" in v.message for v in violations)
 
+    # --- False positive regressions ---
+
+    def test_allows_stderr_redirect_with_pipe(self):
+        """2>/dev/null | command is stderr suppression, not a fork bomb."""
+        ctx = _ctx("Bash", {"command": "printenv | grep -i 'database' 2>/dev/null | head -5"})
+        violations = self.rule.evaluate(ctx)
+        assert not any("Fork bomb" in v.message for v in violations)
+
+    def test_allows_gcloud_with_dev_null(self):
+        """gcloud command with 2>/dev/null should not trigger fork bomb."""
+        ctx = _ctx("Bash", {"command": "gcloud sql instances list 2>/dev/null | head -5"})
+        violations = self.rule.evaluate(ctx)
+        assert not any("Fork bomb" in v.message for v in violations)
+
+    def test_allows_any_command_with_stderr_suppression(self):
+        """Any command piping with 2>/dev/null is normal shell usage."""
+        ctx = _ctx("Bash", {"command": "cat /etc/hosts 2>/dev/null | grep localhost"})
+        violations = self.rule.evaluate(ctx)
+        assert not any("Fork bomb" in v.message for v in violations)
+
+    def test_still_detects_real_fork_bomb(self):
+        """Actual fork bomb syntax should still be caught."""
+        ctx = _ctx("Bash", {"command": ":(){ :|:& };:"})
+        violations = self.rule.evaluate(ctx)
+        assert any(v.severity == Severity.ERROR for v in violations)
+        assert any("Fork bomb" in v.message for v in violations)
+
 
 # ---------------------------------------------------------------------------
 # NoSecrets — new patterns

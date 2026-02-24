@@ -38,7 +38,7 @@ _RM_HOME_RE = re.compile(
 _CHMOD_777_RE = re.compile(r"\bchmod\s+(?:-R\s+)?777\b", re.IGNORECASE)
 _MKFS_RE = re.compile(r"\bmkfs\b", re.IGNORECASE)
 _DD_ZERO_RE = re.compile(r"\bdd\b.*\bif=/dev/zero\b", re.IGNORECASE)
-_FORK_BOMB_RE = re.compile(r":\(\)\s*\{\s*:\|:\s*&\s*\}\s*;|\./:0\b|/dev/null\s*\|")
+_FORK_BOMB_RE = re.compile(r":\(\)\s*\{\s*:\|:\s*&\s*\}\s*;|\./:0\b")
 _DOCKER_PRUNE_RE = re.compile(r"\bdocker\s+system\s+prune\s+-a\b.*--volumes\b|\bdocker\s+system\s+prune\b.*-a\b.*--volumes\b", re.IGNORECASE)
 _KUBECTL_DELETE_NS_RE = re.compile(r"\bkubectl\s+delete\s+namespace\b", re.IGNORECASE)
 _GIT_BRANCH_DELETE_RE = re.compile(r"\bgit\s+branch\s+-D\s+(\S+)", re.IGNORECASE)
