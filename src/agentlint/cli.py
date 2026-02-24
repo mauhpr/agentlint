@@ -75,6 +75,12 @@ def check(event: str, project_dir: str | None):
         compact_source=raw.get("compact_source"),
     )
 
+    # Track files touched during the session for the Stop report
+    if context.file_path:
+        touched = session_state.setdefault("files_touched", [])
+        if context.file_path not in touched:
+            touched.append(context.file_path)
+
     # For PreToolUse Write/Edit, cache current file content for diff-based rules
     if hook_event == HookEvent.PRE_TOOL_USE and context.tool_name in ("Write", "Edit"):
         file_path = context.file_path
@@ -204,9 +210,12 @@ def report(project_dir: str | None):
     except (json.JSONDecodeError, EOFError):
         pass
 
-    # Load session and populate changed_files via git
+    # Load session and populate changed_files
+    # Combine: files tracked during the session + git diff (for any we missed)
     session_state = load_session()
-    changed_files = session_state.get("changed_files") or get_changed_files(project_dir)
+    git_files = set(get_changed_files(project_dir))
+    session_files = set(session_state.get("files_touched", []))
+    changed_files = sorted(git_files | session_files)
     session_state["changed_files"] = changed_files
 
     # Evaluate Stop rules to collect end-of-session violations

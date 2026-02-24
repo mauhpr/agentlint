@@ -365,3 +365,53 @@ class TestReportCommand:
         )
         assert result.exit_code == 0
         assert "AgentLint" in result.output
+
+    def test_report_includes_session_tracked_files(self, tmp_path, monkeypatch) -> None:
+        """Report should count files tracked during the session, not just git diff."""
+        from agentlint.session import save_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-report-files")
+
+        # Simulate session state with files_touched (as check command would populate)
+        save_session({"files_touched": ["/project/a.py", "/project/b.py", "/project/c.py"]})
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+
+        assert result.exit_code == 0
+        # Should show at least the 3 session-tracked files
+        parsed = json.loads(result.output)
+        assert "Files changed: 3" in parsed["systemMessage"]
+
+    def test_check_tracks_files_touched_in_session(self, tmp_path, monkeypatch) -> None:
+        """check should accumulate file paths in session state files_touched."""
+        from agentlint.session import load_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-track-files")
+
+        # Create a file so the tool_input file_path resolves
+        target = tmp_path / "test.py"
+        target.write_text("x = 1\n")
+
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": str(target),
+                "content": "x = 2\n",
+            },
+        })
+        runner = CliRunner()
+        runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+
+        session = load_session()
+        assert str(target) in session.get("files_touched", [])
