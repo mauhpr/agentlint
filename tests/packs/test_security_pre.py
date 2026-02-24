@@ -173,6 +173,35 @@ class TestNoBashFileWrite:
         # Should detect the first pattern and stop
         assert len(violations) == 1
 
+    # --- Heredoc command substitution exclusions ---
+
+    def test_allows_git_commit_heredoc(self):
+        """git commit -m with $(cat <<'EOF' ...) is not a file write."""
+        cmd = """git commit -m "$(cat <<'EOF'\nfeat: add feature\n\nCo-Authored-By: Claude\nEOF\n)\" """
+        ctx = _ctx("Bash", {"command": cmd})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allows_gh_pr_create_heredoc(self):
+        """gh pr create --body with $(cat <<'EOF' ...) is not a file write."""
+        cmd = """gh pr create --title "feat" --body "$(cat <<'EOF'\n## Summary\n- Added feature\nEOF\n)\" """
+        ctx = _ctx("Bash", {"command": cmd})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allows_heredoc_cmd_sub_no_quotes(self):
+        """$(cat << EOF ...) without quotes is also command substitution."""
+        cmd = """git commit -m "$(cat << EOF\ncommit message\nEOF\n)\" """
+        ctx = _ctx("Bash", {"command": cmd})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_still_blocks_real_heredoc_file_write(self):
+        """cat << EOF > file.txt is a real file write, should still block."""
+        ctx = _ctx("Bash", {"command": "cat << EOF > output.txt\nhello\nEOF"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
 
 # ---------------------------------------------------------------------------
 # NoNetworkExfil

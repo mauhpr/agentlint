@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.2 (2026-02-24) — "Self-Audit Fix"
+
+Fixes two issues found by auditing AgentLint's own behavior in a real session.
+
+### Fixes
+
+- **`no-bash-file-write` heredoc false positive** — Commands using `$(cat <<'EOF' ...)` for passing multi-line strings (e.g. `git commit -m`, `gh pr create --body`) are no longer flagged as file writes. Real heredoc file writes (`cat << EOF > file.txt`) are still blocked.
+- **Session report "Files changed: 0"** — The Stop report now tracks files touched during the session (accumulated from PreToolUse/PostToolUse events) instead of relying solely on `git diff --name-only HEAD`, which returns nothing after a commit.
+
+### Tests
+
+- 747 tests (6 new), 96% coverage
+
 ## 0.5.1 (2026-02-22) — "It Just Works"
 
 Fix installation UX so `pip install agentlint` + plugin install works with zero manual PATH hacking.

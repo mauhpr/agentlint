@@ -33,6 +33,11 @@ _WRITE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bcat\b.*<<\s*['\"\\]?\w+"), "heredoc"),
 ]
 
+# Command substitution heredocs: $(cat <<'EOF' ...) used for passing
+# multi-line strings as arguments (e.g. git commit -m, gh pr create --body).
+# These are NOT file writes and should be excluded.
+_HEREDOC_CMD_SUB = re.compile(r"\$\(\s*cat\s+<<")
+
 # Patterns that extract the target file path from a command.
 _TARGET_EXTRACTORS: list[re.Pattern[str]] = [
     # echo/cat/printf ... > file
@@ -105,6 +110,11 @@ class NoBashFileWrite(Rule):
 
         for pattern, label in _WRITE_PATTERNS:
             if pattern.search(command):
+                # Heredocs inside $(cat <<'EOF' ...) are command substitution
+                # (e.g. git commit -m, gh pr create --body), not file writes.
+                if label == "heredoc" and _HEREDOC_CMD_SUB.search(command):
+                    continue
+
                 # Check if all target paths are in allowed paths.
                 target_paths = _extract_target_paths(command)
                 if allow_paths and target_paths and all(
