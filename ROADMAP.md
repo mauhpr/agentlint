@@ -50,7 +50,24 @@
 
 ---
 
-## v0.6.0+ Backlog
+## v0.6.0 — "Progressive Trust" (COMPLETED)
+
+### Circuit Breaker ✅
+
+- Automatic degradation: ERROR → WARNING → INFO → suppressed based on fire count thresholds
+- Security-critical rules (`no-secrets`, `no-env-commit`) exempt — always block
+- Time-based and clean-evaluation auto-reset
+- Session report includes circuit breaker status section
+- Fully configurable globally and per-rule
+- Hardened: defensive coding for corrupted session state, logging for transitions
+
+### Tests ✅
+
+- 812 tests, 96% coverage
+
+---
+
+## v0.7.0+ Backlog
 
 ### Governance / File-Scope Enforcement (Priority: P1, Size: L)
 

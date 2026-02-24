@@ -348,6 +348,34 @@ AgentLint hooks into Claude Code's lifecycle events:
 
 Each invocation loads your config, evaluates matching rules, and returns JSON that Claude Code understands. Session state persists across invocations so rules like `drift-detector` can track cumulative behavior.
 
+### Circuit breaker (Progressive Trust)
+
+When a blocking rule fires repeatedly, it automatically degrades to avoid locking the agent in a loop:
+
+| Fire count | Severity | Effect |
+|-----------|----------|--------|
+| 1-2 | ERROR | Blocks the action (normal) |
+| 3-5 | WARNING | Advises instead of blocking |
+| 6-9 | INFO | Appears in session report only |
+| 10+ | Suppressed | Silent until reset |
+
+The breaker resets after 5 consecutive clean evaluations or 30 minutes without firing.
+
+Security-critical rules (`no-secrets`, `no-env-commit`) are exempt — they always block, regardless of fire count. Per-rule overrides are configurable:
+
+```yaml
+circuit_breaker:
+  enabled: true          # ON by default
+  degraded_after: 3      # ERROR -> WARNING
+  passive_after: 6       # -> INFO
+  open_after: 10         # -> suppressed
+
+rules:
+  max-file-size:
+    circuit_breaker:
+      degraded_after: 5  # Override per-rule
+```
+
 ## Comparison with alternatives
 
 | Project | How AgentLint differs |
@@ -363,7 +391,7 @@ Each invocation loads your config, evaluates matching rules, and returns JSON th
 No. Rules evaluate in <10ms. AgentLint runs locally as a subprocess — no network calls, no API dependencies.
 
 **What if a rule is too strict for my project?**
-Disable it in `agentlint.yml`: `rules: { no-secrets: { enabled: false } }`. Or switch to `severity: relaxed` to downgrade warnings to informational.
+Disable it in `agentlint.yml`: `rules: { no-secrets: { enabled: false } }`. Or switch to `severity: relaxed` to downgrade warnings to informational. The circuit breaker also helps — if a rule fires 3+ times in a session, it automatically degrades from blocking to advisory.
 
 **Is my code sent anywhere?**
 No. AgentLint is fully offline. It reads stdin from Claude Code's hook system and evaluates rules locally. No telemetry, no network requests.
