@@ -28,6 +28,7 @@ class AgentLintConfig:
     packs: list[str] = field(default_factory=lambda: ["universal"])
     rules: dict[str, dict] = field(default_factory=dict)
     custom_rules_dir: str | None = None
+    circuit_breaker: dict = field(default_factory=dict)
 
     def is_rule_enabled(self, rule_id: str) -> bool:
         rule_cfg = self.rules.get(rule_id, {})
@@ -90,4 +91,5 @@ def load_config(project_dir: str) -> AgentLintConfig:
         packs=packs,
         rules=raw.get("rules", {}),
         custom_rules_dir=raw.get("custom_rules_dir"),
+        circuit_breaker=raw.get("circuit_breaker", {}),
     )

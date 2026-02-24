@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from agentlint.circuit_breaker import apply_circuit_breaker
 from agentlint.config import AgentLintConfig
 from agentlint.models import Rule, RuleContext, Severity, Violation
 
@@ -52,5 +53,10 @@ class Engine:
                 v.severity = self.config.effective_severity(v.severity)
 
             result.violations.extend(violations)
+
+        # Apply circuit breaker degradation
+        result.violations = apply_circuit_breaker(
+            result.violations, context.session_state, context.config,
+        )
 
         return result

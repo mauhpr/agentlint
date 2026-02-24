@@ -143,3 +143,17 @@ class TestAgentLintConfig:
         assert config.effective_severity(Severity.ERROR) == Severity.ERROR
         assert config.effective_severity(Severity.WARNING) == Severity.INFO
         assert config.effective_severity(Severity.INFO) == Severity.INFO
+
+
+class TestCircuitBreakerConfig:
+    def test_cb_config_loaded_from_yaml(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\ncircuit_breaker:\n  degraded_after: 5\n"
+        )
+        config = load_config(str(tmp_path))
+        assert config.circuit_breaker.get("degraded_after") == 5
+
+    def test_cb_config_absent_uses_empty_dict(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        config = load_config(str(tmp_path))
+        assert config.circuit_breaker == {}
