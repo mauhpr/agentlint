@@ -13,7 +13,7 @@ class TestEndToEnd:
         return result
 
     def test_blocks_secrets_end_to_end(self, tmp_path):
-        """Secrets in Write content should be blocked (exit 2)."""
+        """Secrets in Write content should be blocked via deny protocol."""
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
         result = self._run_agentlint(
             ["check", "--event", "PreToolUse"],
@@ -26,9 +26,10 @@ class TestEndToEnd:
             },
             project_dir=str(tmp_path),
         )
-        assert result.returncode == 2
+        assert result.returncode == 0  # deny protocol uses exit 0
         output = json.loads(result.stdout)
-        assert "no-secrets" in output["systemMessage"]
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert "no-secrets" in output["hookSpecificOutput"]["permissionDecisionReason"]
 
     def test_allows_clean_code_end_to_end(self, tmp_path):
         """Clean code should pass (exit 0)."""
@@ -47,7 +48,7 @@ class TestEndToEnd:
         assert result.returncode == 0
 
     def test_blocks_force_push_end_to_end(self, tmp_path):
-        """Force push to main should be blocked."""
+        """Force push to main should be blocked via deny protocol."""
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
         result = self._run_agentlint(
             ["check", "--event", "PreToolUse"],
@@ -57,9 +58,10 @@ class TestEndToEnd:
             },
             project_dir=str(tmp_path),
         )
-        assert result.returncode == 2
+        assert result.returncode == 0  # deny protocol uses exit 0
         output = json.loads(result.stdout)
-        assert "no-force-push" in output["systemMessage"]
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert "no-force-push" in output["hookSpecificOutput"]["permissionDecisionReason"]
 
     def test_warns_pip_install_end_to_end(self, tmp_path):
         """pip install should warn but not block (exit 0)."""
@@ -77,7 +79,7 @@ class TestEndToEnd:
         assert "dependency-hygiene" in output["systemMessage"]
 
     def test_blocks_env_file_write(self, tmp_path):
-        """Writing .env should be blocked."""
+        """Writing .env should be blocked via deny protocol."""
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
         result = self._run_agentlint(
             ["check", "--event", "PreToolUse"],
@@ -90,7 +92,9 @@ class TestEndToEnd:
             },
             project_dir=str(tmp_path),
         )
-        assert result.returncode == 2
+        assert result.returncode == 0  # deny protocol uses exit 0
+        output = json.loads(result.stdout)
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_init_and_check_flow(self, tmp_path):
         """Init should create config, then check should work with it."""
@@ -116,7 +120,7 @@ class TestEndToEnd:
         assert "dependency-hygiene" in output["systemMessage"]
 
     def test_strict_mode_blocks_warnings(self, tmp_path):
-        """In strict mode, warnings become errors."""
+        """In strict mode, warnings become errors and use deny protocol."""
         (tmp_path / "agentlint.yml").write_text("severity: strict\npacks:\n  - universal\n")
         result = self._run_agentlint(
             ["check", "--event", "PreToolUse"],
@@ -126,8 +130,10 @@ class TestEndToEnd:
             },
             project_dir=str(tmp_path),
         )
-        # In strict mode, dependency-hygiene WARNING becomes ERROR
-        assert result.returncode == 2
+        # In strict mode, dependency-hygiene WARNING becomes ERROR → deny protocol
+        assert result.returncode == 0
+        output = json.loads(result.stdout)
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_report_command(self, tmp_path):
         """Report command should output session summary."""
