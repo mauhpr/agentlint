@@ -32,7 +32,7 @@ rules:
 
 ### Tests
 
-- ~810 tests, 96% coverage
+- 812 tests, 96% coverage
 
 ## 0.5.3 (2026-02-24) — "Actually Blocks Now"
 
