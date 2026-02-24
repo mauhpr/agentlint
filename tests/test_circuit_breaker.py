@@ -302,10 +302,12 @@ class TestApplyCircuitBreaker:
             self._make_violation(severity=Severity.WARNING, message="warn one"),
         ]
         result = apply_circuit_breaker(violations, session, {})
-        error_results = [v for v in result if v.message == "error one"]
+        error_results = [v for v in result if "error one" in v.message]
         warning_results = [v for v in result if v.message == "warn one"]
         # ERROR should be downgraded to WARNING (3rd fire = degraded)
         assert error_results[0].severity == Severity.WARNING
+        # Degraded message should include circuit breaker context
+        assert "Circuit breaker" in error_results[0].message
         # WARNING should remain WARNING
         assert warning_results[0].severity == Severity.WARNING
 
@@ -401,3 +403,113 @@ class TestDowngradeSeverity:
 
     def test_info_unchanged_in_degraded(self) -> None:
         assert _downgrade_severity(Severity.INFO, CircuitBreakerState.DEGRADED) == Severity.INFO
+
+
+# --- Edge case / defensive coding tests ---
+
+
+class TestCircuitBreakerEdgeCases:
+    def _make_violation(
+        self,
+        rule_id: str = "test-rule",
+        severity: Severity = Severity.ERROR,
+        message: str = "test violation",
+    ) -> Violation:
+        return Violation(rule_id=rule_id, message=message, severity=severity)
+
+    def test_corrupted_state_recovers(self) -> None:
+        """Invalid state string in session JSON doesn't crash — defaults to ACTIVE."""
+        session: dict = {"circuit_breaker": {
+            "test-rule": {
+                "fire_count": 2,
+                "clean_count": 0,
+                "first_fire_ts": time.time() - 60,
+                "last_fire_ts": time.time() - 30,
+                "state": "garbage_invalid_state",
+                "transitions": [],
+            },
+        }}
+        violations = [self._make_violation()]
+        # Should not raise — recovers to ACTIVE
+        result = apply_circuit_breaker(violations, session, {})
+        assert len(result) == 1
+        # fire_count becomes 3 → DEGRADED, but corrupted state defaults to ACTIVE
+        # first, so the effective state after recovery depends on the new state calc
+        cb_data = session["circuit_breaker"]["test-rule"]
+        assert cb_data["state"] in {"active", "degraded"}
+
+    def test_missing_fire_count_key_recovers(self) -> None:
+        """Missing 'fire_count' key in cb_data doesn't crash."""
+        session: dict = {"circuit_breaker": {
+            "test-rule": {
+                # fire_count intentionally missing
+                "clean_count": 0,
+                "first_fire_ts": time.time() - 60,
+                "last_fire_ts": time.time() - 30,
+                "state": "active",
+                "transitions": [],
+            },
+        }}
+        violations = [self._make_violation()]
+        # Should not raise — .get() defaults to 0
+        result = apply_circuit_breaker(violations, session, {})
+        assert len(result) == 1
+        assert result[0].severity == Severity.ERROR
+        assert session["circuit_breaker"]["test-rule"]["fire_count"] == 1
+
+    def test_zero_threshold_degrades_immediately(self) -> None:
+        """degraded_after=0 means every fire is immediately degraded."""
+        session: dict = {}
+        rules_config = {
+            "test-rule": {"circuit_breaker": {
+                "degraded_after": 0,
+                "passive_after": 0,
+                "open_after": 1,
+            }},
+        }
+        violations = [self._make_violation()]
+        # First fire: fire_count=1 >= open_after=1 → OPEN → suppressed
+        result = apply_circuit_breaker(violations, session, rules_config)
+        assert len(result) == 0
+
+    def test_protected_rule_check_before_enabled(self) -> None:
+        """Security rules (no-secrets) are protected even if CB is set to disabled.
+
+        This is a regression test for the security bypass fix: the protected-rule
+        check must happen before the enabled check to prevent config from
+        accidentally disabling protection on security-critical rules.
+        """
+        session: dict = {}
+        rules_config = {
+            "no-secrets": {"circuit_breaker": {"enabled": False}},
+        }
+        violations = [self._make_violation(rule_id="no-secrets")]
+        # Fire 15 times with CB disabled — should still always return ERROR
+        for _ in range(15):
+            result = apply_circuit_breaker(violations, session, rules_config)
+            assert len(result) == 1
+            assert result[0].severity == Severity.ERROR
+
+    def test_degraded_violation_message_includes_context(self) -> None:
+        """When a violation is degraded, the message includes CB context."""
+        session: dict = {"circuit_breaker": {
+            "test-rule": {
+                "fire_count": 2,
+                "clean_count": 0,
+                "first_fire_ts": time.time() - 60,
+                "last_fire_ts": time.time() - 30,
+                "state": "active",
+                "transitions": [],
+            },
+        }}
+        violations = [self._make_violation(message="original msg")]
+        result = apply_circuit_breaker(violations, session, {})
+        assert len(result) == 1
+        # Should be degraded (3rd fire)
+        assert result[0].severity == Severity.WARNING
+        # Message should contain circuit breaker context
+        assert "[Circuit breaker:" in result[0].message
+        assert "fired 3x" in result[0].message
+        assert "degraded from error to warning" in result[0].message
+        # Original message should still be present
+        assert "original msg" in result[0].message

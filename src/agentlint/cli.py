@@ -57,10 +57,10 @@ def check(event: str, project_dir: str | None):
     if config.custom_rules_dir:
         rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
 
-    # Merge circuit breaker settings into rules config
+    # Merge circuit breaker settings into rules config under a reserved key
     rules_config = config.rules
     if config.circuit_breaker:
-        rules_config = {**rules_config, "circuit_breaker": config.circuit_breaker}
+        rules_config = {**rules_config, "_circuit_breaker_global": config.circuit_breaker}
 
     # Load persisted session state
     session_state = load_session()

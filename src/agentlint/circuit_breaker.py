@@ -10,11 +10,14 @@ always maintain their original severity.
 """
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
 
 from agentlint.models import Severity, Violation
+
+logger = logging.getLogger("agentlint")
 
 # Security-critical rules that must never be degraded or suppressed.
 _CB_NEVER_DEGRADE: set[str] = {"no-secrets", "no-env-commit"}
@@ -43,11 +46,12 @@ class CircuitBreakerConfig:
 
 def _get_cb_config(rule_id: str, rules_config: dict) -> CircuitBreakerConfig:
     """Build a CircuitBreakerConfig from global defaults + per-rule overrides."""
-    rule_cfg = rules_config.get(rule_id, {})
-    cb_overrides = rule_cfg.get("circuit_breaker", {})
+    global_cb = rules_config.get("_circuit_breaker_global", {})
+    rule_cb = rules_config.get(rule_id, {}).get("circuit_breaker", {})
+    merged = {**global_cb, **rule_cb}
     return CircuitBreakerConfig(**{
         k: v
-        for k, v in cb_overrides.items()
+        for k, v in merged.items()
         if k in CircuitBreakerConfig.__dataclass_fields__
     })
 
@@ -106,21 +110,24 @@ def _should_reset_by_time(cb_data: dict, config: CircuitBreakerConfig) -> bool:
     return elapsed_minutes >= config.reset_after_minutes
 
 
-def _reset_cb_data(cb_data: dict) -> None:
+def _reset_cb_data(cb_data: dict, rule_id: str = "unknown") -> None:
     """Reset a rule's circuit breaker tracking data to initial state."""
-    old_state = cb_data["state"]
+    old_state = cb_data.get("state", CircuitBreakerState.ACTIVE.value)
     cb_data["fire_count"] = 0
     cb_data["clean_count"] = 0
     cb_data["first_fire_ts"] = None
     cb_data["last_fire_ts"] = None
     new_state = CircuitBreakerState.ACTIVE.value
     if old_state != new_state:
-        cb_data["transitions"].append({
+        cb_data.setdefault("transitions", []).append({
             "from": old_state,
             "to": new_state,
             "ts": time.time(),
             "reason": "reset",
         })
+        logger.debug(
+            "Circuit breaker: %s reset to active (from=%s)", rule_id, old_state,
+        )
     cb_data["state"] = new_state
 
 
@@ -168,15 +175,19 @@ def apply_circuit_breaker(
             continue
         cb_data["clean_count"] = cb_data.get("clean_count", 0) + 1
         if cb_data["clean_count"] >= config.reset_after_clean:
-            _reset_cb_data(cb_data)
+            _reset_cb_data(cb_data, rule_id=rule_id)
 
     # Process violations
     result: list[Violation] = []
     for v in violations:
+        # Security-critical rules are ALWAYS protected — check before anything else
+        is_protected = v.rule_id in _CB_NEVER_DEGRADE
+
         config = _get_cb_config(v.rule_id, rules_config)
 
-        # If CB is disabled for this rule, pass through
-        if not config.enabled:
+        # If CB is disabled for this rule, pass through unchanged.
+        # Protected rules skip this check — they are always tracked.
+        if not is_protected and not config.enabled:
             result.append(v)
             continue
 
@@ -184,9 +195,6 @@ def apply_circuit_breaker(
         if v.severity != Severity.ERROR:
             result.append(v)
             continue
-
-        # Security-critical rules never degrade
-        is_protected = v.rule_id in _CB_NEVER_DEGRADE
 
         # Ensure tracking entry exists
         if v.rule_id not in cb_store:
@@ -196,12 +204,12 @@ def apply_circuit_breaker(
 
         # Time-based reset: if enough time has passed since last fire, reset
         if _should_reset_by_time(cb_data, config):
-            _reset_cb_data(cb_data)
+            _reset_cb_data(cb_data, rule_id=v.rule_id)
 
         # Increment fire count
-        cb_data["fire_count"] += 1
+        cb_data["fire_count"] = cb_data.get("fire_count", 0) + 1
         cb_data["clean_count"] = 0
-        if cb_data["first_fire_ts"] is None:
+        if cb_data.get("first_fire_ts") is None:
             cb_data["first_fire_ts"] = now
         cb_data["last_fire_ts"] = now
 
@@ -209,17 +217,21 @@ def apply_circuit_breaker(
         new_state = _get_rule_state(cb_data, config)
 
         # Record transition if state changed
-        old_state_str = cb_data["state"]
+        old_state_str = cb_data.get("state", CircuitBreakerState.ACTIVE.value)
         new_state_str = new_state.value
         if old_state_str != new_state_str:
             if not is_protected:
-                cb_data["transitions"].append({
+                cb_data.setdefault("transitions", []).append({
                     "from": old_state_str,
                     "to": new_state_str,
                     "ts": now,
                     "reason": "fire_count",
                 })
                 cb_data["state"] = new_state_str
+                logger.info(
+                    "Circuit breaker: %s transitioned %s -> %s (fire_count=%d)",
+                    v.rule_id, old_state_str, new_state_str, cb_data["fire_count"],
+                )
 
         # For protected rules, always keep ACTIVE state and original severity
         if is_protected:
@@ -228,17 +240,34 @@ def apply_circuit_breaker(
             continue
 
         # Apply severity downgrade based on state
-        effective_state = CircuitBreakerState(cb_data["state"])
+        try:
+            effective_state = CircuitBreakerState(cb_data["state"])
+        except (KeyError, ValueError):
+            effective_state = CircuitBreakerState.ACTIVE
+            cb_data["state"] = CircuitBreakerState.ACTIVE.value
         new_severity = _downgrade_severity(v.severity, effective_state)
 
         if new_severity is None:
             # OPEN state — suppress the violation
+            logger.info(
+                "Circuit breaker: suppressing %s (fire_count=%d, state=open)",
+                v.rule_id, cb_data["fire_count"],
+            )
             continue
+
+        # Build message with degradation context if severity changed
+        msg = v.message
+        if new_severity != v.severity:
+            msg = (
+                f"[Circuit breaker: fired {cb_data['fire_count']}x, "
+                f"degraded from {v.severity.value} to {new_severity.value}] "
+                f"{v.message}"
+            )
 
         # Return a new violation with the downgraded severity
         result.append(Violation(
             rule_id=v.rule_id,
-            message=v.message,
+            message=msg,
             severity=new_severity,
             file_path=v.file_path,
             line=v.line,
