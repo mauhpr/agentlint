@@ -156,11 +156,11 @@ def check(event: str, project_dir: str | None):
     save_session(session_state)
 
     reporter = Reporter(violations=result.violations, rules_evaluated=result.rules_evaluated)
-    output = reporter.format_hook_output()
+    output = reporter.format_hook_output(event=event)
     if output:
         click.echo(output)
 
-    sys.exit(reporter.exit_code())
+    sys.exit(reporter.exit_code(event=event))
 
 
 @main.command()

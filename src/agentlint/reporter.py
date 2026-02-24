@@ -16,19 +16,55 @@ class Reporter:
     def has_blocking_violations(self) -> bool:
         return any(v.severity == Severity.ERROR for v in self.violations)
 
-    def exit_code(self) -> int:
-        return 2 if self.has_blocking_violations() else 0
+    def exit_code(self, event: str = "") -> int:
+        """Return exit code for Claude Code hook protocol.
 
-    def format_hook_output(self) -> str | None:
-        """Format violations as Claude Code hook JSON output. Returns None if no violations."""
+        PreToolUse blocking uses exit 0 + JSON deny protocol (exit 2 ignores JSON).
+        Other events use exit 2 for blocking (stderr-based).
+        """
+        if not self.has_blocking_violations():
+            return 0
+        if event == "PreToolUse":
+            return 0  # Deny protocol requires exit 0 with JSON
+        return 2
+
+    def format_hook_output(self, event: str = "") -> str | None:
+        """Format violations as Claude Code hook JSON output. Returns None if no violations.
+
+        For PreToolUse ERROR violations, uses hookSpecificOutput with
+        permissionDecision="deny" so Claude Code actually blocks the tool call.
+        For advisory output (warnings/info), uses systemMessage.
+        """
         if not self.violations:
             return None
-
-        lines = ["", "AgentLint:"]
 
         errors = [v for v in self.violations if v.severity == Severity.ERROR]
         warnings = [v for v in self.violations if v.severity == Severity.WARNING]
         infos = [v for v in self.violations if v.severity == Severity.INFO]
+
+        # For PreToolUse with blocking violations, use the deny protocol
+        if event == "PreToolUse" and errors:
+            reason_lines = []
+            for v in errors:
+                reason_lines.append(f"[{v.rule_id}] {v.message}")
+                if v.suggestion:
+                    reason_lines.append(f"  -> {v.suggestion}")
+            # Include warnings/info as additional context
+            for v in warnings + infos:
+                reason_lines.append(f"[{v.rule_id}] {v.message}")
+                if v.suggestion:
+                    reason_lines.append(f"  -> {v.suggestion}")
+
+            return json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "\n".join(reason_lines),
+                }
+            })
+
+        # Advisory output for warnings/info (or non-PreToolUse events)
+        lines = ["", "AgentLint:"]
 
         if errors:
             lines.append("  BLOCKED:")

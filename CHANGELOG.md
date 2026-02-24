@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.3 (2026-02-24) — "Actually Blocks Now"
+
+Critical fix: PreToolUse blocking now actually works. Plus fork bomb false positive fix.
+
+### Fixes
+
+- **PreToolUse blocking protocol** — AgentLint was outputting `{"systemMessage": "BLOCKED: ..."}` with exit code 2, but Claude Code ignores JSON on exit 2. Now uses the correct `hookSpecificOutput` deny protocol: exit 0 + `{"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": "..."}}`. **This means blocking rules (no-secrets, no-force-push, no-env-commit, security pack) now actually prevent tool execution.**
+- **Fork bomb false positive** — The `no-destructive-commands` regex for fork bombs included `/dev/null\s*\|` which matched any command using `2>/dev/null | pipe` — one of the most common shell idioms. Commands like `printenv | grep 2>/dev/null | head` and `gcloud sql instances list 2>/dev/null | head` were incorrectly flagged. Removed the overly broad pattern.
+
+### Tests
+
+- 759 tests (12 new), 96% coverage
+
 ## 0.5.2 (2026-02-24) — "Self-Audit Fix"
 
 Fixes two issues found by auditing AgentLint's own behavior in a real session.

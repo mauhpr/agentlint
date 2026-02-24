@@ -1,7 +1,7 @@
 {
   "name": "agentlint",
   "description": "Real-time quality guardrails for AI coding agents. 42 rules across 7 packs covering all 17 Claude Code hook events — universal, quality, Python, frontend, React, SEO, and security (opt-in). Includes AGENTS.md compatibility and git safety checkpoints.",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "author": {
     "name": "mauhpr"
   },

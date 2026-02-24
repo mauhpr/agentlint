@@ -21,7 +21,7 @@ class TestCheckCommand:
         assert result.exit_code == 0
 
     def test_check_blocks_secrets(self, tmp_path) -> None:
-        """Write with an API key should be blocked (exit code 2)."""
+        """Write with an API key should be blocked via deny protocol (exit 0)."""
         payload = json.dumps({
             "tool_name": "Write",
             "tool_input": {
@@ -35,8 +35,11 @@ class TestCheckCommand:
             ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
             input=payload,
         )
-        assert result.exit_code == 2
-        assert "no-secrets" in result.output
+        # PreToolUse blocking uses exit 0 + hookSpecificOutput deny protocol
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert parsed["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert "no-secrets" in parsed["hookSpecificOutput"]["permissionDecisionReason"]
 
     def test_check_passes_clean_code(self, tmp_path) -> None:
         """Write with clean code should pass (exit code 0)."""
