@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.6.0 (2026-02-24) — "Progressive Trust"
+
+Automatic circuit breaker prevents buggy rules from locking agents in a loop.
+
+### New: Circuit Breaker (ON by default)
+
+- **Automatic degradation** — When a blocking rule (ERROR) fires 3+ times in a session, it degrades to WARNING (advisory). Fires 6+ times → INFO. Fires 10+ times → suppressed. Prevents false positive loops from blocking agents.
+- **Security-critical rules exempt** — `no-secrets` and `no-env-commit` never degrade by default. All other rules can opt-out via per-rule config.
+- **Auto-reset** — 5 consecutive clean evaluations or 30 minutes without fire resets the circuit breaker to ACTIVE.
+- **Session report transparency** — Stop report includes "Circuit Breaker" section showing which rules were degraded and their fire counts.
+- **Fully configurable** — Global thresholds in `circuit_breaker:` config block. Per-rule overrides via `rules: <rule-id>: circuit_breaker:`.
+
+### Configuration
+
+```yaml
+# Global defaults (can be overridden)
+circuit_breaker:
+  enabled: true          # ON by default
+  degraded_after: 3      # ERROR → WARNING
+  passive_after: 6       # → INFO
+  open_after: 10         # → suppressed
+  reset_after_clean: 5   # reset after 5 clean evals
+  reset_after_minutes: 30
+
+# Per-rule override
+rules:
+  no-secrets:
+    circuit_breaker: { enabled: false }  # never degrade (default)
+```
+
+### Tests
+
+- ~810 tests, 96% coverage
+
 ## 0.5.3 (2026-02-24) — "Actually Blocks Now"
 
 Critical fix: PreToolUse blocking now actually works. Plus fork bomb false positive fix.

@@ -1,14 +1,16 @@
 """End-to-end integration tests for AgentLint."""
 import json
+import os
 import subprocess
 import sys
 
 class TestEndToEnd:
-    def _run_agentlint(self, args: list[str], stdin_data: dict | None = None, project_dir: str = "/tmp"):
+    def _run_agentlint(self, args: list[str], stdin_data: dict | None = None, project_dir: str = "/tmp", env: dict | None = None):
         cmd = [sys.executable, "-m", "agentlint.cli"] + args + ["--project-dir", project_dir]
         input_data = json.dumps(stdin_data) if stdin_data else "{}"
+        run_env = {**os.environ, **(env or {})}
         result = subprocess.run(
-            cmd, input=input_data, capture_output=True, text=True, timeout=10
+            cmd, input=input_data, capture_output=True, text=True, timeout=10, env=run_env,
         )
         return result
 
@@ -141,3 +143,62 @@ class TestEndToEnd:
         assert result.returncode == 0
         output = json.loads(result.stdout)
         assert "AgentLint Session Report" in output["systemMessage"]
+
+    def test_circuit_breaker_degrades_after_threshold(self, tmp_path):
+        """After 3 identical blocks from same rule, should degrade to warning."""
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        cache_dir = str(tmp_path / "cb_cache")
+        env = {
+            "CLAUDE_SESSION_ID": "test-cb-e2e",
+            "AGENTLINT_CACHE_DIR": cache_dir,
+        }
+
+        for i in range(3):
+            result = self._run_agentlint(
+                ["check", "--event", "PreToolUse"],
+                stdin_data={
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "git push --force origin main"},
+                },
+                project_dir=str(tmp_path),
+                env=env,
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+
+            if i < 2:
+                # First 2 fires should block (deny protocol)
+                assert "hookSpecificOutput" in output, f"Fire {i+1} should block"
+                assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+            else:
+                # 3rd fire should be degraded to warning (systemMessage, not deny)
+                assert "systemMessage" in output, f"Fire {i+1} should be degraded to warning"
+                assert "hookSpecificOutput" not in output
+
+    def test_circuit_breaker_never_degrades_secrets(self, tmp_path):
+        """no-secrets should never be degraded by circuit breaker."""
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        cache_dir = str(tmp_path / "cb_secrets_cache")
+        env = {
+            "CLAUDE_SESSION_ID": "test-cb-secrets",
+            "AGENTLINT_CACHE_DIR": cache_dir,
+        }
+
+        for i in range(5):
+            result = self._run_agentlint(
+                ["check", "--event", "PreToolUse"],
+                stdin_data={
+                    "tool_name": "Write",
+                    "tool_input": {
+                        "file_path": "/tmp/config.py",
+                        "content": 'SECRET = "sk_live_TESTKEY000000"',
+                    },
+                },
+                project_dir=str(tmp_path),
+                env=env,
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            # Should ALWAYS block — never degraded
+            assert "hookSpecificOutput" in output, f"Fire {i+1}: no-secrets should always block"
+            assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
