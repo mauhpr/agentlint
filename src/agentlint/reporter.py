@@ -89,7 +89,7 @@ class Reporter:
 
         return json.dumps({"systemMessage": "\n".join(lines)})
 
-    def format_session_report(self, files_changed: int = 0) -> str:
+    def format_session_report(self, files_changed: int = 0, cb_state: dict | None = None) -> str:
         """Format a session summary report for the Stop event."""
         errors = [v for v in self.violations if v.severity == Severity.ERROR]
         warnings = [v for v in self.violations if v.severity == Severity.WARNING]
@@ -112,5 +112,19 @@ class Reporter:
             lines.append("Warnings:")
             for v in warnings:
                 lines.append(f"  [{v.rule_id}] {v.message}")
+
+        # Circuit breaker activity (only show non-active rules)
+        if cb_state:
+            degraded = {
+                rid: data for rid, data in cb_state.items()
+                if data.get("state", "active") != "active"
+            }
+            if degraded:
+                lines.append("")
+                lines.append("Circuit Breaker:")
+                for rid, data in sorted(degraded.items()):
+                    state = data.get("state", "unknown")
+                    count = data.get("fire_count", 0)
+                    lines.append(f"  [{rid}] {state} (fired {count}x)")
 
         return "\n".join(lines)

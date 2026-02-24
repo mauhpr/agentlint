@@ -200,3 +200,27 @@ class TestEngine:
         # CrashingRule should be skipped, PassRule should still run
         assert result.rules_evaluated == 2
         assert result.violations == []  # CrashingRule's exception caught, PassRule passes
+
+
+class TestEngineCircuitBreaker:
+    def test_engine_applies_circuit_breaker(self) -> None:
+        """After threshold fires, engine should degrade ERROR to WARNING."""
+        config = AgentLintConfig(packs=["test"])
+        session_state: dict = {}
+        context = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Bash",
+            tool_input={"command": "rm -rf /"},
+            project_dir="/tmp",
+            session_state=session_state,
+        )
+
+        engine = Engine(config=config, rules=[FailRule()])
+
+        # Fire 3 times — 3rd should be degraded
+        for i in range(3):
+            result = engine.evaluate(context)
+            if i < 2:
+                assert result.violations[0].severity == Severity.ERROR
+            else:
+                assert result.violations[0].severity == Severity.WARNING

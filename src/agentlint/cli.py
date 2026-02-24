@@ -57,6 +57,11 @@ def check(event: str, project_dir: str | None):
     if config.custom_rules_dir:
         rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
 
+    # Merge circuit breaker settings into rules config
+    rules_config = config.rules
+    if config.circuit_breaker:
+        rules_config = {**rules_config, "circuit_breaker": config.circuit_breaker}
+
     # Load persisted session state
     session_state = load_session()
 
@@ -67,7 +72,7 @@ def check(event: str, project_dir: str | None):
         tool_name=raw.get("tool_name", ""),
         tool_input=tool_input,
         project_dir=project_dir,
-        config=config.rules,
+        config=rules_config,
         session_state=session_state,
         prompt=raw.get("prompt"),
         subagent_output=raw.get("subagent_output"),
@@ -237,7 +242,8 @@ def report(project_dir: str | None):
     result = engine.evaluate(context)
 
     reporter = Reporter(violations=result.violations, rules_evaluated=result.rules_evaluated)
-    report_text = reporter.format_session_report(files_changed=len(changed_files))
+    cb_state = session_state.get("circuit_breaker", {})
+    report_text = reporter.format_session_report(files_changed=len(changed_files), cb_state=cb_state)
     output = json.dumps({"systemMessage": report_text, "continue": True})
     click.echo(output)
 

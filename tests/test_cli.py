@@ -418,3 +418,32 @@ class TestReportCommand:
 
         session = load_session()
         assert str(target) in session.get("files_touched", [])
+
+
+class TestReportCircuitBreaker:
+    def test_report_shows_cb_activity(self, tmp_path, monkeypatch) -> None:
+        """Report should include circuit breaker data from session."""
+        from agentlint.session import save_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-cb-report")
+
+        save_session({
+            "circuit_breaker": {
+                "no-destructive-commands": {
+                    "fire_count": 5,
+                    "state": "degraded",
+                }
+            }
+        })
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert "Circuit Breaker" in parsed["systemMessage"]
+        assert "no-destructive-commands" in parsed["systemMessage"]

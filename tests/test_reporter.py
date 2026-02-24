@@ -184,3 +184,36 @@ class TestFormatSessionReport:
         assert "Warnings: 1" in report
         assert "ERR01" in report
         assert "WARN01" in report
+
+
+class TestSessionReportCircuitBreaker:
+    def test_report_includes_cb_activity(self) -> None:
+        """Session report should show degraded rules."""
+        violations = [_make_violation(severity=Severity.WARNING)]
+        reporter = Reporter(violations=violations, rules_evaluated=5)
+        cb_state = {
+            "no-destructive-commands": {
+                "fire_count": 4,
+                "state": "degraded",
+            },
+        }
+        report = reporter.format_session_report(files_changed=1, cb_state=cb_state)
+        assert "Circuit Breaker" in report
+        assert "no-destructive-commands" in report
+        assert "degraded" in report
+
+    def test_report_no_cb_section_when_empty(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        report = reporter.format_session_report(files_changed=0, cb_state={})
+        assert "Circuit Breaker" not in report
+
+    def test_report_no_cb_section_when_all_active(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        cb_state = {"some-rule": {"fire_count": 1, "state": "active"}}
+        report = reporter.format_session_report(files_changed=0, cb_state=cb_state)
+        assert "Circuit Breaker" not in report
+
+    def test_report_no_cb_section_when_none(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        report = reporter.format_session_report(files_changed=0, cb_state=None)
+        assert "Circuit Breaker" not in report
