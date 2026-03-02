@@ -317,10 +317,11 @@ class TestSecurityPackLoader:
         from agentlint.packs import load_rules
 
         rules = load_rules(["security"])
-        assert len(rules) == 2
+        assert len(rules) == 3
         ids = {r.id for r in rules}
         assert "no-bash-file-write" in ids
         assert "no-network-exfil" in ids
+        assert "env-credential-reference" in ids
 
     def test_all_rules_are_pre_tool_use(self):
         from agentlint.packs import load_rules
@@ -329,9 +330,12 @@ class TestSecurityPackLoader:
         for rule in rules:
             assert HookEvent.PRE_TOOL_USE in rule.events
 
-    def test_all_rules_are_error_severity(self):
+    def test_most_rules_are_error_severity(self):
         from agentlint.packs import load_rules
 
         rules = load_rules(["security"])
-        for rule in rules:
-            assert rule.severity == Severity.ERROR
+        severities = {r.id: r.severity for r in rules}
+        # no-bash-file-write and no-network-exfil are ERROR; env-credential-reference is WARNING
+        assert severities["no-bash-file-write"] == Severity.ERROR
+        assert severities["no-network-exfil"] == Severity.ERROR
+        assert severities["env-credential-reference"] == Severity.WARNING

@@ -1,8 +1,10 @@
 # Changelog
 
-## v0.7.0 — Autopilot Safety Pack
+## v0.7.0 (2026-03-02) — Autopilot Safety Pack
 
-### New: `autopilot` pack (6 rules, opt-in)
+### New: `autopilot` pack (12 rules, opt-in, ⚠️ alpha)
+
+> **Experimental.** Regex-based heuristics for cloud and infrastructure safety. Expect false positives. A mature framework for autonomous agent guardrails doesn't exist yet — this is an early experiment, not a production-hardened solution. Use at your own risk and report what breaks.
 
 Add to `agentlint.yml` to enable:
 ```yaml
@@ -17,9 +19,28 @@ packs:
 - **`bash-rate-limiter`** — Circuit-breaks after N destructive commands within a time window (default: 5 ops / 300s), preventing runaway autonomous loops.
 - **`cross-account-guard`** — Warns when the agent switches between gcloud projects or AWS profiles mid-session.
 - **`operation-journal`** — Records every Bash and file-write operation to an in-session audit log; emits a summary at Stop.
+- **`cloud-resource-deletion`** — Blocks AWS/GCP/Azure resource deletion without session confirmation.
+- **`cloud-infra-mutation`** — Blocks NAT, firewall, VPC, IAM, and load balancer mutations across AWS/GCP/Azure.
+- **`cloud-paid-resource-creation`** — Warns when creating paid cloud resources (VMs, DBs, static IPs).
+- **`system-scheduler-guard`** — Warns on crontab, systemctl enable, launchctl, and scheduler file writes.
+- **`network-firewall-guard`** — Blocks iptables flush, ufw disable, firewalld permanent rules, and default route changes.
+- **`docker-volume-guard`** — Blocks privileged containers (ERROR); warns on volume deletion and force-remove (WARNING).
+
+### Bug fixes
+- `env-credential-reference`: Secret Manager references (`Secret:`, `secretmanager:`) no longer trigger false positive on Pattern 1.
+- `env-credential-reference`: Quoted Cloud Run `--set-env-vars` values now correctly matched by Pattern 3.
+- `system-scheduler-guard`: `crontab -u myuser` (read-only) no longer triggers a false positive; `-r` (remove) now correctly warns.
+
+### UX improvements
+- `docker-volume-guard`: Added `allowed_ops` config bypass.
+- `network-firewall-guard`: Added `allowed_ops` config bypass.
+- `cloud-infra-mutation`: Renamed `allowed_operations` → `allowed_ops` for consistency.
 
 ### Rule count
-48 rules across 8 packs (was 42/7).
+57 rules across 8 packs (was 42/7).
+
+### Tests
+1061 tests, 96% coverage.
 
 ## 0.6.0 (2026-02-24) — "Progressive Trust"
 

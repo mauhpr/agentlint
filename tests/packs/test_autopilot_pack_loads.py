@@ -9,5 +9,5 @@ def test_autopilot_registered_in_pack_modules():
 def test_autopilot_loads_without_error():
     rules = load_rules(["autopilot"])
     assert isinstance(rules, list)
-    # Will grow as rules are added — starts at 0
-    assert len(rules) == 6
+    # 6 original + 6 new safety rules = 12
+    assert len(rules) == 12

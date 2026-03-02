@@ -12,7 +12,7 @@ AI coding agents drift during long sessions — they introduce API keys into sou
 
 ## What it catches
 
-AgentLint ships with 48 rules across 8 packs, covering all 17 Claude Code hook events. The 15 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files, and the **security** and **autopilot** packs are opt-in for maximum protection:
+AgentLint ships with 57 rules across 8 packs, covering all 17 Claude Code hook events. The 17 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental:
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -100,12 +100,13 @@ AgentLint ships with 48 rules across 8 packs, covering all 17 Claude Code hook e
 </details>
 
 <details>
-<summary><strong>Security pack</strong> (2 rules) — opt-in, add <code>security</code> to your packs list</summary>
+<summary><strong>Security pack</strong> (3 rules) — opt-in, add <code>security</code> to your packs list</summary>
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
 | `no-bash-file-write` | ERROR | Blocks file writes via Bash (`cat >`, `tee`, `sed -i`, `cp`, heredocs, etc.) |
 | `no-network-exfil` | ERROR | Blocks data exfiltration via `curl POST`, `nc`, `scp`, `wget --post-file` |
+| `env-credential-reference` | WARNING | Warns when `*_FILE` env vars reference local paths (credential leakage risk) |
 
 The security pack addresses the most common agent escape hatch: bypassing Write/Edit guardrails via the Bash tool. Enable it by adding `security` to your packs list:
 
@@ -129,7 +130,9 @@ rules:
 </details>
 
 <details>
-<summary><strong>Autopilot pack</strong> (6 rules) — opt-in, add <code>autopilot</code> to your packs list</summary>
+<summary><strong>Autopilot pack</strong> (12 rules) — ⚠️ experimental, opt-in</summary>
+
+> **Alpha quality.** The autopilot pack is an early experiment in agent safety guardrails for cloud and infrastructure operations. Regex-based heuristics will produce false positives and false negatives — a mature framework for this problem doesn't exist yet. Enable it, experiment with it, report what breaks. Use at your own risk in production environments.
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -139,6 +142,12 @@ rules:
 | `bash-rate-limiter` | WARNING | Circuit-breaks after N destructive commands within a time window (default: 5 ops / 300s) |
 | `cross-account-guard` | WARNING | Warns when the agent switches between gcloud projects or AWS profiles mid-session |
 | `operation-journal` | INFO | Records every Bash and file-write operation to an in-session audit log; emits a summary at Stop |
+| `cloud-resource-deletion` | ERROR | Blocks AWS/GCP/Azure resource deletion without session confirmation |
+| `cloud-infra-mutation` | ERROR | Blocks NAT, firewall, VPC, IAM, and load balancer mutations across AWS/GCP/Azure |
+| `cloud-paid-resource-creation` | WARNING | Warns when creating paid cloud resources (VMs, DBs, static IPs) |
+| `system-scheduler-guard` | WARNING | Warns on crontab, systemctl enable, launchctl, scheduler file writes |
+| `network-firewall-guard` | ERROR | Blocks iptables flush, ufw disable, firewalld permanent rules, and default route changes |
+| `docker-volume-guard` | WARNING/ERROR | Blocks privileged containers (ERROR); warns on volume deletion and force-remove (WARNING) |
 
 Enable by adding `autopilot` to your packs list:
 
@@ -147,6 +156,8 @@ packs:
   - universal
   - autopilot
 ```
+
+Feedback welcome — open an issue if a rule blocks something legitimate or misses something it should catch.
 
 </details>
 

@@ -186,6 +186,7 @@ severity: standard  # strict | standard | relaxed
 packs:
 {pack_lines}
   # - security  # opt-in: blocks Bash file writes, network exfiltration
+  # - autopilot  # opt-in: production guard, cloud/infra safety, CI/CD pipeline, docker, firewall
 
 rules: {{}}
   # Override individual rules:
