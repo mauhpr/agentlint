@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.1 (2026-03-02) — Vision & framing
+
+- README: expanded tagline to "code quality, security, and infrastructure safety"
+- README: added Vision section explaining the short-term (code quality) and longer-term (autonomous agent infrastructure safety) goals; honest about what's solved vs. what's still an open problem
+
 ## v0.7.0 (2026-03-02) — Autopilot Safety Pack
 
 ### New: `autopilot` pack (12 rules, opt-in, ⚠️ alpha)

@@ -6,9 +6,17 @@
 [![Python](https://img.shields.io/pypi/pyversions/agentlint)](https://pypi.org/project/agentlint/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Real-time quality guardrails for AI coding agents.
+Real-time guardrails for AI coding agents — code quality, security, and infrastructure safety.
 
 AI coding agents drift during long sessions — they introduce API keys into source, skip tests, force-push to main, and leave debug statements behind. AgentLint catches these problems *as they happen*, not at review time.
+
+## Vision
+
+The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 57 rules that run locally in milliseconds.
+
+The longer-term question is harder: **what does it mean for an agent to operate safely on real infrastructure?** When an agent can run `gcloud`, `kubectl`, `terraform`, or `iptables`, the blast radius is no longer a bad commit — it's a production outage or a deleted database.
+
+We don't have a mature answer to that yet. Nobody does. The **autopilot pack** is our first experiment in that direction — explicit, opt-in, and clearly labeled as such. The goal is to start building the intuition and tooling for autonomous agent safety at the infrastructure level, and to do it in the open.
 
 ## What it catches
 
