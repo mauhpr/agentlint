@@ -241,3 +241,22 @@ class TestDryRunRequired:
         ctx = _ctx("Bash", {"command": "kubectl get pods"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
+
+    def test_bypass_tools_skips_label(self):
+        ctx = _ctx(
+            "Bash",
+            {"command": "terraform apply"},
+            config={"dry-run-required": {"bypass_tools": ["terraform apply"]}},
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_blocks_pulumi_up_without_preview(self):
+        ctx = _ctx("Bash", {"command": "pulumi up"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_pulumi_preview_passes(self):
+        ctx = _ctx("Bash", {"command": "pulumi preview"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
