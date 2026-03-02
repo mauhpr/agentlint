@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.7.0 — Autopilot Safety Pack
+
+### New: `autopilot` pack (6 rules, opt-in)
+
+Add to `agentlint.yml` to enable:
+```yaml
+packs:
+  - universal
+  - autopilot
+```
+
+- **`production-guard`** — Blocks Bash commands targeting production databases (psql/mysql with prod host/db name), gcloud projects, or AWS accounts. Configurable `allowed_projects` and `allowed_hosts` allowlists.
+- **`destructive-confirmation-gate`** — Blocks DROP DATABASE, DROP TABLE, terraform destroy, kubectl delete namespace, and gcloud/heroku project deletion unless `session_state['confirmed_destructive_ops']` contains an explicit acknowledgment key.
+- **`dry-run-required`** — Requires --dry-run/--check/plan preview before terraform apply, kubectl apply, ansible-playbook, helm upgrade/install, and pulumi up.
+- **`bash-rate-limiter`** — Circuit-breaks after N destructive commands within a time window (default: 5 ops / 300s), preventing runaway autonomous loops.
+- **`cross-account-guard`** — Warns when the agent switches between gcloud projects or AWS profiles mid-session.
+- **`operation-journal`** — Records every Bash and file-write operation to an in-session audit log; emits a summary at Stop.
+
+### Rule count
+48 rules across 8 packs (was 42/7).
+
 ## 0.6.0 (2026-02-24) — "Progressive Trust"
 
 Automatic circuit breaker prevents buggy rules from locking agents in a loop.

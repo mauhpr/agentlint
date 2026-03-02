@@ -12,7 +12,7 @@ AI coding agents drift during long sessions — they introduce API keys into sou
 
 ## What it catches
 
-AgentLint ships with 42 rules across 7 packs, covering all 17 Claude Code hook events. The 15 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files, and the **security** pack is opt-in for maximum protection:
+AgentLint ships with 48 rules across 8 packs, covering all 17 Claude Code hook events. The 15 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files, and the **security** and **autopilot** packs are opt-in for maximum protection:
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -124,6 +124,28 @@ rules:
     allow_paths: ["*.log", "/tmp/*"]       # Allow writes to temp/log
   no-network-exfil:
     allowed_hosts: ["internal.corp.com"]   # Allow specific hosts
+```
+
+</details>
+
+<details>
+<summary><strong>Autopilot pack</strong> (6 rules) — opt-in, add <code>autopilot</code> to your packs list</summary>
+
+| Rule | Severity | What it does |
+|------|----------|-------------|
+| `production-guard` | ERROR | Blocks Bash commands targeting production databases, gcloud projects, or AWS accounts |
+| `destructive-confirmation-gate` | ERROR | Blocks DROP DATABASE, terraform destroy, kubectl delete namespace, etc. without explicit acknowledgment |
+| `dry-run-required` | WARNING | Requires --dry-run/--check/plan preview before terraform apply, kubectl apply, ansible-playbook, helm upgrade/install, and pulumi up |
+| `bash-rate-limiter` | WARNING | Circuit-breaks after N destructive commands within a time window (default: 5 ops / 300s) |
+| `cross-account-guard` | WARNING | Warns when the agent switches between gcloud projects or AWS profiles mid-session |
+| `operation-journal` | INFO | Records every Bash and file-write operation to an in-session audit log; emits a summary at Stop |
+
+Enable by adding `autopilot` to your packs list:
+
+```yaml
+packs:
+  - universal
+  - autopilot
 ```
 
 </details>
