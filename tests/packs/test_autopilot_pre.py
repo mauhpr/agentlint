@@ -63,6 +63,11 @@ class TestProductionGuard:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
+    def test_blocks_psql_prod_host_flag(self):
+        ctx = _ctx("psql -h prod-db.internal -U admin myapp")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
     # --- Allowlist ---
 
     def test_allowed_project_passes(self):
