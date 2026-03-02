@@ -261,7 +261,17 @@ class TestListRulesCommand:
         assert result.exit_code == 0
         assert "no-bash-file-write" in result.output
         assert "no-network-exfil" in result.output
-        assert "2 rules total" in result.output
+        assert "3 rules total" in result.output
+
+    def test_list_rules_autopilot_pack(self) -> None:
+        """list-rules --pack autopilot should show only autopilot rules."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules", "--pack", "autopilot"])
+        assert result.exit_code == 0
+        assert "cloud-resource-deletion" in result.output
+        assert "network-firewall-guard" in result.output
+        assert "docker-volume-guard" in result.output
+        assert "12 rules total" in result.output
 
     def test_list_rules_universal_pack(self) -> None:
         """list-rules --pack universal should show only universal rules."""
@@ -269,7 +279,7 @@ class TestListRulesCommand:
         result = runner.invoke(main, ["list-rules", "--pack", "universal"])
         assert result.exit_code == 0
         assert "no-secrets" in result.output
-        assert "15 rules total" in result.output
+        assert "17 rules total" in result.output
 
     def test_list_rules_quality_pack(self) -> None:
         """list-rules --pack quality should show only quality rules."""

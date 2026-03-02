@@ -77,7 +77,7 @@ Global severity mode. Transforms all violation severities:
 
 Explicit list of rule packs to activate. Overrides auto-detection.
 
-Available packs: `universal`, `python`, `frontend`, `react`, `seo`, `security`.
+Available packs: `universal`, `quality`, `python`, `frontend`, `react`, `seo`, `security`, `autopilot`.
 
 ```yaml
 packs:

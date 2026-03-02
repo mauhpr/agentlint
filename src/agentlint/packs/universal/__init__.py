@@ -1,4 +1,5 @@
 """Universal rule pack — PreToolUse, PostToolUse, and Stop rules."""
+from agentlint.packs.universal.cicd_pipeline_guard import CicdPipelineGuard
 from agentlint.packs.universal.dependency_hygiene import DependencyHygiene
 from agentlint.packs.universal.drift_detector import DriftDetector
 from agentlint.packs.universal.git_checkpoint import GitCheckpoint
@@ -12,6 +13,7 @@ from agentlint.packs.universal.no_secrets import NoSecrets
 from agentlint.packs.universal.no_skip_hooks import NoSkipHooks
 from agentlint.packs.universal.no_test_weakening import NoTestWeakening
 from agentlint.packs.universal.no_todo_left import NoTodoLeft
+from agentlint.packs.universal.package_publish_guard import PackagePublishGuard
 from agentlint.packs.universal.test_with_changes import TestWithChanges
 from agentlint.packs.universal.token_budget import TokenBudget
 
@@ -26,6 +28,8 @@ RULES = [
     DependencyHygiene(),
     NoTestWeakening(),
     GitCheckpoint(),  # disabled by default — opt in via config
+    CicdPipelineGuard(),
+    PackagePublishGuard(),
     # PostToolUse
     MaxFileSize(),
     DriftDetector(),
