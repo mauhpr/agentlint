@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
+from agentlint.packs.autopilot.bash_rate_limiter import BashRateLimiter
 from agentlint.packs.autopilot.destructive_confirmation_gate import DestructiveConfirmationGate
 from agentlint.packs.autopilot.dry_run_required import DryRunRequired
 from agentlint.packs.autopilot.production_guard import ProductionGuard
@@ -260,3 +261,74 @@ class TestDryRunRequired:
         ctx = _ctx("Bash", {"command": "pulumi preview"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
+
+
+class TestBashRateLimiter:
+    rule = BashRateLimiter()
+
+    def _ctx_with_state(self, command: str, state: dict | None = None, config: dict | None = None) -> RuleContext:
+        return RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Bash",
+            tool_input={"command": command},
+            project_dir="/tmp/project",
+            config=config or {},
+            session_state=state if state is not None else {},
+        )
+
+    def test_allows_first_destructive_op(self):
+        ctx = self._ctx_with_state("rm -rf ./dist")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_tracks_destructive_ops_in_state(self):
+        state = {}
+        ctx = self._ctx_with_state("rm -rf ./dist", state=state)
+        self.rule.evaluate(ctx)
+        assert "rate_limiter" in state
+        assert state["rate_limiter"]["destructive_count"] == 1
+
+    def test_blocks_after_exceeding_limit(self):
+        import time
+        state = {
+            "rate_limiter": {
+                "destructive_count": 5,
+                "window_start": time.time(),
+            }
+        }
+        ctx = self._ctx_with_state(
+            "rm -rf ./logs",
+            state=state,
+            config={"bash-rate-limiter": {"max_destructive_ops": 5, "window_seconds": 300}},
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.ERROR
+
+    def test_resets_after_window_expires(self):
+        import time
+        state = {
+            "rate_limiter": {
+                "destructive_count": 5,
+                "window_start": time.time() - 400,  # 400s ago → window expired
+            }
+        }
+        ctx = self._ctx_with_state(
+            "rm -rf ./logs",
+            state=state,
+            config={"bash-rate-limiter": {"max_destructive_ops": 5, "window_seconds": 300}},
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_non_destructive_command_not_counted(self):
+        state = {}
+        ctx = self._ctx_with_state("ls -la", state=state)
+        self.rule.evaluate(ctx)
+        assert state.get("rate_limiter", {}).get("destructive_count", 0) == 0
+
+    def test_drop_database_counted(self):
+        state = {}
+        ctx = self._ctx_with_state("psql -c 'DROP DATABASE myapp'", state=state)
+        self.rule.evaluate(ctx)
+        assert state["rate_limiter"]["destructive_count"] == 1
