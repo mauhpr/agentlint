@@ -13,8 +13,8 @@ _CATASTROPHIC_OPS: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"\bDROP\s+TABLE\b", re.IGNORECASE), "DROP TABLE", "DROP TABLE"),
     (re.compile(r"\bterraform\s+destroy\b", re.IGNORECASE), "terraform destroy", "terraform destroy"),
     (re.compile(r"\bkubectl\s+delete\s+namespace\b", re.IGNORECASE), "kubectl delete namespace", "kubectl delete namespace"),
-    (re.compile(r"\bgcloud\s+projects?\s+delete\b", re.IGNORECASE), "gcloud project delete", "gcloud projects delete"),
-    (re.compile(r"\bheroku\s+apps?\s+destroy\b", re.IGNORECASE), "heroku app destroy", "heroku apps destroy"),
+    (re.compile(r"\bgcloud\s+projects?\s+delete\b", re.IGNORECASE), "gcloud projects delete", "gcloud projects delete"),
+    (re.compile(r"\bheroku\s+apps?\s+destroy\b", re.IGNORECASE), "heroku apps destroy", "heroku apps destroy"),
 ]
 
 
