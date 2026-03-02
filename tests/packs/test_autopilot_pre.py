@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
 from agentlint.packs.autopilot.destructive_confirmation_gate import DestructiveConfirmationGate
+from agentlint.packs.autopilot.dry_run_required import DryRunRequired
 from agentlint.packs.autopilot.production_guard import ProductionGuard
 
 
@@ -179,5 +180,64 @@ class TestDestructiveConfirmationGate:
 
     def test_psql_select_passes(self):
         ctx = self._ctx_with_state("psql -c 'SELECT * FROM users LIMIT 10'")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+
+class TestDryRunRequired:
+    rule = DryRunRequired()
+
+    # --- Blocking apply without dry-run ---
+
+    def test_blocks_terraform_apply_without_plan(self):
+        ctx = _ctx("Bash", {"command": "terraform apply"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.ERROR
+
+    def test_blocks_terraform_apply_auto_approve(self):
+        ctx = _ctx("Bash", {"command": "terraform apply -auto-approve"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_blocks_ansible_without_check(self):
+        ctx = _ctx("Bash", {"command": "ansible-playbook site.yml"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_blocks_kubectl_apply_without_dry_run(self):
+        ctx = _ctx("Bash", {"command": "kubectl apply -f deployment.yaml"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_blocks_helm_upgrade_without_dry_run(self):
+        ctx = _ctx("Bash", {"command": "helm upgrade myapp ./chart"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    # --- Safe (has dry-run flag) ---
+
+    def test_terraform_plan_passes(self):
+        ctx = _ctx("Bash", {"command": "terraform plan"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_ansible_check_mode_passes(self):
+        ctx = _ctx("Bash", {"command": "ansible-playbook site.yml --check"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_kubectl_apply_dry_run_passes(self):
+        ctx = _ctx("Bash", {"command": "kubectl apply -f deployment.yaml --dry-run=client"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_helm_upgrade_dry_run_passes(self):
+        ctx = _ctx("Bash", {"command": "helm upgrade myapp ./chart --dry-run"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_kubectl_get_passes(self):
+        ctx = _ctx("Bash", {"command": "kubectl get pods"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
