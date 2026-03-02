@@ -1,17 +1,15 @@
 """Tests for autopilot pack PreToolUse rules."""
 from __future__ import annotations
 
-import pytest
-
 from agentlint.models import HookEvent, RuleContext, Severity
 from agentlint.packs.autopilot.production_guard import ProductionGuard
 
 
-def _ctx(command: str, config: dict | None = None) -> RuleContext:
+def _ctx(tool_name: str, tool_input: dict, config: dict | None = None) -> RuleContext:
     return RuleContext(
         event=HookEvent.PRE_TOOL_USE,
-        tool_name="Bash",
-        tool_input={"command": command},
+        tool_name=tool_name,
+        tool_input=tool_input,
         project_dir="/tmp/project",
         config=config or {},
     )
@@ -23,48 +21,48 @@ class TestProductionGuard:
     # --- Detection ---
 
     def test_blocks_psql_prod_connection_string(self):
-        ctx = _ctx("psql postgresql://user:pass@prod-db.example.com/myapp")
+        ctx = _ctx("Bash", {"command": "psql postgresql://user:pass@prod-db.example.com/myapp"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
         assert violations[0].severity == Severity.ERROR
 
     def test_blocks_psql_production_database_name(self):
-        ctx = _ctx("psql -h localhost -d production -U admin")
+        ctx = _ctx("Bash", {"command": "psql -h localhost -d production -U admin"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_blocks_gcloud_prod_project(self):
-        ctx = _ctx("gcloud --project=my-production-project deploy")
+        ctx = _ctx("Bash", {"command": "gcloud --project=my-production-project deploy"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_blocks_gcloud_project_flag_prod(self):
-        ctx = _ctx("gcloud compute instances list --project prod-env-123")
+        ctx = _ctx("Bash", {"command": "gcloud compute instances list --project prod-env-123"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_blocks_aws_prod_profile(self):
-        ctx = _ctx("aws s3 ls --profile production")
+        ctx = _ctx("Bash", {"command": "aws s3 ls --profile production"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_blocks_aws_prod_account_env(self):
-        ctx = _ctx("AWS_PROFILE=prod aws ec2 describe-instances")
+        ctx = _ctx("Bash", {"command": "AWS_PROFILE=prod aws ec2 describe-instances"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_blocks_mysql_prod_host(self):
-        ctx = _ctx("mysql -h prod-mysql.internal -u root -p mydb")
+        ctx = _ctx("Bash", {"command": "mysql -h prod-mysql.internal -u root -p mydb"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_blocks_connection_string_with_live(self):
-        ctx = _ctx("psql postgresql://user:pass@live-db.example.com/app")
+        ctx = _ctx("Bash", {"command": "psql postgresql://user:pass@live-db.example.com/app"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_blocks_psql_prod_host_flag(self):
-        ctx = _ctx("psql -h prod-db.internal -U admin myapp")
+        ctx = _ctx("Bash", {"command": "psql -h prod-db.internal -U admin myapp"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
@@ -72,7 +70,8 @@ class TestProductionGuard:
 
     def test_allowed_project_passes(self):
         ctx = _ctx(
-            "gcloud --project=my-production-project deploy",
+            "Bash",
+            {"command": "gcloud --project=my-production-project deploy"},
             config={"production-guard": {"allowed_projects": ["my-production-project"]}},
         )
         violations = self.rule.evaluate(ctx)
@@ -80,7 +79,8 @@ class TestProductionGuard:
 
     def test_allowed_host_passes(self):
         ctx = _ctx(
-            "psql -h prod-db.example.com -d myapp",
+            "Bash",
+            {"command": "psql -h prod-db.example.com -d myapp"},
             config={"production-guard": {"allowed_hosts": ["prod-db.example.com"]}},
         )
         violations = self.rule.evaluate(ctx)
@@ -89,26 +89,21 @@ class TestProductionGuard:
     # --- Non-production pass through ---
 
     def test_dev_database_passes(self):
-        ctx = _ctx("psql -h localhost -d myapp_dev -U admin")
+        ctx = _ctx("Bash", {"command": "psql -h localhost -d myapp_dev -U admin"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_staging_database_passes(self):
-        ctx = _ctx("psql -h staging-db.internal -d myapp_staging -U user")
+        ctx = _ctx("Bash", {"command": "psql -h staging-db.internal -d myapp_staging -U user"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_gcloud_dev_project_passes(self):
-        ctx = _ctx("gcloud --project=my-dev-project compute instances list")
+        ctx = _ctx("Bash", {"command": "gcloud --project=my-dev-project compute instances list"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_non_bash_tool_ignored(self):
-        ctx = RuleContext(
-            event=HookEvent.PRE_TOOL_USE,
-            tool_name="Write",
-            tool_input={"file_path": "prod.py", "content": "x=1"},
-            project_dir="/tmp/project",
-        )
+        ctx = _ctx("Write", {"file_path": "prod.py", "content": "x=1"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
