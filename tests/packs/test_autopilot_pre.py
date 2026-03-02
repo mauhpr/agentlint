@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
+from agentlint.packs.autopilot.destructive_confirmation_gate import DestructiveConfirmationGate
 from agentlint.packs.autopilot.production_guard import ProductionGuard
 
 
@@ -105,5 +106,78 @@ class TestProductionGuard:
 
     def test_non_bash_tool_ignored(self):
         ctx = _ctx("Write", {"file_path": "prod.py", "content": "x=1"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+
+class TestDestructiveConfirmationGate:
+    rule = DestructiveConfirmationGate()
+
+    def _ctx_with_state(self, command: str, state: dict | None = None) -> RuleContext:
+        return RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Bash",
+            tool_input={"command": command},
+            project_dir="/tmp/project",
+            config={},
+            session_state=state or {},
+        )
+
+    # --- Blocking without confirmation ---
+
+    def test_blocks_drop_database_without_confirmation(self):
+        ctx = self._ctx_with_state("psql -c 'DROP DATABASE myapp'")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.ERROR
+
+    def test_blocks_terraform_destroy_without_confirmation(self):
+        ctx = self._ctx_with_state("terraform destroy -auto-approve")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_blocks_kubectl_delete_namespace_without_confirmation(self):
+        ctx = self._ctx_with_state("kubectl delete namespace production")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_blocks_drop_table_without_confirmation(self):
+        ctx = self._ctx_with_state("psql -c 'DROP TABLE users CASCADE'")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_blocks_gcloud_delete_project(self):
+        ctx = self._ctx_with_state("gcloud projects delete my-project")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    # --- Passes with confirmation in session state ---
+
+    def test_passes_with_confirmation_flag(self):
+        state = {"confirmed_destructive_ops": ["DROP DATABASE"]}
+        ctx = self._ctx_with_state("psql -c 'DROP DATABASE myapp'", state=state)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_passes_terraform_destroy_with_confirmation(self):
+        state = {"confirmed_destructive_ops": ["terraform destroy"]}
+        ctx = self._ctx_with_state("terraform destroy -auto-approve", state=state)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    # --- Safe commands pass through ---
+
+    def test_terraform_plan_passes(self):
+        ctx = self._ctx_with_state("terraform plan")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_kubectl_get_passes(self):
+        ctx = self._ctx_with_state("kubectl get pods")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_psql_select_passes(self):
+        ctx = self._ctx_with_state("psql -c 'SELECT * FROM users LIMIT 10'")
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
