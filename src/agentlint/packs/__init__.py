@@ -19,6 +19,7 @@ PACK_MODULES = {
     "react": "agentlint.packs.react",
     "seo": "agentlint.packs.seo",
     "security": "agentlint.packs.security",
+    "autopilot": "agentlint.packs.autopilot",
 }
 
 
