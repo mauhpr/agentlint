@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
 from agentlint.packs.autopilot.bash_rate_limiter import BashRateLimiter
+from agentlint.packs.autopilot.cross_account_guard import CrossAccountGuard
 from agentlint.packs.autopilot.destructive_confirmation_gate import DestructiveConfirmationGate
 from agentlint.packs.autopilot.dry_run_required import DryRunRequired
 from agentlint.packs.autopilot.production_guard import ProductionGuard
@@ -332,3 +333,61 @@ class TestBashRateLimiter:
         ctx = self._ctx_with_state("psql -c 'DROP DATABASE myapp'", state=state)
         self.rule.evaluate(ctx)
         assert state["rate_limiter"]["destructive_count"] == 1
+
+
+class TestCrossAccountGuard:
+    rule = CrossAccountGuard()
+
+    def _ctx_with_state(self, command: str, state: dict | None = None) -> RuleContext:
+        return RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Bash",
+            tool_input={"command": command},
+            project_dir="/tmp/project",
+            config={},
+            session_state=state if state is not None else {},
+        )
+
+    def test_first_gcloud_project_registers_no_violation(self):
+        state = {}
+        ctx = self._ctx_with_state("gcloud --project=my-dev compute instances list", state=state)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+        assert "cross_account" in state
+        assert "my-dev" in state["cross_account"]["seen_gcloud_projects"]
+
+    def test_second_different_gcloud_project_warns(self):
+        state = {"cross_account": {"seen_gcloud_projects": ["my-dev"], "seen_aws_profiles": []}}
+        ctx = self._ctx_with_state("gcloud --project=my-production compute instances list", state=state)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.WARNING
+
+    def test_same_gcloud_project_no_warning(self):
+        state = {"cross_account": {"seen_gcloud_projects": ["my-dev"], "seen_aws_profiles": []}}
+        ctx = self._ctx_with_state("gcloud --project=my-dev compute instances list", state=state)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_first_aws_profile_registers_no_violation(self):
+        state = {}
+        ctx = self._ctx_with_state("aws s3 ls --profile staging", state=state)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_second_different_aws_profile_warns(self):
+        state = {"cross_account": {"seen_gcloud_projects": [], "seen_aws_profiles": ["staging"]}}
+        ctx = self._ctx_with_state("aws s3 ls --profile production", state=state)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_same_aws_profile_no_warning(self):
+        state = {"cross_account": {"seen_gcloud_projects": [], "seen_aws_profiles": ["staging"]}}
+        ctx = self._ctx_with_state("aws s3 ls --profile staging", state=state)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_no_project_flag_ignored(self):
+        ctx = self._ctx_with_state("gcloud compute instances list")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
