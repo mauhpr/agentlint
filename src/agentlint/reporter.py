@@ -89,7 +89,29 @@ class Reporter:
 
         return json.dumps({"systemMessage": "\n".join(lines)})
 
-    def format_session_report(self, files_changed: int = 0, cb_state: dict | None = None) -> str:
+    def format_subagent_start_output(self) -> str | None:
+        """Format SubagentStart output with additionalContext for injection into subagent.
+
+        Uses hookSpecificOutput to inject safety messages into the subagent's context.
+        Returns None if no violations (nothing to inject).
+        """
+        if not self.violations:
+            return None
+
+        context_lines = [v.message for v in self.violations]
+        return json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "SubagentStart",
+                "additionalContext": "\n".join(context_lines),
+            }
+        })
+
+    def format_session_report(
+        self,
+        files_changed: int = 0,
+        cb_state: dict | None = None,
+        session_state: dict | None = None,
+    ) -> str:
         """Format a session summary report for the Stop event."""
         errors = [v for v in self.violations if v.severity == Severity.ERROR]
         warnings = [v for v in self.violations if v.severity == Severity.WARNING]
@@ -126,5 +148,25 @@ class Reporter:
                     state = data.get("state", "unknown")
                     count = data.get("fire_count", 0)
                     lines.append(f"  [{rid}] {state} (fired {count}x)")
+
+        # Subagent activity (from session state)
+        state = session_state or {}
+        audits = state.get("subagent_audits", [])
+        spawned = state.get("subagents_spawned", [])
+        if spawned or audits:
+            lines.append("")
+            lines.append(f"Subagent Activity: {len(spawned)} spawned, {len(audits)} audited")
+            for audit in audits:
+                agent_type = audit.get("agent_type", "unknown")
+                agent_id = audit.get("agent_id", "")
+                id_suffix = f" ({agent_id[:7]})" if agent_id and agent_id != "unknown" else ""
+                cmds = audit.get("commands_count", 0)
+                findings = audit.get("findings", [])
+                if findings:
+                    lines.append(f"  [{agent_type}{id_suffix}] {cmds} commands, {len(findings)} finding(s):")
+                    for _label, cmd in findings:
+                        lines.append(f"    - {cmd}")
+                else:
+                    lines.append(f"  [{agent_type}{id_suffix}] {cmds} commands, no findings")
 
         return "\n".join(lines)

@@ -1,6 +1,13 @@
 ---
 name: doctor
 description: Diagnose AgentLint configuration and hook installation issues
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write"
+      hooks:
+        - type: command
+          command: "${CLAUDE_PLUGIN_ROOT}/bin/resolve-and-run.sh check --event PreToolUse --project-dir \"$CLAUDE_PROJECT_DIR\""
+          timeout: 5
 ---
 
 You are a diagnostic agent for AgentLint configuration issues.

@@ -5,9 +5,9 @@ from agentlint.models import HookEvent, RuleContext, Severity
 from agentlint.packs import load_rules
 
 
-def test_autopilot_pack_has_twelve_rules():
+def test_autopilot_pack_has_fourteen_rules():
     rules = load_rules(["autopilot"])
-    assert len(rules) == 12
+    assert len(rules) == 14
     rule_ids = {r.id for r in rules}
     assert rule_ids == {
         "production-guard",
@@ -22,6 +22,8 @@ def test_autopilot_pack_has_twelve_rules():
         "system-scheduler-guard",
         "network-firewall-guard",
         "docker-volume-guard",
+        "subagent-safety-briefing",
+        "subagent-transcript-audit",
     }
 
 

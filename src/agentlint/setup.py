@@ -83,6 +83,17 @@ def build_hooks(cmd: str) -> dict:
                 ],
             }
         ],
+        "SubagentStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f"{cmd} check --event SubagentStart",
+                        "timeout": 5,
+                    }
+                ],
+            }
+        ],
         "SubagentStop": [
             {
                 "hooks": [

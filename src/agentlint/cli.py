@@ -75,9 +75,14 @@ def check(event: str, project_dir: str | None):
         config=rules_config,
         session_state=session_state,
         prompt=raw.get("prompt"),
-        subagent_output=raw.get("subagent_output"),
+        # Claude Code sends "last_assistant_message" for SubagentStop;
+        # "subagent_output" is a legacy field name kept for backward compatibility.
+        subagent_output=raw.get("last_assistant_message") or raw.get("subagent_output"),
         notification_type=raw.get("notification_type"),
         compact_source=raw.get("compact_source"),
+        agent_transcript_path=raw.get("agent_transcript_path"),
+        agent_type=raw.get("agent_type"),
+        agent_id=raw.get("agent_id"),
     )
 
     # Track files touched during the session for the Stop report
@@ -116,6 +121,9 @@ def check(event: str, project_dir: str | None):
                 subagent_output=context.subagent_output,
                 notification_type=context.notification_type,
                 compact_source=context.compact_source,
+                agent_transcript_path=context.agent_transcript_path,
+                agent_type=context.agent_type,
+                agent_id=context.agent_id,
             )
 
     # For PostToolUse on file operations, try to read file content
@@ -152,6 +160,9 @@ def check(event: str, project_dir: str | None):
                 subagent_output=context.subagent_output,
                 notification_type=context.notification_type,
                 compact_source=context.compact_source,
+                agent_transcript_path=context.agent_transcript_path,
+                agent_type=context.agent_type,
+                agent_id=context.agent_id,
             )
 
     engine = Engine(config=config, rules=rules)
@@ -161,7 +172,10 @@ def check(event: str, project_dir: str | None):
     save_session(session_state)
 
     reporter = Reporter(violations=result.violations, rules_evaluated=result.rules_evaluated)
-    output = reporter.format_hook_output(event=event)
+    if event == "SubagentStart":
+        output = reporter.format_subagent_start_output()
+    else:
+        output = reporter.format_hook_output(event=event)
     if output:
         click.echo(output)
 
@@ -244,7 +258,11 @@ def report(project_dir: str | None):
 
     reporter = Reporter(violations=result.violations, rules_evaluated=result.rules_evaluated)
     cb_state = session_state.get("circuit_breaker", {})
-    report_text = reporter.format_session_report(files_changed=len(changed_files), cb_state=cb_state)
+    report_text = reporter.format_session_report(
+        files_changed=len(changed_files),
+        cb_state=cb_state,
+        session_state=session_state,
+    )
     output = json.dumps({"systemMessage": report_text, "continue": True})
     click.echo(output)
 

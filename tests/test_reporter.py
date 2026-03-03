@@ -186,6 +186,183 @@ class TestFormatSessionReport:
         assert "WARN01" in report
 
 
+class TestFormatSubagentStartOutput:
+    """v0.8.0 — SubagentStart additionalContext output."""
+
+    def test_no_violations_returns_none(self) -> None:
+        reporter = Reporter(violations=[])
+        assert reporter.format_subagent_start_output() is None
+
+    def test_single_violation_returns_additional_context(self) -> None:
+        violations = [_make_violation(
+            rule_id="subagent-safety-briefing",
+            severity=Severity.INFO,
+            message="SAFETY NOTICE: This subagent is unmonitored",
+        )]
+        reporter = Reporter(violations=violations)
+        output = reporter.format_subagent_start_output()
+        assert output is not None
+
+        parsed = json.loads(output)
+        assert "hookSpecificOutput" in parsed
+        hook_output = parsed["hookSpecificOutput"]
+        assert hook_output["hookEventName"] == "SubagentStart"
+        assert "SAFETY NOTICE" in hook_output["additionalContext"]
+
+    def test_multiple_violations_joined(self) -> None:
+        violations = [
+            _make_violation(message="Line one"),
+            _make_violation(message="Line two"),
+        ]
+        reporter = Reporter(violations=violations)
+        output = reporter.format_subagent_start_output()
+        parsed = json.loads(output)
+        context = parsed["hookSpecificOutput"]["additionalContext"]
+        assert "Line one" in context
+        assert "Line two" in context
+        assert "\n" in context
+
+
+class TestSessionReportSubagentActivity:
+    """v0.8.0 — Subagent Activity section in session report."""
+
+    def test_report_includes_subagent_spawns(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        session_state = {
+            "subagents_spawned": [
+                {"agent_type": "general-purpose", "agent_id": "abc-123"},
+            ],
+        }
+        report = reporter.format_session_report(
+            files_changed=0, session_state=session_state,
+        )
+        assert "Subagent Activity" in report
+        assert "1 spawned" in report
+
+    def test_report_includes_audit_findings(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        session_state = {
+            "subagents_spawned": [{"agent_type": "general-purpose", "agent_id": "abc-123"}],
+            "subagent_audits": [
+                {
+                    "agent_type": "general-purpose",
+                    "agent_id": "abc-123",
+                    "commands_count": 3,
+                    "findings": [("terraform destroy", "terraform destroy -auto-approve")],
+                },
+            ],
+        }
+        report = reporter.format_session_report(
+            files_changed=0, session_state=session_state,
+        )
+        assert "Subagent Activity" in report
+        assert "1 finding" in report
+        assert "terraform destroy -auto-approve" in report
+        assert "abc-123" in report
+
+    def test_report_shows_no_findings_audit(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        session_state = {
+            "subagents_spawned": [{"agent_type": "Explore", "agent_id": "xyz-456"}],
+            "subagent_audits": [
+                {
+                    "agent_type": "Explore",
+                    "agent_id": "xyz-456",
+                    "commands_count": 5,
+                    "findings": [],
+                },
+            ],
+        }
+        report = reporter.format_session_report(
+            files_changed=0, session_state=session_state,
+        )
+        assert "no findings" in report
+        assert "xyz-456" in report
+
+    def test_no_subagent_section_when_empty(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        report = reporter.format_session_report(files_changed=0, session_state={})
+        assert "Subagent Activity" not in report
+
+    def test_no_subagent_section_when_none(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        report = reporter.format_session_report(files_changed=0, session_state=None)
+        assert "Subagent Activity" not in report
+
+    def test_mismatched_spawns_vs_audits(self) -> None:
+        """3 spawned, 1 audited — report should reflect partial audit coverage."""
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        session_state = {
+            "subagents_spawned": [
+                {"agent_type": "general-purpose", "agent_id": "aaa"},
+                {"agent_type": "Explore", "agent_id": "bbb"},
+                {"agent_type": "general-purpose", "agent_id": "ccc"},
+            ],
+            "subagent_audits": [
+                {
+                    "agent_type": "general-purpose",
+                    "agent_id": "aaa",
+                    "commands_count": 2,
+                    "findings": [],
+                },
+            ],
+        }
+        report = reporter.format_session_report(
+            files_changed=0, session_state=session_state,
+        )
+        assert "3 spawned, 1 audited" in report
+
+    def test_duplicate_agent_type_disambiguated_by_id(self) -> None:
+        """Two agents of the same type should show different agent_ids."""
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        session_state = {
+            "subagents_spawned": [
+                {"agent_type": "general-purpose", "agent_id": "aaa-111"},
+                {"agent_type": "general-purpose", "agent_id": "bbb-222"},
+            ],
+            "subagent_audits": [
+                {
+                    "agent_type": "general-purpose",
+                    "agent_id": "aaa-111",
+                    "commands_count": 3,
+                    "findings": [],
+                },
+                {
+                    "agent_type": "general-purpose",
+                    "agent_id": "bbb-222",
+                    "commands_count": 1,
+                    "findings": [("rm -rf", "rm -rf /tmp/data")],
+                },
+            ],
+        }
+        report = reporter.format_session_report(
+            files_changed=0, session_state=session_state,
+        )
+        assert "aaa-111" in report
+        assert "bbb-222" in report
+        assert report.count("[general-purpose") == 2
+
+    def test_audit_with_unknown_agent_id_no_suffix(self) -> None:
+        """Agent with 'unknown' agent_id should not show id suffix."""
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        session_state = {
+            "subagents_spawned": [],
+            "subagent_audits": [
+                {
+                    "agent_type": "Explore",
+                    "agent_id": "unknown",
+                    "commands_count": 2,
+                    "findings": [],
+                },
+            ],
+        }
+        report = reporter.format_session_report(
+            files_changed=0, session_state=session_state,
+        )
+        assert "[Explore]" in report
+        assert "unknown" not in report.split("Subagent Activity")[1].split("[Explore]")[1]
+
+
 class TestSessionReportCircuitBreaker:
     def test_report_includes_cb_activity(self) -> None:
         """Session report should show degraded rules."""

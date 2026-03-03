@@ -1,5 +1,44 @@
 # Changelog
 
+## v0.8.0 (2026-03-02) — Subagent Safety
+
+### The problem
+
+Claude Code's hooks fire on the **parent session only**. When a subagent spawns (via the Agent tool), its Bash/Write/Edit calls do not trigger parent PreToolUse hooks. AgentLint's blocking rules had zero protection for subagent actions.
+
+### New: Subagent safety (2 autopilot rules)
+
+- **`subagent-safety-briefing`** (INFO, SubagentStart) — Injects a safety notice into the subagent's context via `additionalContext`, warning it about the lack of real-time guardrails and advising against destructive infrastructure commands.
+- **`subagent-transcript-audit`** (WARNING, SubagentStop) — Reads the subagent's JSONL transcript and scans all Bash commands against dangerous patterns (destructive ops, cloud deletions, firewall mutations, production DB access, git force push). Findings appear in the session Stop report.
+
+### New: Plugin agent frontmatter hooks
+
+- AgentLint's own plugin agents (`doctor`, `fix`, `security-audit`) now include `PreToolUse` frontmatter hooks for **real-time blocking** protection inside the subagent context.
+
+### Fixes
+
+- **SubagentStop field mapping** — Fixed `subagent_output` to read from `last_assistant_message` (correct Claude Code protocol field name). Falls back to `subagent_output` for backward compatibility.
+- **RuleContext fields** — Added `agent_transcript_path`, `agent_type`, `agent_id` fields to `RuleContext`. All propagated through CLI context re-creation blocks.
+
+### Infrastructure
+
+- **SubagentStart hook registered** — `agentlint setup` and the plugin now register the SubagentStart hook event (was missing).
+- **Reporter** — New `format_subagent_start_output()` method for SubagentStart additionalContext injection. Session report includes "Subagent Activity" section with spawn and audit data.
+- **CLI routing** — SubagentStart events routed to the new format method instead of generic `format_hook_output()`.
+
+### Documentation
+
+- New [docs/subagent-safety.md](docs/subagent-safety.md) — explains the limitation, what AgentLint does, how to protect your own subagents, and known limitations.
+- README updated with subagent safety note in autopilot pack section.
+
+### Rule count
+
+59 rules across 8 packs (was 57/8). 14 autopilot rules (was 12).
+
+### Tests
+
+1128 tests, 96% coverage.
+
 ## v0.7.1 (2026-03-02) — Vision & framing
 
 - README: expanded tagline to "code quality, security, and infrastructure safety"

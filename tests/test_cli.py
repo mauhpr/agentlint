@@ -271,7 +271,7 @@ class TestListRulesCommand:
         assert "cloud-resource-deletion" in result.output
         assert "network-firewall-guard" in result.output
         assert "docker-volume-guard" in result.output
-        assert "12 rules total" in result.output
+        assert "14 rules total" in result.output
 
     def test_list_rules_universal_pack(self) -> None:
         """list-rules --pack universal should show only universal rules."""
@@ -428,6 +428,89 @@ class TestReportCommand:
 
         session = load_session()
         assert str(target) in session.get("files_touched", [])
+
+
+class TestSubagentFieldMapping:
+    """v0.8.0 — subagent field mapping in CLI."""
+
+    def test_subagent_start_passthrough(self, tmp_path) -> None:
+        """SubagentStart event should accept agent fields."""
+        payload = json.dumps({
+            "agent_type": "general-purpose",
+            "agent_id": "abc-123",
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "SubagentStart", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_subagent_stop_reads_last_assistant_message(self, tmp_path) -> None:
+        """SubagentStop should read last_assistant_message field."""
+        payload = json.dumps({
+            "last_assistant_message": "I completed the task",
+            "agent_type": "general-purpose",
+            "agent_id": "abc-123",
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "SubagentStop", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_subagent_stop_falls_back_to_subagent_output(self, tmp_path) -> None:
+        """SubagentStop should fall back to subagent_output for backward compat."""
+        payload = json.dumps({
+            "subagent_output": "legacy field",
+            "agent_type": "general-purpose",
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "SubagentStop", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_subagent_stop_with_transcript_path(self, tmp_path) -> None:
+        """SubagentStop should accept agent_transcript_path."""
+        payload = json.dumps({
+            "agent_transcript_path": "/tmp/transcript.jsonl",
+            "agent_type": "general-purpose",
+            "agent_id": "abc-123",
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "SubagentStop", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_subagent_start_with_autopilot_returns_context(self, tmp_path) -> None:
+        """SubagentStart with autopilot enabled should return additionalContext."""
+        config_path = tmp_path / "agentlint.yml"
+        config_path.write_text("stack: auto\npacks:\n  - universal\n  - autopilot\n")
+
+        payload = json.dumps({
+            "agent_type": "general-purpose",
+            "agent_id": "abc-123",
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "SubagentStart", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert "hookSpecificOutput" in parsed
+        assert parsed["hookSpecificOutput"]["hookEventName"] == "SubagentStart"
+        assert "SAFETY NOTICE" in parsed["hookSpecificOutput"]["additionalContext"]
 
 
 class TestReportCircuitBreaker:

@@ -10,6 +10,8 @@ from agentlint.packs.autopilot.dry_run_required import DryRunRequired
 from agentlint.packs.autopilot.network_firewall_guard import NetworkFirewallGuard
 from agentlint.packs.autopilot.operation_journal import OperationJournal
 from agentlint.packs.autopilot.production_guard import ProductionGuard
+from agentlint.packs.autopilot.subagent_safety_briefing import SubagentSafetyBriefing
+from agentlint.packs.autopilot.subagent_transcript_audit import SubagentTranscriptAudit
 from agentlint.packs.autopilot.system_scheduler_guard import SystemSchedulerGuard
 
 RULES = [
@@ -25,4 +27,6 @@ RULES = [
     SystemSchedulerGuard(),
     NetworkFirewallGuard(),
     DockerVolumeGuard(),
+    SubagentSafetyBriefing(),
+    SubagentTranscriptAudit(),
 ]

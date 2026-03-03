@@ -9,5 +9,5 @@ def test_autopilot_registered_in_pack_modules():
 def test_autopilot_loads_without_error():
     rules = load_rules(["autopilot"])
     assert isinstance(rules, list)
-    # 6 original + 6 new safety rules = 12
-    assert len(rules) == 12
+    # 6 original + 6 new safety rules + 2 subagent rules = 14
+    assert len(rules) == 14
