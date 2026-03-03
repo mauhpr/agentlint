@@ -98,6 +98,25 @@ class TestExtractBashCommands:
         commands = _extract_bash_commands(path)
         assert commands == []
 
+    def test_blank_lines_skipped(self, tmp_path):
+        """Blank lines in JSONL should be silently skipped."""
+        path = str(tmp_path / "transcript.jsonl")
+        with open(path, "w") as f:
+            f.write("\n")
+            f.write("   \n")
+            f.write(json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}}) + "\n")
+            f.write("\n")
+        commands = _extract_bash_commands(path)
+        assert commands == ["ls"]
+
+    def test_non_dict_content_blocks_skipped(self, tmp_path):
+        """Content blocks that are not dicts (e.g. strings) should be skipped."""
+        path = _write_transcript(tmp_path, [
+            {"content": ["plain string", 42, {"type": "tool_use", "name": "Bash", "input": {"command": "pwd"}}]},
+        ])
+        commands = _extract_bash_commands(path)
+        assert commands == ["pwd"]
+
 
 class TestCheckCommand:
     def test_terraform_destroy(self):
