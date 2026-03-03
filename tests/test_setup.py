@@ -195,7 +195,7 @@ class TestResolveCommand:
 
 
 class TestBuildHooks:
-    EXPECTED_EVENTS = {"PreToolUse", "PostToolUse", "UserPromptSubmit", "SubagentStop", "Notification", "Stop"}
+    EXPECTED_EVENTS = {"PreToolUse", "PostToolUse", "UserPromptSubmit", "SubagentStart", "SubagentStop", "Notification", "Stop"}
 
     def test_builds_all_events(self) -> None:
         hooks = build_hooks("agentlint")
@@ -235,13 +235,14 @@ class TestBuildHooks:
         assert hooks["PreToolUse"][0]["hooks"][0]["timeout"] == 5
         assert hooks["PostToolUse"][0]["hooks"][0]["timeout"] == 10
         assert hooks["UserPromptSubmit"][0]["hooks"][0]["timeout"] == 5
+        assert hooks["SubagentStart"][0]["hooks"][0]["timeout"] == 5
         assert hooks["SubagentStop"][0]["hooks"][0]["timeout"] == 10
         assert hooks["Notification"][0]["hooks"][0]["timeout"] == 5
         assert hooks["Stop"][0]["hooks"][0]["timeout"] == 30
 
     def test_new_events_use_check_command(self) -> None:
         hooks = build_hooks("agentlint")
-        for event in ("UserPromptSubmit", "SubagentStop", "Notification"):
+        for event in ("UserPromptSubmit", "SubagentStart", "SubagentStop", "Notification"):
             cmd = hooks[event][0]["hooks"][0]["command"]
             assert cmd == f"agentlint check --event {event}"
 

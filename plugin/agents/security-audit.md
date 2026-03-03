@@ -1,6 +1,13 @@
 ---
 name: security-audit
 description: Run a comprehensive security audit of the codebase using AgentLint rules
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write"
+      hooks:
+        - type: command
+          command: "${CLAUDE_PLUGIN_ROOT}/bin/resolve-and-run.sh check --event PreToolUse --project-dir \"$CLAUDE_PROJECT_DIR\""
+          timeout: 5
 ---
 
 You are a security auditor using AgentLint to scan a codebase for vulnerabilities.

@@ -12,7 +12,7 @@ AI coding agents drift during long sessions — they introduce API keys into sou
 
 ## Vision
 
-The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 57 rules that run locally in milliseconds.
+The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 59 rules that run locally in milliseconds.
 
 The longer-term question is harder: **what does it mean for an agent to operate safely on real infrastructure?** When an agent can run `gcloud`, `kubectl`, `terraform`, or `iptables`, the blast radius is no longer a bad commit — it's a production outage or a deleted database.
 
@@ -20,7 +20,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 ## What it catches
 
-AgentLint ships with 57 rules across 8 packs, covering all 17 Claude Code hook events. The 17 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental:
+AgentLint ships with 59 rules across 8 packs, covering all 17 Claude Code hook events. The 17 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental:
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -138,7 +138,7 @@ rules:
 </details>
 
 <details>
-<summary><strong>Autopilot pack</strong> (12 rules) — ⚠️ experimental, opt-in</summary>
+<summary><strong>Autopilot pack</strong> (14 rules) — ⚠️ experimental, opt-in</summary>
 
 > **Alpha quality.** The autopilot pack is an early experiment in agent safety guardrails for cloud and infrastructure operations. Regex-based heuristics will produce false positives and false negatives — a mature framework for this problem doesn't exist yet. Enable it, experiment with it, report what breaks. Use at your own risk in production environments.
 
@@ -156,6 +156,10 @@ rules:
 | `system-scheduler-guard` | WARNING | Warns on crontab, systemctl enable, launchctl, scheduler file writes |
 | `network-firewall-guard` | ERROR | Blocks iptables flush, ufw disable, firewalld permanent rules, and default route changes |
 | `docker-volume-guard` | WARNING/ERROR | Blocks privileged containers (ERROR); warns on volume deletion and force-remove (WARNING) |
+| `subagent-safety-briefing` | INFO | Injects safety notice into subagent context on spawn (SubagentStart) |
+| `subagent-transcript-audit` | WARNING | Audits subagent transcripts for dangerous commands post-execution (SubagentStop) |
+
+**Subagent safety:** Parent session hooks don't fire for subagent tool calls — this is a Claude Code architectural property. The autopilot pack addresses this with safety briefing injection (SubagentStart) and post-hoc transcript auditing (SubagentStop). AgentLint's own plugin agents also have frontmatter PreToolUse hooks for real-time blocking. See [docs/subagent-safety.md](docs/subagent-safety.md) for details.
 
 Enable by adding `autopilot` to your packs list:
 

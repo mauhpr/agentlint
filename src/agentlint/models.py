@@ -85,6 +85,10 @@ class RuleContext:
     notification_type: str | None = None   # Notification
     compact_source: str | None = None      # PreCompact (manual/auto)
     file_content_before: str | None = None # PostToolUse diff support
+    # v0.8.0 — subagent context fields
+    agent_transcript_path: str | None = None  # SubagentStop — path to JSONL transcript
+    agent_type: str | None = None             # SubagentStart/SubagentStop — agent type name
+    agent_id: str | None = None               # SubagentStart/SubagentStop — unique ID
 
     @property
     def file_path(self) -> str | None:
