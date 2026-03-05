@@ -12,7 +12,7 @@ AI coding agents drift during long sessions — they introduce API keys into sou
 
 ## Vision
 
-The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 59 rules that run locally in milliseconds.
+The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 63 rules that run locally in milliseconds.
 
 The longer-term question is harder: **what does it mean for an agent to operate safely on real infrastructure?** When an agent can run `gcloud`, `kubectl`, `terraform`, or `iptables`, the blast radius is no longer a bad commit — it's a production outage or a deleted database.
 
@@ -20,7 +20,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 ## What it catches
 
-AgentLint ships with 59 rules across 8 packs, covering all 17 Claude Code hook events. The 17 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental:
+AgentLint ships with 63 rules across 8 packs, covering all 17 Claude Code hook events. The 17 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental:
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -138,7 +138,7 @@ rules:
 </details>
 
 <details>
-<summary><strong>Autopilot pack</strong> (14 rules) — ⚠️ experimental, opt-in</summary>
+<summary><strong>Autopilot pack</strong> (18 rules) — ⚠️ experimental, opt-in</summary>
 
 > **Alpha quality.** The autopilot pack is an early experiment in agent safety guardrails for cloud and infrastructure operations. Regex-based heuristics will produce false positives and false negatives — a mature framework for this problem doesn't exist yet. Enable it, experiment with it, report what breaks. Use at your own risk in production environments.
 
@@ -156,6 +156,10 @@ rules:
 | `system-scheduler-guard` | WARNING | Warns on crontab, systemctl enable, launchctl, scheduler file writes |
 | `network-firewall-guard` | ERROR | Blocks iptables flush, ufw disable, firewalld permanent rules, and default route changes |
 | `docker-volume-guard` | WARNING/ERROR | Blocks privileged containers (ERROR); warns on volume deletion and force-remove (WARNING) |
+| `ssh-destructive-command-guard` | WARNING/ERROR | Detects destructive commands via SSH (`rm -rf`, `mkfs`, `dd`, `reboot`, `iptables flush`, `terraform destroy`) |
+| `remote-boot-partition-guard` | ERROR | Blocks `rm` or `dd` targeting `/boot` kernel and bootloader files via SSH |
+| `remote-chroot-guard` | WARNING/ERROR | Detects bootloader package removal and risky repair commands inside chroot |
+| `package-manager-in-chroot` | WARNING | Warns on `apt`/`dpkg`/`yum`/`dnf`/`pacman` usage inside chroot environments |
 | `subagent-safety-briefing` | INFO | Injects safety notice into subagent context on spawn (SubagentStart) |
 | `subagent-transcript-audit` | WARNING | Audits subagent transcripts for dangerous commands post-execution (SubagentStop) |
 
@@ -253,7 +257,7 @@ The AgentLint plugin includes specialized agents for multi-step operations:
 
 > **Note:** The manual configuration below uses the bare `agentlint` command and requires it to be on your shell's PATH. For reliable resolution across all installation methods, use `agentlint setup` instead — it embeds the absolute path automatically.
 
-Add to your project's `.claude/settings.json`:
+`agentlint setup` registers 7 hook events. Add to your project's `.claude/settings.json`:
 
 ```json
 {
@@ -261,18 +265,38 @@ Add to your project's `.claude/settings.json`:
     "PreToolUse": [
       {
         "matcher": "Bash|Edit|Write",
-        "hooks": [{ "type": "command", "command": "agentlint check --event PreToolUse" }]
+        "hooks": [{ "type": "command", "command": "agentlint check --event PreToolUse", "timeout": 5 }]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
-        "hooks": [{ "type": "command", "command": "agentlint check --event PostToolUse" }]
+        "hooks": [{ "type": "command", "command": "agentlint check --event PostToolUse", "timeout": 10 }]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [{ "type": "command", "command": "agentlint check --event UserPromptSubmit", "timeout": 5 }]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [{ "type": "command", "command": "agentlint check --event SubagentStart", "timeout": 5 }]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [{ "type": "command", "command": "agentlint check --event SubagentStop", "timeout": 10 }]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [{ "type": "command", "command": "agentlint check --event Notification", "timeout": 5 }]
       }
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "agentlint report" }]
+        "hooks": [{ "type": "command", "command": "agentlint report", "timeout": 30 }]
       }
     ]
   }
@@ -385,11 +409,19 @@ See [docs/custom-rules.md](docs/custom-rules.md) for the full guide.
 
 ## How it works
 
-AgentLint hooks into Claude Code's lifecycle events:
+AgentLint supports all 17 Claude Code hook events. `agentlint setup` registers 7 events out of the box:
 
-1. **PreToolUse** — Before Write/Edit/Bash calls. Can **block** the action (exit code 2).
-2. **PostToolUse** — After Write/Edit. Injects warnings into the agent's context.
-3. **Stop** — End of session. Generates a quality report.
+| Event | When | Behavior |
+|-------|------|----------|
+| **PreToolUse** | Before Write/Edit/Bash | Can **block** the action |
+| **PostToolUse** | After Write/Edit | Injects warnings into agent context |
+| **UserPromptSubmit** | When user sends a prompt | Evaluates prompt-level rules |
+| **SubagentStart** | When a subagent spawns | Injects safety briefing via `additionalContext` |
+| **SubagentStop** | When a subagent completes | Audits subagent transcript for dangerous commands |
+| **Notification** | On system notifications | Evaluates notification-triggered rules |
+| **Stop** | End of session | Generates a quality report |
+
+Custom rules can target any of the 17 events (SessionStart, PreCompact, WorktreeCreate, TaskCompleted, etc.) — see [docs/custom-rules.md](docs/custom-rules.md) for the full list.
 
 Each invocation loads your config, evaluates matching rules, and returns JSON that Claude Code understands. Session state persists across invocations so rules like `drift-detector` can track cumulative behavior.
 

@@ -67,7 +67,61 @@
 
 ---
 
-## v0.7.0+ Backlog
+## v0.7.0 — "Autopilot Pack" (COMPLETED)
+
+### Autopilot Pack (14 rules) ✅
+
+Production-grade guardrails for unattended/autonomous agent sessions:
+
+**Infrastructure protection:**
+- `production-guard` — blocks commands targeting production environments
+- `cloud-resource-deletion` — blocks AWS/GCP/Azure deletions without confirmation
+- `cloud-infra-mutation` — blocks NAT, firewall, VPC, IAM, load balancer mutations
+- `cloud-paid-resource-creation` — warns on creating paid cloud resources
+- `network-firewall-guard` — blocks iptables flush, ufw disable, route changes
+- `docker-volume-guard` — blocks privileged containers, warns on volume deletion
+- `system-scheduler-guard` — warns on crontab, systemctl, launchctl changes
+
+**Session safety:**
+- `destructive-confirmation-gate` — requires session confirmation for DROP/destroy
+- `dry-run-required` — requires --dry-run for terraform/kubectl/ansible/helm
+- `bash-rate-limiter` — circuit-breaks after N destructive commands
+- `cross-account-guard` — warns on cloud account/project switches
+- `operation-journal` — audit log of all tool operations
+
+**New universal rules:**
+- `cicd-pipeline-guard` — session-state approval gate for CI/CD changes
+- `package-publish-guard` — blocks npm publish, twine upload, gem push
+
+**New security rule:**
+- `env-credential-reference` — warns on `*_FILE` env vars referencing local paths
+
+### Tests ✅
+
+- 1061 tests, 96% coverage
+
+---
+
+## v0.8.0 — "Subagent Safety" (COMPLETED)
+
+### Subagent Lifecycle Hooks ✅
+
+- `subagent-safety-briefing` (SubagentStart) — injects safety notice into subagent context
+- `subagent-transcript-audit` (SubagentStop) — audits JSONL transcripts for dangerous commands
+- Shared dangerous patterns module (`_dangerous_patterns.py`) used across autopilot rules
+
+### Session Report Enhancements ✅
+
+- Subagent Activity section with spawn counts, audit results, and agent_id disambiguation
+- Circuit Breaker status section for degraded rules
+
+### Tests ✅
+
+- 1136 tests, 96% coverage
+
+---
+
+## v0.9.0+ Backlog
 
 ### Governance / File-Scope Enforcement (Priority: P1, Size: L)
 
@@ -145,7 +199,7 @@ Enable severity/pack toggles without editing YAML directly. Plugin-level setting
 {
   "settings": {
     "severity": { "type": "enum", "values": ["strict", "standard", "relaxed"], "default": "standard" },
-    "packs": { "type": "multiselect", "values": ["universal", "python", "frontend", "react", "seo", "security"] }
+    "packs": { "type": "multiselect", "values": ["universal", "python", "frontend", "react", "seo", "security", "autopilot"] }
   }
 }
 ```

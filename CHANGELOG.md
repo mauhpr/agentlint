@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.9.0 (2026-03-05) — Remote Server Safety
+
+### The problem
+
+SSH and chroot operations on remote servers have extreme blast radius — no physical access for recovery. Existing autopilot rules covered cloud APIs but not raw shell-level server operations.
+
+### New rules (4 autopilot)
+
+- **`ssh-destructive-command-guard`** (WARNING/ERROR) — Detects destructive commands via SSH: `rm -rf`, `mkfs`, `dd`, `reboot`, `iptables flush`, `terraform destroy`. ERROR for catastrophic patterns, WARNING for risky ones.
+- **`remote-boot-partition-guard`** (ERROR) — Blocks `rm` or `dd` targeting `/boot` kernel and bootloader files via SSH.
+- **`remote-chroot-guard`** (WARNING/ERROR) — Detects bootloader package removal and risky repair commands inside chroot environments. ERROR for bootloader removal, WARNING for risky repair.
+- **`package-manager-in-chroot`** (WARNING) — Warns on `apt`/`dpkg`/`yum`/`dnf`/`pacman` usage inside chroot environments.
+
+### Fixes
+
+- **`allowed_ops` consistency** — All autopilot rules now use `allowed_ops` config key consistently.
+- **Per-pattern severity** — Individual `Violation` instances can override `Rule.severity` for mixed WARNING/ERROR rules.
+- **`rm --recursive` detection** — Long-form `--recursive` flag now detected alongside `-rf`.
+- **`apt-get` detection** — Package manager rules now detect `apt-get` in addition to `apt`.
+
+### Rule count
+
+63 rules across 8 packs (was 59/8). 18 autopilot rules (was 14).
+
+### Tests
+
+1229 tests, 96% coverage.
+
 ## v0.8.0 (2026-03-02) — Subagent Safety
 
 ### The problem
