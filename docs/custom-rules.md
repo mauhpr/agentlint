@@ -81,20 +81,51 @@ Your `evaluate` method receives a `RuleContext` with:
 | `tool_input` | `dict` | Raw tool input from Claude Code |
 | `project_dir` | `str` | Absolute path to project root |
 | `file_content` | `str \| None` | File content (for Write/Edit operations) |
+| `file_content_before` | `str \| None` | File content before edit (for diff-based rules, PostToolUse only) |
 | `file_path` | `str \| None` | Target file path (from `tool_input`) |
 | `command` | `str \| None` | Bash command (from `tool_input`) |
 | `config` | `dict` | Per-rule config from `agentlint.yml` |
 | `session_state` | `dict` | Mutable shared state across the session |
+| `prompt` | `str \| None` | User prompt text (UserPromptSubmit only) |
+| `subagent_output` | `str \| None` | Subagent's last assistant message (SubagentStop only) |
+| `agent_transcript_path` | `str \| None` | Path to subagent's JSONL transcript (SubagentStop only) |
+| `agent_type` | `str \| None` | Subagent type, e.g. "general-purpose" (SubagentStart/Stop) |
+| `agent_id` | `str \| None` | Unique subagent identifier (SubagentStart/Stop) |
+| `notification_type` | `str \| None` | Notification type (Notification only) |
+| `compact_source` | `str \| None` | Context that was compacted (PreCompact only) |
 
 ## Hook events
 
-Choose which events your rule responds to:
+AgentLint supports all 17 Claude Code hook events. Choose which events your rule responds to:
+
+**Registered by `agentlint setup`** (7 events):
 
 | Event | When | Can block? |
 |-------|------|-----------|
-| `HookEvent.PRE_TOOL_USE` | Before a tool call | Yes (ERROR = exit code 2) |
+| `HookEvent.PRE_TOOL_USE` | Before a tool call | Yes (ERROR = deny protocol) |
 | `HookEvent.POST_TOOL_USE` | After a tool call | No (advise only) |
+| `HookEvent.USER_PROMPT_SUBMIT` | When user sends a prompt | No (advise only) |
+| `HookEvent.SUB_AGENT_START` | When a subagent spawns | No (injects `additionalContext`) |
+| `HookEvent.SUB_AGENT_STOP` | When a subagent completes | No (advise only) |
+| `HookEvent.NOTIFICATION` | On system notifications | No (advise only) |
 | `HookEvent.STOP` | End of session | No (report only) |
+
+**Available for custom rules** (10 additional events):
+
+| Event | When |
+|-------|------|
+| `HookEvent.SESSION_START` | Session begins |
+| `HookEvent.SESSION_END` | Session ends |
+| `HookEvent.PRE_COMPACT` | Before context compaction |
+| `HookEvent.POST_TOOL_USE_FAILURE` | After a tool call fails |
+| `HookEvent.PERMISSION_REQUEST` | User asked to approve an action |
+| `HookEvent.CONFIG_CHANGE` | Settings changed mid-session |
+| `HookEvent.WORKTREE_CREATE` | Git worktree created |
+| `HookEvent.WORKTREE_REMOVE` | Git worktree removed |
+| `HookEvent.TEAMMATE_IDLE` | Teammate goes idle |
+| `HookEvent.TASK_COMPLETED` | Background task completes |
+
+Custom rules targeting these events work out of the box — the CLI routes any event string to the engine. You only need to add the corresponding hook entry to `.claude/settings.json` if it's not already registered.
 
 ## Using session state
 

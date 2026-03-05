@@ -15,6 +15,7 @@ packs:
   # - react                    # Auto-detected from react in dependencies
   # - seo                      # Auto-detected from SSR/SSG framework
   # - security                 # Opt-in: blocks Bash file writes, network exfiltration
+  # - autopilot                # Opt-in: guards for unattended/autonomous sessions
 # custom_rules_dir: .agentlint/rules/   # Path to custom rule files
 
 rules:
@@ -294,6 +295,10 @@ Default allowed hosts: `github.com`, `pypi.org`, `registry.npmjs.org`, `rubygems
 **Config options:**
 - `allowed_hosts` — Additional allowed destination hosts
 
+### `env-credential-reference` (PreToolUse, WARNING)
+
+Warns when environment variable patterns reference local file paths (e.g., `DATABASE_URL_FILE=/etc/secrets/db`), which may indicate credential leakage risk.
+
 ## Python rules reference
 
 ### `no-bare-except` (PreToolUse, WARNING)
@@ -437,6 +442,92 @@ Suggests adding JSON-LD structured data (`<script type="application/ld+json">`) 
 **Config options:**
 - `content_path_patterns` — Path patterns for content pages (default: `product`, `article`, `blog`, `post`, `recipe`, `event`)
 
+## Autopilot rules reference
+
+The autopilot pack is designed for **unattended / autonomous agent sessions** — it guards against infrastructure-level damage, enforces confirmation gates, and audits subagent activity. Add `autopilot` to your `packs` list to enable it.
+
+### `production-guard` (PreToolUse, ERROR)
+
+Blocks commands targeting production environments (database connections, cloud CLI with production project/host patterns).
+
+**Config options:**
+- `allowed_projects` — Cloud project names that are allowed (bypass guard)
+- `allowed_hosts` — Database hostnames that are allowed
+
+### `destructive-confirmation-gate` (PreToolUse, ERROR)
+
+Blocks `DROP DATABASE`, `terraform destroy`, and `kubectl delete namespace` unless a session-level confirmation key has been set via `session_state`.
+
+### `cloud-resource-deletion` (PreToolUse, ERROR)
+
+Blocks AWS/GCP/Azure resource deletion commands unless a session-level confirmation key has been set.
+
+**Config options:**
+- `allowed_ops` — List of allowed deletion operations (bypass guard)
+
+### `cloud-infra-mutation` (PreToolUse, ERROR)
+
+Blocks NAT, firewall, VPC, IAM, and load balancer mutations across AWS/GCP/Azure.
+
+**Config options:**
+- `allowed_ops` — List of allowed mutation operations (bypass guard)
+
+### `cloud-paid-resource-creation` (PreToolUse, WARNING)
+
+Warns when creating paid cloud resources (VMs, IPs, databases, clusters).
+
+**Config options:**
+- `suppress_warnings` — List of resource types to suppress warnings for
+
+### `dry-run-required` (PreToolUse, ERROR)
+
+Requires `--dry-run` or `--check` flags for terraform, kubectl, ansible, and helm apply/install/upgrade commands.
+
+**Config options:**
+- `bypass_tools` — List of tools that bypass the dry-run requirement
+
+### `bash-rate-limiter` (PreToolUse, ERROR)
+
+Circuit-breaks after N destructive commands within a time window. Prevents runaway automation.
+
+**Config options:**
+- `max_destructive_ops` — Maximum destructive operations before blocking (default: `5`)
+- `window_seconds` — Time window in seconds (default: `300`)
+
+### `cross-account-guard` (PreToolUse, WARNING)
+
+Warns on cloud account/project switches within the same session (e.g., `gcloud config set project`, `aws sts assume-role`).
+
+### `network-firewall-guard` (PreToolUse, ERROR)
+
+Blocks iptables flush, ufw disable, firewalld permanent rules, and default route changes.
+
+**Config options:**
+- `allowed_ops` — List of allowed firewall operations (bypass guard)
+
+### `docker-volume-guard` (PreToolUse, WARNING/ERROR)
+
+Blocks privileged Docker containers (ERROR); warns on volume deletion and force-remove (WARNING).
+
+**Config options:**
+- `allowed_ops` — List of allowed Docker operations (bypass guard)
+
+### `system-scheduler-guard` (PreToolUse, WARNING)
+
+Warns on crontab edits, systemctl enable/disable, launchctl load/unload, and scheduler file writes.
+
+### `operation-journal` (PostToolUse + Stop, INFO)
+
+Records all tool operations to an in-memory audit log. Emits a summary at session end.
+
+### `subagent-safety-briefing` (SubagentStart, INFO)
+
+Injects a safety notice into subagent context on spawn. Tracks spawned subagents in `session_state`.
+
+### `subagent-transcript-audit` (SubagentStop, WARNING)
+
+Audits subagent JSONL transcripts for dangerous commands (rm -rf, terraform destroy, cloud deletions, etc.) after execution. Records audit results in `session_state` for the session report.
+
 ## Full example
 
 ```yaml
@@ -450,6 +541,7 @@ packs:
   # - react
   # - seo
   # - security          # Opt-in: blocks Bash file writes, network exfiltration
+  # - autopilot         # Opt-in: guards for unattended/autonomous sessions
 
 rules:
   # Universal
@@ -537,6 +629,26 @@ rules:
     min_div_threshold: 10
   seo-structured-data:
     content_path_patterns: ["product", "article", "blog"]
+
+  # Autopilot (opt-in)
+  production-guard:
+    allowed_projects: []      # Cloud projects to allow
+    allowed_hosts: []         # DB hostnames to allow
+  bash-rate-limiter:
+    max_destructive_ops: 5
+    window_seconds: 300
+  dry-run-required:
+    bypass_tools: []          # Tools that skip dry-run requirement
+  cloud-resource-deletion:
+    allowed_ops: []
+  cloud-infra-mutation:
+    allowed_ops: []
+  cloud-paid-resource-creation:
+    suppress_warnings: []
+  network-firewall-guard:
+    allowed_ops: []
+  docker-volume-guard:
+    allowed_ops: []
 
 # custom_rules_dir: .agentlint/rules/
 ```

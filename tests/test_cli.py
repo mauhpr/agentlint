@@ -271,7 +271,7 @@ class TestListRulesCommand:
         assert "cloud-resource-deletion" in result.output
         assert "network-firewall-guard" in result.output
         assert "docker-volume-guard" in result.output
-        assert "14 rules total" in result.output
+        assert "18 rules total" in result.output
 
     def test_list_rules_universal_pack(self) -> None:
         """list-rules --pack universal should show only universal rules."""

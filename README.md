@@ -253,7 +253,7 @@ The AgentLint plugin includes specialized agents for multi-step operations:
 
 > **Note:** The manual configuration below uses the bare `agentlint` command and requires it to be on your shell's PATH. For reliable resolution across all installation methods, use `agentlint setup` instead — it embeds the absolute path automatically.
 
-Add to your project's `.claude/settings.json`:
+`agentlint setup` registers 7 hook events. Add to your project's `.claude/settings.json`:
 
 ```json
 {
@@ -261,18 +261,38 @@ Add to your project's `.claude/settings.json`:
     "PreToolUse": [
       {
         "matcher": "Bash|Edit|Write",
-        "hooks": [{ "type": "command", "command": "agentlint check --event PreToolUse" }]
+        "hooks": [{ "type": "command", "command": "agentlint check --event PreToolUse", "timeout": 5 }]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
-        "hooks": [{ "type": "command", "command": "agentlint check --event PostToolUse" }]
+        "hooks": [{ "type": "command", "command": "agentlint check --event PostToolUse", "timeout": 10 }]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [{ "type": "command", "command": "agentlint check --event UserPromptSubmit", "timeout": 5 }]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [{ "type": "command", "command": "agentlint check --event SubagentStart", "timeout": 5 }]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [{ "type": "command", "command": "agentlint check --event SubagentStop", "timeout": 10 }]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [{ "type": "command", "command": "agentlint check --event Notification", "timeout": 5 }]
       }
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "agentlint report" }]
+        "hooks": [{ "type": "command", "command": "agentlint report", "timeout": 30 }]
       }
     ]
   }
@@ -385,11 +405,19 @@ See [docs/custom-rules.md](docs/custom-rules.md) for the full guide.
 
 ## How it works
 
-AgentLint hooks into Claude Code's lifecycle events:
+AgentLint supports all 17 Claude Code hook events. `agentlint setup` registers 7 events out of the box:
 
-1. **PreToolUse** — Before Write/Edit/Bash calls. Can **block** the action (exit code 2).
-2. **PostToolUse** — After Write/Edit. Injects warnings into the agent's context.
-3. **Stop** — End of session. Generates a quality report.
+| Event | When | Behavior |
+|-------|------|----------|
+| **PreToolUse** | Before Write/Edit/Bash | Can **block** the action |
+| **PostToolUse** | After Write/Edit | Injects warnings into agent context |
+| **UserPromptSubmit** | When user sends a prompt | Evaluates prompt-level rules |
+| **SubagentStart** | When a subagent spawns | Injects safety briefing via `additionalContext` |
+| **SubagentStop** | When a subagent completes | Audits subagent transcript for dangerous commands |
+| **Notification** | On system notifications | Evaluates notification-triggered rules |
+| **Stop** | End of session | Generates a quality report |
+
+Custom rules can target any of the 17 events (SessionStart, PreCompact, WorktreeCreate, TaskCompleted, etc.) — see [docs/custom-rules.md](docs/custom-rules.md) for the full list.
 
 Each invocation loads your config, evaluates matching rules, and returns JSON that Claude Code understands. Session state persists across invocations so rules like `drift-detector` can track cumulative behavior.
 
