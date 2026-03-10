@@ -18,7 +18,8 @@ _DEFAULT_SAFE_PATTERNS = [
 # Each tuple: (compiled_regex, human-readable label).
 _WRITE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # cat/echo/printf redirecting to a file.
-    (re.compile(r"\b(?:cat|echo|printf)\b.*>{1,2}\s*(\S+)"), "redirect (>/>>)"),
+    # Negative lookbehind excludes fd redirects like 2>/dev/null.
+    (re.compile(r"\b(?:cat|echo|printf)\b.*(?<!\d)>{1,2}\s*(\S+)"), "redirect (>/>>)"),
     # tee writing to a file.
     (re.compile(r"\btee\s+(?:-a\s+)?(\S+)"), "tee"),
     # sed -i (in-place edit).
@@ -29,8 +30,8 @@ _WRITE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bmv\s+\S+\s+(\S+)"), "mv"),
     # perl -pi -e (in-place edit).
     (re.compile(r"\bperl\s+.*-[a-zA-Z]*p[a-zA-Z]*i"), "perl -pi -e"),
-    # awk outputting to a file.
-    (re.compile(r"\bawk\b.*>\s*(\S+)"), "awk >"),
+    # awk outputting to a file (exclude fd redirects).
+    (re.compile(r"\bawk\b.*(?<!\d)>\s*(\S+)"), "awk >"),
     # dd of= (output file).
     (re.compile(r"\bdd\b.*\bof=(\S+)"), "dd of="),
     # python -c with open(...).write(...) or pathlib write.
@@ -46,8 +47,8 @@ _HEREDOC_CMD_SUB = re.compile(r"\$\(\s*cat\s+<<")
 
 # Patterns that extract the target file path from a command.
 _TARGET_EXTRACTORS: list[re.Pattern[str]] = [
-    # echo/cat/printf ... > file
-    re.compile(r">{1,2}\s*(\S+)"),
+    # echo/cat/printf ... > file (exclude fd redirects like 2>/dev/null)
+    re.compile(r"(?<!\d)>{1,2}\s*(\S+)"),
     # tee file
     re.compile(r"\btee\s+(?:-a\s+)?(\S+)"),
     # cp src dest
@@ -129,6 +130,12 @@ class NoBashFileWrite(Rule):
 
                 # Check if all target paths are in allowed paths.
                 target_paths = _extract_target_paths(command)
+
+                # /dev/null is never a real file write.
+                target_paths = [p for p in target_paths if p != "/dev/null"]
+                if not target_paths and label == "redirect (>/>>)":
+                    continue
+
                 if allow_paths and target_paths and all(
                     _path_allowed(p, allow_paths) for p in target_paths
                 ):

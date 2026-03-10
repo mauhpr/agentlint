@@ -1,6 +1,6 @@
 [project]
 name = "agentlint"
-version = "0.9.3"
+version = "0.9.4"
 description = "Real-time quality guardrails for AI coding agents"
 readme = "README.md"
 license = "MIT"
