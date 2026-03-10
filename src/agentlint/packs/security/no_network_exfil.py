@@ -7,6 +7,10 @@ from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _BASH_TOOLS = {"Bash"}
 
+# Localhost and internal hosts — downgraded to WARNING instead of ERROR.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1"})
+_SAFE_HOST_SUFFIXES = (".local", ".internal", ".localhost", ".test")
+
 # --- Exfiltration patterns ---
 # Each tuple: (compiled_regex, human-readable label).
 _EXFIL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -82,6 +86,7 @@ class NoNetworkExfil(Rule):
         # Load config.
         rule_config = context.config.get(self.id, {})
         allowed_hosts: list[str] = rule_config.get("allowed_hosts", [])
+        strict_mode: bool = rule_config.get("strict_mode", False)
         all_allowed = _DEFAULT_ALLOWED_HOSTS | frozenset(h.lower() for h in allowed_hosts)
 
         # Check if target host is allowed.
@@ -89,8 +94,30 @@ class NoNetworkExfil(Rule):
         if host and host in all_allowed:
             return []
 
+        # Determine if host is localhost/internal (downgrade to WARNING).
+        is_local = (
+            not strict_mode
+            and host is not None
+            and (
+                host in _LOCAL_HOSTS
+                or any(host.endswith(s) for s in _SAFE_HOST_SUFFIXES)
+            )
+        )
+
         for pattern, label in _EXFIL_PATTERNS:
             if pattern.search(command):
+                if is_local:
+                    return [
+                        Violation(
+                            rule_id=self.id,
+                            message=f"Potential data exfiltration detected via {label}",
+                            severity=Severity.WARNING,
+                            suggestion=(
+                                "Localhost/internal traffic detected. "
+                                "If this is a proxy or tunnel, consider using allowed_hosts config."
+                            ),
+                        )
+                    ]
                 return [
                     Violation(
                         rule_id=self.id,

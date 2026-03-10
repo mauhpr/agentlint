@@ -44,8 +44,9 @@ _KUBECTL_DELETE_NS_RE = re.compile(r"\bkubectl\s+delete\s+namespace\b", re.IGNOR
 _GIT_BRANCH_DELETE_RE = re.compile(r"\bgit\s+branch\s+-D\s+(\S+)", re.IGNORECASE)
 
 
-def _rm_targets_safe(command: str) -> bool:
+def _rm_targets_safe(command: str, safe_targets: set[str] | None = None) -> bool:
     """Return True if all rm -rf targets are known safe directories."""
+    effective_safe = safe_targets if safe_targets is not None else _SAFE_RM_TARGETS
     # Extract everything after rm -rf / rm -fr flags.
     parts = re.split(r"\brm\s+-\S+\s+", command)
     if len(parts) < 2:
@@ -60,7 +61,7 @@ def _rm_targets_safe(command: str) -> bool:
 
     import os
 
-    return all(os.path.basename(t.strip("'\"").rstrip("/")) in _SAFE_RM_TARGETS for t in targets)
+    return all(os.path.basename(t.strip("'\"").rstrip("/")) in effective_safe for t in targets)
 
 
 def _is_catastrophic_rm(command: str) -> bool:
@@ -85,6 +86,17 @@ class NoDestructiveCommands(Rule):
         if not command:
             return []
 
+        # Load config.
+        rule_config = context.config.get(self.id, {})
+        extra_safe_targets: list[str] = rule_config.get("safe_rm_targets", [])
+        allow_patterns: list[str] = rule_config.get("allow_patterns", [])
+
+        # Early return if command matches an allow pattern.
+        if allow_patterns and any(re.search(p, command) for p in allow_patterns):
+            return []
+
+        effective_safe = _SAFE_RM_TARGETS | set(extra_safe_targets)
+
         violations: list[Violation] = []
 
         # Catastrophic rm -rf targets (ERROR severity).
@@ -97,7 +109,7 @@ class NoDestructiveCommands(Rule):
                     suggestion="This would destroy critical system or user files. Never run rm -rf on / or ~.",
                 )
             )
-        elif _RM_RF_RE.search(command) and not _rm_targets_safe(command):
+        elif _RM_RF_RE.search(command) and not _rm_targets_safe(command, effective_safe):
             violations.append(
                 Violation(
                     rule_id=self.id,
