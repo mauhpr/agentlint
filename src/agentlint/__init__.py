@@ -1,6 +1,6 @@
 """AgentLint - Real-time quality guardrails for AI coding agents."""
 
-__version__ = "0.9.2"
+__version__ = "0.9.3"
 
 from agentlint.models import (
     HookEvent,
