@@ -354,6 +354,32 @@ class TestDoctorCommand:
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
         assert "Python:" in result.output
 
+    def test_doctor_checks_recordings_dir_when_enabled(self, tmp_path, monkeypatch) -> None:
+        """doctor should check recordings dir when recording is enabled."""
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        rec_dir = tmp_path / "recordings"
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(rec_dir))
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "Recordings dir:" in result.output
+        # Dir doesn't exist yet, should say "will be created"
+        assert "will be created" in result.output
+
+    def test_doctor_checks_recordings_dir_writable(self, tmp_path, monkeypatch) -> None:
+        """doctor should report writable recordings dir."""
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        rec_dir = tmp_path / "recordings"
+        rec_dir.mkdir()
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(rec_dir))
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "Recordings dir:" in result.output
+        assert "writable" in result.output
+
 
 class TestReportCommand:
     def test_report_outputs_summary(self) -> None:
@@ -540,3 +566,303 @@ class TestReportCircuitBreaker:
         parsed = json.loads(result.output)
         assert "Circuit Breaker" in parsed["systemMessage"]
         assert "no-destructive-commands" in parsed["systemMessage"]
+
+
+class TestRecordingsCommands:
+    def test_recordings_list_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "list"])
+        assert result.exit_code == 0
+        assert "No recordings found" in result.output
+
+    def test_recordings_list_shows_entries(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        append_event({"ts": 1.0, "event": "PreToolUse", "tool_name": "Bash"}, "test-sess")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "list"])
+        assert result.exit_code == 0
+        assert "test-sess" in result.output
+        assert "1 recording(s)" in result.output
+
+    def test_recordings_show(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        append_event({
+            "ts": 1710000000.0, "event": "PreToolUse",
+            "tool_name": "Bash", "violations": [],
+            "tool_summary": {"command": "ls -la", "file_path": None, "content_length": None},
+        }, "show-sess")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "show", "show-sess"])
+        assert result.exit_code == 0
+        assert "PreToolUse" in result.output
+        assert "Bash" in result.output
+        assert "$ ls -la" in result.output
+
+    def test_recordings_stats(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        for i in range(5):
+            append_event({
+                "ts": float(i), "event": "PreToolUse",
+                "tool_name": "Bash", "violations": [],
+            }, "stats-sess")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "stats"])
+        assert result.exit_code == 0
+        assert "Bash" in result.output
+        assert "Events: 5" in result.output
+
+    def test_recordings_clear(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        append_event({"ts": 1.0}, "to-delete")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "clear"], input="y\n")
+        assert result.exit_code == 0
+        assert "Removed 1 recording(s)" in result.output
+
+    def test_recordings_stats_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "stats"])
+        assert result.exit_code == 0
+        assert "No recordings found" in result.output
+
+    def test_recordings_show_unknown_key(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "show", "nonexistent-key"])
+        assert result.exit_code == 0
+        assert "No recordings found" in result.output
+
+    def test_recordings_show_agent_summary(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        append_event({
+            "ts": 1710000000.0, "event": "PreToolUse",
+            "tool_name": "Agent", "violations": [],
+            "tool_summary": {
+                "command": None, "file_path": None, "content_length": None,
+                "subagent_type": "Explore", "description": "Find auth code",
+            },
+        }, "agent-sess")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "show", "agent-sess"])
+        assert result.exit_code == 0
+        assert "[Explore]" in result.output
+        assert "Find auth code" in result.output
+
+    def test_recordings_show_web_summary(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        append_event({
+            "ts": 1710000000.0, "event": "PreToolUse",
+            "tool_name": "WebSearch", "violations": [],
+            "tool_summary": {
+                "command": None, "file_path": None, "content_length": None,
+                "query": "python asyncio tutorial",
+            },
+        }, "web-sess")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "show", "web-sess"])
+        assert result.exit_code == 0
+        assert "python asyncio tutorial" in result.output
+
+    def test_recordings_show_violations_only(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        # Clean event
+        append_event({
+            "ts": 1.0, "event": "PreToolUse",
+            "tool_name": "Bash", "violations": [],
+            "tool_summary": {"command": "ls", "file_path": None, "content_length": None},
+        }, "filter-sess")
+        # Event with violation
+        append_event({
+            "ts": 2.0, "event": "PreToolUse",
+            "tool_name": "Write", "violations": [{"rule_id": "no-secrets", "severity": "error"}],
+            "tool_summary": {"command": None, "file_path": "/bad.py", "content_length": 100},
+        }, "filter-sess")
+
+        runner = CliRunner()
+        # Without filter: both events shown
+        result = runner.invoke(main, ["recordings", "show", "filter-sess"])
+        assert "2 event(s) shown (2 total)" in result.output
+        assert "Violation summary:" in result.output
+        assert "no-secrets" in result.output
+
+        # With --violations-only: only the violation event shown
+        result = runner.invoke(main, ["recordings", "show", "--violations-only", "filter-sess"])
+        assert "1 event(s) shown (2 total)" in result.output
+        assert "Write" in result.output
+        assert "$ ls" not in result.output
+
+    def test_recordings_show_url_summary(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        append_event({
+            "ts": 1710000000.0, "event": "PreToolUse",
+            "tool_name": "WebFetch", "violations": [],
+            "tool_summary": {
+                "command": None, "file_path": None, "content_length": None,
+                "url": "https://example.com/api/docs",
+            },
+        }, "url-sess")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "show", "url-sess"])
+        assert result.exit_code == 0
+        assert "https://example.com/api/docs" in result.output
+
+    def test_recordings_show_notebook_summary(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        append_event({
+            "ts": 1710000000.0, "event": "PreToolUse",
+            "tool_name": "NotebookEdit", "violations": [],
+            "tool_summary": {
+                "command": None, "file_path": None, "content_length": None,
+                "cell_index": 5,
+            },
+        }, "nb-sess")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "show", "nb-sess"])
+        assert result.exit_code == 0
+        assert "cell #5" in result.output
+
+    def test_recordings_show_no_violation_summary_when_clean(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        append_event({
+            "ts": 1.0, "event": "PreToolUse",
+            "tool_name": "Bash", "violations": [],
+            "tool_summary": {"command": "ls", "file_path": None, "content_length": None},
+        }, "clean-sess")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "show", "clean-sess"])
+        assert "Violation summary:" not in result.output
+
+
+class TestRecordingIntegration:
+    """Integration tests: recording fires (or doesn't) during check/report."""
+
+    def test_check_records_when_enabled(self, tmp_path, monkeypatch):
+        """check with recording enabled should write a .jsonl file."""
+        rec_dir = tmp_path / "recordings"
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(rec_dir))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "rec-integration-test")
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+
+        payload = json.dumps({
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls -la"},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+        from agentlint.recorder import load_recording
+        recording = load_recording("rec-integration-test")
+        assert len(recording) == 1
+        assert recording[0]["tool_name"] == "Bash"
+        assert recording[0]["v"] == 1
+        assert recording[0]["event"] == "PreToolUse"
+
+    def test_check_does_not_record_when_disabled(self, tmp_path, monkeypatch):
+        """check with recording disabled should NOT create any .jsonl files."""
+        rec_dir = tmp_path / "recordings"
+        monkeypatch.delenv("AGENTLINT_RECORDING", raising=False)
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(rec_dir))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "no-rec-test")
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+
+        payload = json.dumps({
+            "tool_name": "Bash",
+            "tool_input": {"command": "echo hello"},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+        # No recording files should exist
+        if rec_dir.exists():
+            assert list(rec_dir.glob("*.jsonl")) == []
+
+    def test_report_records_when_enabled(self, tmp_path, monkeypatch):
+        """report with recording enabled should write a Stop event."""
+        rec_dir = tmp_path / "recordings"
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(rec_dir))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "rec-report-test")
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        assert result.exit_code == 0
+
+        from agentlint.recorder import load_recording
+        recording = load_recording("rec-report-test")
+        assert len(recording) == 1
+        assert recording[0]["event"] == "Stop"
+        assert recording[0]["v"] == 1
+
+    def test_check_recording_failure_does_not_crash(self, tmp_path, monkeypatch):
+        """If recording write fails, check should still succeed."""
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        # Point to a non-writable path to force failure
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", "/dev/null/impossible")
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "fail-test")
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+
+        payload = json.dumps({
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls"},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        # Must not crash — recording failure is swallowed
+        assert result.exit_code == 0
+
+    def test_report_recording_failure_does_not_crash(self, tmp_path, monkeypatch):
+        """If recording write fails during report, report should still succeed."""
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", "/dev/null/impossible")
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "fail-report")
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        assert result.exit_code == 0
+        assert "AgentLint" in result.output

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+import time
 
 import click
 
@@ -168,6 +169,32 @@ def check(event: str, project_dir: str | None):
     engine = Engine(config=config, rules=rules)
     result = engine.evaluate(context)
 
+    # Record event for product insights (opt-in)
+    try:
+        from agentlint.recorder import is_recording_enabled
+        if is_recording_enabled(config):
+            from agentlint.recorder import append_event, summarize_tool_input
+            from agentlint.session import _session_key
+            append_event({
+                "v": 1,
+                "ts": time.time(),
+                "event": event,
+                "tool_name": raw.get("tool_name", ""),
+                "tool_summary": summarize_tool_input(
+                    raw.get("tool_name", ""), tool_input, raw.get("prompt"),
+                ),
+                "violations": [
+                    {"rule_id": v.rule_id, "severity": v.severity.value}
+                    for v in result.violations
+                ],
+                "rules_evaluated": result.rules_evaluated,
+                "is_blocking": result.is_blocking,
+                "project_dir": project_dir,
+                "agent_type": raw.get("agent_type"),
+            }, key=_session_key())
+    except Exception:
+        logger.warning("Failed to write recording event", exc_info=True)
+
     # Persist session state after evaluation (rules may have mutated it)
     save_session(session_state)
 
@@ -208,6 +235,9 @@ rules: {{}}
   #   severity: error
   # max-file-size:
   #   limit: 300
+
+# recording:
+#   enabled: false  # opt-in session recording for product insights
 
 # custom_rules_dir: .agentlint/rules/
 """
@@ -265,6 +295,29 @@ def report(project_dir: str | None):
     )
     output = json.dumps({"systemMessage": report_text, "continue": True})
     click.echo(output)
+
+    # Record final summary entry
+    try:
+        from agentlint.recorder import is_recording_enabled
+        if is_recording_enabled(config):
+            from agentlint.recorder import append_event
+            from agentlint.session import _session_key
+            append_event({
+                "v": 1,
+                "ts": time.time(),
+                "event": "Stop",
+                "tool_name": "",
+                "violations": [
+                    {"rule_id": v.rule_id, "severity": v.severity.value}
+                    for v in result.violations
+                ],
+                "rules_evaluated": result.rules_evaluated,
+                "is_blocking": result.is_blocking,
+                "project_dir": project_dir,
+                "files_changed": len(changed_files),
+            }, key=_session_key())
+    except Exception:
+        logger.warning("Failed to write recording event", exc_info=True)
 
     # Clean up session file
     cleanup_session()
@@ -404,6 +457,19 @@ def doctor(project_dir: str | None):
     else:
         issues.append(f"Session cache: {cache_dir} is not writable")
 
+    # Check recordings dir writable (when recording is enabled)
+    config = load_config(project_dir)
+    from agentlint.recorder import is_recording_enabled
+    if is_recording_enabled(config):
+        from agentlint.recorder import _recordings_dir
+        rec_dir = _recordings_dir()
+        if rec_dir.exists() and os.access(str(rec_dir), os.W_OK):
+            checks_ok.append(f"Recordings dir: {rec_dir} (writable)")
+        elif not rec_dir.exists():
+            checks_ok.append(f"Recordings dir: {rec_dir} (will be created)")
+        else:
+            issues.append(f"Recordings dir: {rec_dir} is not writable")
+
     for item in checks_ok:
         click.echo(f"  OK  {item}")
     for item in issues:
@@ -478,6 +544,136 @@ def uninstall(scope: str, project_dir: str | None):
         path.unlink()
 
     click.echo(f"Removed AgentLint hooks from {path}")
+
+
+@main.group()
+def recordings():
+    """Manage session recordings."""
+
+
+@recordings.command("list")
+def recordings_list():
+    """Show all recordings (session key, date, event count)."""
+    from datetime import datetime
+
+    from agentlint.recorder import list_recordings as _list_recordings
+
+    recs = _list_recordings()
+    if not recs:
+        click.echo("No recordings found.")
+        return
+
+    click.echo(f"{'Session Key':<40} {'Date':<20} {'Events':>7} {'Size':>10}")
+    click.echo("-" * 80)
+    for r in recs:
+        dt = datetime.fromtimestamp(r["modified"]).strftime("%Y-%m-%d %H:%M")
+        size_kb = r["size_bytes"] / 1024
+        click.echo(f"{r['session_key']:<40} {dt:<20} {r['event_count']:>7} {size_kb:>8.1f} KB")
+
+    click.echo(f"\n{len(recs)} recording(s).")
+
+
+@recordings.command("show")
+@click.argument("key")
+@click.option("--violations-only", is_flag=True, help="Only show events with violations")
+def recordings_show(key: str, violations_only: bool):
+    """Print formatted timeline for a session."""
+    from datetime import datetime
+
+    from agentlint.recorder import load_recording
+
+    events = load_recording(key)
+    if not events:
+        click.echo("No recordings found.")
+        return
+
+    shown = 0
+    violation_summary: dict[str, int] = {}
+    for ev in events:
+        violations = ev.get("violations", [])
+        # Track violation summary
+        for v in violations:
+            rid = v.get("rule_id", "unknown")
+            violation_summary[rid] = violation_summary.get(rid, 0) + 1
+
+        if violations_only and not violations:
+            continue
+
+        ts = ev.get("ts", 0)
+        dt = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        event_type = ev.get("event", "?")
+        tool = ev.get("tool_name", "")
+        v_str = f" [{len(violations)} violation(s)]" if violations else ""
+        summary = ev.get("tool_summary", {})
+        detail = ""
+        if summary.get("command"):
+            detail = f" $ {summary['command'][:80]}"
+        elif summary.get("file_path"):
+            detail = f" {summary['file_path']}"
+        elif summary.get("url"):
+            detail = f" {summary['url'][:80]}"
+        elif summary.get("query"):
+            detail = f" ? {summary['query'][:80]}"
+        elif summary.get("subagent_type"):
+            desc = summary.get("description", "")
+            detail = f" [{summary['subagent_type']}] {desc[:60]}" if desc else f" [{summary['subagent_type']}]"
+        elif summary.get("cell_index") is not None:
+            detail = f" cell #{summary['cell_index']}"
+        click.echo(f"  {dt}  {event_type:<20} {tool:<12}{v_str}{detail}")
+        shown += 1
+
+    click.echo(f"\n{shown} event(s) shown ({len(events)} total).")
+
+    if violation_summary:
+        click.echo("\nViolation summary:")
+        for rule_id, count in sorted(violation_summary.items(), key=lambda x: x[1], reverse=True):
+            click.echo(f"  {rule_id:<30} {count:>5}")
+
+
+@recordings.command("stats")
+@click.option("--last", "last_n", default=None, type=int, help="Only include last N sessions")
+def recordings_stats(last_n: int | None):
+    """Aggregate insights: top tools, top rules fired, patterns."""
+    from agentlint.recorder import list_recordings as _list_recordings
+    from agentlint.recorder import recording_stats as _recording_stats
+
+    keys = None
+    if last_n:
+        recs = _list_recordings()
+        recs.sort(key=lambda r: r["modified"], reverse=True)
+        keys = [r["session_key"] for r in recs[:last_n]]
+
+    stats = _recording_stats(keys=keys)
+
+    if stats["total_events"] == 0:
+        click.echo("No recordings found.")
+        return
+
+    click.echo(f"Sessions: {stats['sessions']}  |  Events: {stats['total_events']}")
+
+    click.echo("\nTop tools:")
+    for tool, count in stats["top_tools"][:10]:
+        click.echo(f"  {tool:<20} {count:>5}")
+
+    if stats["top_rules"]:
+        click.echo("\nTop rules fired:")
+        for rule, count in stats["top_rules"][:10]:
+            click.echo(f"  {rule:<30} {count:>5}")
+
+    click.echo("\nEvent types:")
+    for et, count in stats["event_types"][:10]:
+        click.echo(f"  {et:<20} {count:>5}")
+
+
+@recordings.command("clear")
+@click.option("--older-than", "older_than_days", default=None, type=int, help="Only delete recordings older than N days")
+@click.confirmation_option(prompt="Delete recording files?")
+def recordings_clear(older_than_days: int | None):
+    """Delete recording files."""
+    from agentlint.recorder import clear_recordings
+
+    removed = clear_recordings(older_than_days=older_than_days)
+    click.echo(f"Removed {removed} recording(s).")
 
 
 if __name__ == "__main__":
