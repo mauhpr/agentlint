@@ -354,6 +354,32 @@ class TestDoctorCommand:
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
         assert "Python:" in result.output
 
+    def test_doctor_checks_recordings_dir_when_enabled(self, tmp_path, monkeypatch) -> None:
+        """doctor should check recordings dir when recording is enabled."""
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        rec_dir = tmp_path / "recordings"
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(rec_dir))
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "Recordings dir:" in result.output
+        # Dir doesn't exist yet, should say "will be created"
+        assert "will be created" in result.output
+
+    def test_doctor_checks_recordings_dir_writable(self, tmp_path, monkeypatch) -> None:
+        """doctor should report writable recordings dir."""
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        rec_dir = tmp_path / "recordings"
+        rec_dir.mkdir()
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(rec_dir))
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "Recordings dir:" in result.output
+        assert "writable" in result.output
+
 
 class TestReportCommand:
     def test_report_outputs_summary(self) -> None:
@@ -680,6 +706,40 @@ class TestRecordingsCommands:
         assert "Write" in result.output
         assert "$ ls" not in result.output
 
+    def test_recordings_show_url_summary(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        append_event({
+            "ts": 1710000000.0, "event": "PreToolUse",
+            "tool_name": "WebFetch", "violations": [],
+            "tool_summary": {
+                "command": None, "file_path": None, "content_length": None,
+                "url": "https://example.com/api/docs",
+            },
+        }, "url-sess")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "show", "url-sess"])
+        assert result.exit_code == 0
+        assert "https://example.com/api/docs" in result.output
+
+    def test_recordings_show_notebook_summary(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        from agentlint.recorder import append_event
+        append_event({
+            "ts": 1710000000.0, "event": "PreToolUse",
+            "tool_name": "NotebookEdit", "violations": [],
+            "tool_summary": {
+                "command": None, "file_path": None, "content_length": None,
+                "cell_index": 5,
+            },
+        }, "nb-sess")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "show", "nb-sess"])
+        assert result.exit_code == 0
+        assert "cell #5" in result.output
+
     def test_recordings_show_no_violation_summary_when_clean(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
@@ -769,3 +829,40 @@ class TestRecordingIntegration:
         assert len(recording) == 1
         assert recording[0]["event"] == "Stop"
         assert recording[0]["v"] == 1
+
+    def test_check_recording_failure_does_not_crash(self, tmp_path, monkeypatch):
+        """If recording write fails, check should still succeed."""
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        # Point to a non-writable path to force failure
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", "/dev/null/impossible")
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "fail-test")
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+
+        payload = json.dumps({
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls"},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        # Must not crash — recording failure is swallowed
+        assert result.exit_code == 0
+
+    def test_report_recording_failure_does_not_crash(self, tmp_path, monkeypatch):
+        """If recording write fails during report, report should still succeed."""
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", "/dev/null/impossible")
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "fail-report")
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        assert result.exit_code == 0
+        assert "AgentLint" in result.output
