@@ -95,6 +95,8 @@ class TestEnvCredentialReference:
         ctx = _edit_ctx("SECRET_KEY_FILE=config/secrets/key.pem")
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
+        # _edit_ctx uses a GitHub workflow path, so smart default downgrades to INFO
+        assert violations[0].severity == Severity.INFO
 
     # --- Safe env vars pass through ---
 
@@ -142,6 +144,133 @@ class TestEnvCredentialReference:
             'gcloud run deploy svc --set-env-vars "SECRET_KEY_FILE=config/key.pem"'
         )
         assert len(self.rule.evaluate(ctx)) == 1
+
+    # --- CI/CD smart defaults ---
+
+    def test_github_workflow_downgrades_to_info(self):
+        ctx = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Edit",
+            tool_input={
+                "file_path": ".github/workflows/deploy.yml",
+                "old_string": "x",
+                "new_string": "SECRET_KEY_FILE=config/secrets/key.pem",
+            },
+            project_dir="/tmp/project",
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.INFO
+        assert "CI/CD" in violations[0].message
+
+    def test_gitlab_ci_downgrades_to_info(self):
+        ctx = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Write",
+            tool_input={
+                "file_path": ".gitlab-ci.yml",
+                "content": "AUTH_TOKEN_FILE=credentials/token.json",
+            },
+            project_dir="/tmp/project",
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.INFO
+
+    def test_cloudbuild_downgrades_to_info(self):
+        ctx = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Write",
+            tool_input={
+                "file_path": "cloudbuild.yaml",
+                "content": "SECRET_KEY_FILE=config/key.pem",
+            },
+            project_dir="/tmp/project",
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.INFO
+
+    def test_jenkinsfile_downgrades_to_info(self):
+        ctx = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Write",
+            tool_input={
+                "file_path": "Jenkinsfile",
+                "content": "CERT_FILE=config/tls/cert.pem",
+            },
+            project_dir="/tmp/project",
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.INFO
+
+    def test_circleci_config_downgrades_to_info(self):
+        ctx = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Edit",
+            tool_input={
+                "file_path": ".circleci/config.yml",
+                "old_string": "x",
+                "new_string": "AUTH_KEY_FILE=secrets/api.json",
+            },
+            project_dir="/tmp/project",
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.INFO
+
+    def test_cicd_strict_mode_keeps_warning(self):
+        ctx = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Edit",
+            tool_input={
+                "file_path": ".github/workflows/deploy.yml",
+                "old_string": "x",
+                "new_string": "SECRET_KEY_FILE=config/secrets/key.pem",
+            },
+            project_dir="/tmp/project",
+            config={"env-credential-reference": {"strict_mode": True}},
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.WARNING
+
+    def test_non_cicd_file_still_warns(self):
+        """Regular files should still get WARNING severity."""
+        ctx = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Write",
+            tool_input={
+                "file_path": "scripts/deploy.sh",
+                "content": "SECRET_KEY_FILE=config/secrets/key.pem",
+            },
+            project_dir="/tmp/project",
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.WARNING
+
+    def test_bash_command_not_affected_by_cicd_default(self):
+        """Bash commands don't have a file_path, so CI/CD default doesn't apply."""
+        ctx = _bash_ctx("SECRET_KEY_FILE=secrets/api_key.txt ./run.sh")
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.WARNING
+
+    def test_cicd_suggestion_mentions_expected(self):
+        ctx = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Edit",
+            tool_input={
+                "file_path": ".github/workflows/ci.yml",
+                "old_string": "x",
+                "new_string": "SECRET_KEY_FILE=config/key.pem",
+            },
+            project_dir="/tmp/project",
+        )
+        violations = self.rule.evaluate(ctx)
+        assert "expected" in violations[0].suggestion.lower()
 
     # --- Non-monitored tools ignored ---
 

@@ -1,6 +1,7 @@
 """Rule: warn when credential file paths are embedded in environment variables."""
 from __future__ import annotations
 
+import os
 import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
@@ -20,6 +21,33 @@ _CRED_FILE_ENV_PATTERNS: list[tuple[re.Pattern[str], str]] = [
      "Cloud Run --set-env-vars with *_FILE reference"),
 ]
 
+# CI/CD workflow filenames where env var secret references are expected.
+_CICD_FILENAMES = {
+    ".gitlab-ci.yml", ".gitlab-ci.yaml",
+    "jenkinsfile",
+    "cloudbuild.yaml", "cloudbuild.yml",
+    "bitbucket-pipelines.yml",
+    "azure-pipelines.yml",
+    "appveyor.yml",
+}
+
+# CI/CD path patterns (directory-based).
+_CICD_PATH_PATTERNS = (
+    ".github/workflows/",
+    ".circleci/",
+)
+
+
+def _is_cicd_file(file_path: str) -> bool:
+    """Return True if the file path looks like a CI/CD configuration file."""
+    if not file_path:
+        return False
+    normalised = file_path.replace("\\", "/").lower()
+    basename = os.path.basename(normalised)
+    if basename in _CICD_FILENAMES:
+        return True
+    return any(p in normalised for p in _CICD_PATH_PATTERNS)
+
 
 class EnvCredentialReference(Rule):
     """Warn when credential file paths are embedded in environment variables."""
@@ -37,6 +65,7 @@ class EnvCredentialReference(Rule):
         # Check command for Bash, or file content for file tools.
         if context.tool_name == "Bash":
             content: str = context.command or ""
+            file_path = ""
         else:
             # For Write/Edit, check the new_string or content being written.
             content = (
@@ -44,12 +73,31 @@ class EnvCredentialReference(Rule):
                 or context.tool_input.get("content")
                 or ""
             )
+            file_path = context.tool_input.get("file_path", "")
 
         if not content:
             return []
 
+        # Smart default: CI/CD files are expected to reference secret paths.
+        # Downgrade to INFO unless strict_mode is enabled.
+        rule_config = context.config.get(self.id, {}) if context.config else {}
+        strict_mode: bool = rule_config.get("strict_mode", False)
+        is_cicd = _is_cicd_file(file_path)
+
         for pattern, label in _CRED_FILE_ENV_PATTERNS:
             if pattern.search(content):
+                if is_cicd and not strict_mode:
+                    return [
+                        Violation(
+                            rule_id=self.id,
+                            message=f"Credential file path referenced in CI/CD workflow: {label}",
+                            severity=Severity.INFO,
+                            suggestion=(
+                                "This is expected in CI/CD configuration. "
+                                "Ensure the referenced file uses a secret manager at runtime, not a baked-in path."
+                            ),
+                        )
+                    ]
                 return [
                     Violation(
                         rule_id=self.id,
