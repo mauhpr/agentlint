@@ -420,6 +420,39 @@ class TestNoBashFileWriteSmartDefaults:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
+    # --- /dev/null and fd redirect exclusions ---
+
+    def test_allows_stderr_redirect_to_dev_null(self):
+        """2>/dev/null is stderr suppression, not a file write."""
+        ctx = _ctx("Bash", {"command": "git diff contracts/file.yaml 2>/dev/null"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allows_stderr_redirect_to_dev_null_with_semicolon(self):
+        ctx = _ctx("Bash", {"command": "cat file.txt 2>/dev/null; echo done"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allows_stdout_and_stderr_to_dev_null(self):
+        ctx = _ctx("Bash", {"command": "echo test > /dev/null 2>&1"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allows_fd_redirect_in_complex_command(self):
+        """Real-world command: git diff with 2>/dev/null for missing files."""
+        ctx = _ctx("Bash", {"command": (
+            "git diff contracts/blackartauction.com.yaml "
+            "contracts/millon.com.yaml 2>/dev/null; echo '---'"
+        )})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_still_blocks_real_redirect_alongside_dev_null(self):
+        """A command with both real redirect and 2>/dev/null should still block."""
+        ctx = _ctx("Bash", {"command": "echo data > output.txt 2>/dev/null"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
 
 # ---------------------------------------------------------------------------
 # NoNetworkExfil — localhost handling
