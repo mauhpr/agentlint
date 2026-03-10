@@ -112,6 +112,40 @@ class TestProductionGuard:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
+    # --- Staging context downgrades ---
+
+    def test_staging_prod_replica_warns(self):
+        """Host with both 'staging' and 'prod' should downgrade to WARNING."""
+        ctx = _ctx("Bash", {"command": "psql -h staging-prod-replica.internal -U admin myapp"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.WARNING
+
+    def test_prod_test_env_project_warns(self):
+        """Project with both 'prod' and 'test' should downgrade to WARNING."""
+        ctx = _ctx("Bash", {"command": "gcloud --project=prod-test-env compute instances list"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.WARNING
+
+    def test_prod_db_no_staging_errors(self):
+        """Pure prod host without staging context stays ERROR."""
+        ctx = _ctx("Bash", {"command": "psql -h prod-db.example.com -U admin myapp"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.ERROR
+
+    def test_strict_mode_staging_prod_errors(self):
+        """strict_mode: true keeps ERROR even with staging context."""
+        ctx = _ctx(
+            "Bash",
+            {"command": "psql -h staging-prod-replica.internal -U admin myapp"},
+            config={"production-guard": {"strict_mode": True}},
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.ERROR
+
 
 class TestDestructiveConfirmationGate:
     rule = DestructiveConfirmationGate()

@@ -8,6 +8,12 @@ from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _BASH_TOOLS = {"Bash"}
 
+# Default safe patterns — narrow idioms that are not security-relevant.
+# Only echo >> (append) to config dotfiles. NOT > (overwrite), NOT cat/tee/sed.
+_DEFAULT_SAFE_PATTERNS = [
+    r"^\s*echo\s+.*>>\s*\.(?:git|docker|npm|eslint|prettier)ignore\s*$",
+]
+
 # --- File-write patterns in Bash commands ---
 # Each tuple: (compiled_regex, human-readable label).
 _WRITE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -50,6 +56,8 @@ _TARGET_EXTRACTORS: list[re.Pattern[str]] = [
     re.compile(r"\bmv\s+\S+\s+(\S+)"),
     # dd of=file
     re.compile(r"\bdd\b.*\bof=(\S+)"),
+    # sed -i '' 's/old/new/' filename (macOS) or sed -i 's/old/new/' filename (Linux)
+    re.compile(r"\bsed\s+(?:.*\s)?-i\s*(?:''?\s+)?(?:'[^']*'\s+|\"[^\"]*\"\s+)?(\S+)\s*$"),
 ]
 
 
@@ -101,9 +109,13 @@ class NoBashFileWrite(Rule):
         rule_config = context.config.get(self.id, {})
         allow_patterns: list[str] = rule_config.get("allow_patterns", [])
         allow_paths: list[str] = rule_config.get("allow_paths", [])
+        strict_mode: bool = rule_config.get("strict_mode", False)
+
+        # Merge default safe patterns unless strict mode is on.
+        effective_patterns = allow_patterns if strict_mode else _DEFAULT_SAFE_PATTERNS + allow_patterns
 
         # Check if the entire command is whitelisted.
-        if allow_patterns and _command_allowed(command, allow_patterns):
+        if effective_patterns and _command_allowed(command, effective_patterns):
             return []
 
         violations: list[Violation] = []

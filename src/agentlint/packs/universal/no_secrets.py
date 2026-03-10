@@ -9,6 +9,36 @@ from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 _WRITE_TOOLS = {"Write", "Edit"}
 _BASH_TOOLS = {"Bash"}
 
+# Secrets manager CLI invocations — anchored to command start.
+_SECRETS_MANAGER_START_RE = re.compile(
+    r"^(?:export\s+\w+=)?\$?\(?\s*(?:gcloud\s+secrets\s+versions\s+access"
+    r"|aws\s+secretsmanager\s+get-secret-value"
+    r"|az\s+keyvault\s+secret\s+show"
+    r"|vault\s+kv\s+get"
+    r"|op\s+(?:item\s+get|read)"
+    r"|doppler\s+secrets\s+get"
+    r"|chamber\s+read)\b",
+    re.IGNORECASE,
+)
+
+# Safe text-processing tools allowed in a secrets pipeline.
+_SAFE_PIPE_TOOLS = re.compile(
+    r"^\s*(?:sed|awk|grep|cut|tr|head|tail|jq|sort|uniq|wc|xargs\s+\w+)\b"
+)
+
+
+def _is_secrets_manager_pipeline(command: str) -> bool:
+    """True if command is a secrets-manager read piped through safe text tools."""
+    # Chained commands (&&, ||) are not trusted.
+    if re.search(r"\s*(?:&&|\|\|)\s*", command):
+        return False
+    # Split on pipes.
+    parts = command.split("|")
+    if not parts or not _SECRETS_MANAGER_START_RE.search(parts[0]):
+        return False
+    # All subsequent pipe stages must be safe text-processing tools.
+    return all(_SAFE_PIPE_TOOLS.match(p) for p in parts[1:])
+
 # Literal token prefixes that indicate a real secret.
 _TOKEN_PREFIXES = (
     "sk_live_", "sk_test_", "AKIA",
@@ -108,6 +138,7 @@ class NoSecrets(Rule):
         # Load config for extra prefixes.
         rule_config = context.config.get(self.id, {})
         extra_prefixes: list[str] = rule_config.get("extra_prefixes", [])
+        strict_mode: bool = rule_config.get("strict_mode", False)
 
         # Check for sensitive filenames (only for Write/Edit).
         if file_path and context.tool_name in _WRITE_TOOLS:
@@ -195,18 +226,26 @@ class NoSecrets(Rule):
             )
 
         # Database connection strings with real passwords.
-        for match in _DB_CONN_RE.finditer(content):
-            password = match.group(1)
-            if not _is_db_placeholder(password):
-                violations.append(
-                    Violation(
-                        rule_id=self.id,
-                        message="Database connection string with embedded credentials detected",
-                        severity=self.severity,
-                        file_path=file_path,
-                        suggestion="Use environment variables for database connection strings.",
+        # Skip for secrets-manager pipelines (e.g. gcloud secrets ... | sed)
+        # unless strict_mode is enabled.
+        is_secrets_read = (
+            context.tool_name in _BASH_TOOLS
+            and not strict_mode
+            and _is_secrets_manager_pipeline(content)
+        )
+        if not is_secrets_read:
+            for match in _DB_CONN_RE.finditer(content):
+                password = match.group(1)
+                if not _is_db_placeholder(password):
+                    violations.append(
+                        Violation(
+                            rule_id=self.id,
+                            message="Database connection string with embedded credentials detected",
+                            severity=self.severity,
+                            file_path=file_path,
+                            suggestion="Use environment variables for database connection strings.",
+                        )
                     )
-                )
 
         # JWT tokens.
         if _JWT_RE.search(content):

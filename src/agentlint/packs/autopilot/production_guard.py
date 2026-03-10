@@ -7,6 +7,13 @@ from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _BASH_TOOLS = {"Bash"}
 
+# Staging/test context words — if a matched target also contains one of these,
+# downgrade from ERROR to WARNING (unless strict_mode).
+_STAGING_CONTEXT_RE = re.compile(
+    r"\b(?:staging|stg|dev|test|qa|sandbox|preview|canary|ephemeral|replica|mirror)\b",
+    re.IGNORECASE,
+)
+
 # Patterns that indicate a production environment target.
 # Each tuple: (compiled_regex, human-readable label).
 _PROD_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -84,6 +91,7 @@ class ProductionGuard(Rule):
         rule_config = context.config.get(self.id, {})
         allowed_projects: list[str] = [p.lower() for p in rule_config.get("allowed_projects", [])]
         allowed_hosts: list[str] = [h.lower() for h in rule_config.get("allowed_hosts", [])]
+        strict_mode: bool = rule_config.get("strict_mode", False)
 
         # Check allowlists before pattern matching.
         project = _extract_project(command)
@@ -95,12 +103,19 @@ class ProductionGuard(Rule):
             return []
 
         for pattern, label in _PROD_PATTERNS:
-            if pattern.search(command):
+            match = pattern.search(command)
+            if match:
+                # Check if the matched region also contains staging/test context.
+                matched_text = match.group(0)
+                has_staging_context = (
+                    not strict_mode and _STAGING_CONTEXT_RE.search(matched_text)
+                )
+                severity = Severity.WARNING if has_staging_context else self.severity
                 return [
                     Violation(
                         rule_id=self.id,
                         message=f"Production environment detected: {label}",
-                        severity=self.severity,
+                        severity=severity,
                         suggestion=(
                             "Add this project/host to production-guard.allowed_projects or "
                             "allowed_hosts in agentlint.yml if this is intentional."
