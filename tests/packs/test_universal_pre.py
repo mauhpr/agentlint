@@ -529,6 +529,83 @@ class TestNoDestructiveCommandsExpanded:
 
 
 # ---------------------------------------------------------------------------
+# NoSecrets — allow_paths
+# ---------------------------------------------------------------------------
+
+
+class TestNoSecretsAllowPaths:
+    rule = NoSecrets()
+
+    def test_allow_paths_skips_test_files(self):
+        """Test files with mock tokens should be skipped when allow_paths matches."""
+        ctx = _ctx("Write", {
+            "file_path": "tests/unit/test_auth.py",
+            "content": 'access_token="eyJ.test.jwt-mock-value"',
+        }, config={
+            "no-secrets": {"allow_paths": ["tests/*"]},
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allow_paths_glob_pattern(self):
+        """Glob pattern should match nested test directories."""
+        ctx = _ctx("Write", {
+            "file_path": "tests/unit/auth/test_oauth.py",
+            "content": 'token="fake-secret-value-for-test"',
+        }, config={
+            "no-secrets": {"allow_paths": ["tests/**"]},
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allow_paths_does_not_skip_non_matching(self):
+        """Non-matching paths should still be checked."""
+        ctx = _ctx("Write", {
+            "file_path": "src/config.py",
+            "content": 'token="real-secret-value-abc123"',
+        }, config={
+            "no-secrets": {"allow_paths": ["tests/*"]},
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) >= 1
+
+    def test_allow_paths_multiple_patterns(self):
+        """Multiple allow_paths patterns should all be checked."""
+        ctx = _ctx("Write", {
+            "file_path": "fixtures/mock_tokens.py",
+            "content": 'secret="mock-secret-for-testing"',
+        }, config={
+            "no-secrets": {"allow_paths": ["tests/*", "fixtures/*"]},
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allow_paths_not_applied_to_bash(self):
+        """Bash commands have no file_path, so allow_paths doesn't apply."""
+        ctx = _ctx("Bash", {
+            "command": 'export secret="real-production-key"',
+        }, config={
+            "no-secrets": {"allow_paths": ["tests/*"]},
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) >= 1
+
+    def test_allow_paths_real_world_oauth_mock(self):
+        """Real-world pattern: OAuth mock response in test file."""
+        ctx = _ctx("Write", {
+            "file_path": "tests/unit/test_auth0.py",
+            "content": (
+                'mock_response = {"access_token": "eyJ-test-access-value", '
+                '"token_type": "Bearer", "expires_in": 86400}'
+            ),
+        }, config={
+            "no-secrets": {"allow_paths": ["tests/**"]},
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+
+# ---------------------------------------------------------------------------
 # NoSecrets — new patterns
 # ---------------------------------------------------------------------------
 

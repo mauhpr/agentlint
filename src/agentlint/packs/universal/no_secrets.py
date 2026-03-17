@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+from fnmatch import fnmatch
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
@@ -135,10 +136,16 @@ class NoSecrets(Rule):
             content = context.tool_input.get("content", "")
             file_path = context.file_path
 
-        # Load config for extra prefixes.
+        # Load config for extra prefixes and allow_paths.
         rule_config = context.config.get(self.id, {})
         extra_prefixes: list[str] = rule_config.get("extra_prefixes", [])
         strict_mode: bool = rule_config.get("strict_mode", False)
+        allow_paths: list[str] = rule_config.get("allow_paths", [])
+
+        # Skip files matching allow_paths (e.g. test files with mock tokens).
+        if file_path and allow_paths:
+            if any(fnmatch(file_path, p) for p in allow_paths):
+                return []
 
         # Check for sensitive filenames (only for Write/Edit).
         if file_path and context.tool_name in _WRITE_TOOLS:
