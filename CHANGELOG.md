@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.9.7 (2026-03-30) — Git mv/cp False Positive Fix
+
+### Fixes
+
+- **`no-bash-file-write` false positive on `git mv`** — The `mv` and `cp` regex patterns matched `git mv` and `git cp`, flagging VCS renames as file writes. Fix: negative lookbehind excludes `git ` prefix from both write patterns and target path extractors.
+
+### Tests
+
+1340 tests, 96% coverage.
+
 ## v0.9.6 (2026-03-30) — Cross-Account Guard Fix
 
 ### Fixes
