@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.9.6 (2026-03-30) — Cross-Account Guard Fix
+
+### Fixes
+
+- **`cross-account-guard` false positive** — `\S+` regex captured trailing shell metacharacters (`)`, `;`, `|`, `&`) from subshell expressions like `$(gcloud --project=foo)`, causing the same project ID to look like two different projects. Fix: strip trailing shell syntax from extracted project/profile names.
+
+### Tests
+
+1337 tests, 96% coverage.
+
 ## v0.9.0 (2026-03-05) — Remote Server Safety
 
 ### The problem
