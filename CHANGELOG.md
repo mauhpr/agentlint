@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.9.8 (2026-03-31) — Advisory Output Now Influences Agent Behavior
+
+### The problem
+
+PostToolUse and PreToolUse advisory violations (WARNING/INFO) were delivered via `systemMessage`, which is a user-facing notification only. The agent saw the text but had no protocol-level reason to act on it — explaining why rules like `no-unnecessary-async` were routinely ignored.
+
+### Fix
+
+Advisory output now uses the correct Claude Code hook protocol channels:
+
+- **PreToolUse advisory** (WARNING/INFO, no errors): `hookSpecificOutput.additionalContext` — injected into agent context before tool runs
+- **PostToolUse WARNING**: `decision: "block"` + `reason` + `additionalContext` — strongest advisory signal
+- **PostToolUse INFO**: `hookSpecificOutput.additionalContext` — agent sees it in reasoning context
+- **Other events** (Stop, Notification): `systemMessage` unchanged
+
+### Tests
+
+1345 tests, 96% coverage.
+
 ## v0.9.7 (2026-03-30) — Git mv/cp False Positive Fix
 
 ### Fixes
