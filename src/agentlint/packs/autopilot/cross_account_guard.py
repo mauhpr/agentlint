@@ -13,13 +13,16 @@ _AWS_PROFILE_RE = re.compile(r"(?:--profile\s+(\S+)|AWS_PROFILE\s*=\s*(\S+))", r
 
 def _extract_gcloud_project(command: str) -> str | None:
     m = _GCLOUD_PROJECT_RE.search(command)
-    return m.group(1).strip("'\"").lower() if m else None
+    if not m:
+        return None
+    # Strip quotes and trailing shell metacharacters like ) ; | &
+    return m.group(1).strip("'\"").rstrip(");|&").lower() or None
 
 
 def _extract_aws_profile(command: str) -> str | None:
     m = _AWS_PROFILE_RE.search(command)
     if m:
-        return (m.group(1) or m.group(2) or "").strip("'\"").lower() or None
+        return (m.group(1) or m.group(2) or "").strip("'\"").rstrip(");|&").lower() or None
     return None
 
 

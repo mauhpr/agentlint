@@ -425,3 +425,26 @@ class TestCrossAccountGuard:
         ctx = self._ctx_with_state("gcloud compute instances list")
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
+
+    def test_trailing_shell_metachar_stripped_from_project(self):
+        """Regression: --project=foo) inside $(...) should not false-positive."""
+        state = {"cross_account": {"seen_gcloud_projects": ["psyched-axle-431819-t4"], "seen_aws_profiles": []}}
+        # The trailing ) comes from a subshell: $(gcloud ... --project=foo)
+        ctx = self._ctx_with_state(
+            "gcloud secrets versions access latest --secret=my-key --project=psyched-axle-431819-t4)",
+            state=state,
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_trailing_semicolon_stripped_from_project(self):
+        state = {"cross_account": {"seen_gcloud_projects": ["my-proj"], "seen_aws_profiles": []}}
+        ctx = self._ctx_with_state("gcloud --project=my-proj; echo done", state=state)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_trailing_pipe_stripped_from_aws_profile(self):
+        state = {"cross_account": {"seen_gcloud_projects": [], "seen_aws_profiles": ["staging"]}}
+        ctx = self._ctx_with_state("AWS_PROFILE=staging| aws s3 ls", state=state)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
