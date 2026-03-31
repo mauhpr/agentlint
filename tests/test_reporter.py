@@ -87,15 +87,16 @@ class TestPreToolUseDenyProtocol:
         parsed = json.loads(output)
         assert "Do the good thing instead" in parsed["hookSpecificOutput"]["permissionDecisionReason"]
 
-    def test_pretooluse_warning_uses_system_message(self) -> None:
-        """PreToolUse WARNING violations should use systemMessage (advisory)."""
-        violations = [_make_violation(severity=Severity.WARNING)]
+    def test_pretooluse_warning_uses_additional_context(self) -> None:
+        """PreToolUse WARNING violations should use additionalContext (agent sees it)."""
+        violations = [_make_violation(severity=Severity.WARNING, rule_id="WARN01")]
         reporter = Reporter(violations=violations)
 
         output = reporter.format_hook_output(event="PreToolUse")
         parsed = json.loads(output)
-        assert "systemMessage" in parsed
-        assert "hookSpecificOutput" not in parsed
+        assert "hookSpecificOutput" in parsed
+        assert "WARN01" in parsed["hookSpecificOutput"]["additionalContext"]
+        assert "systemMessage" not in parsed
 
     def test_pretooluse_error_includes_warnings_in_reason(self) -> None:
         """When blocking, warnings should be included in the deny reason."""
@@ -111,15 +112,78 @@ class TestPreToolUseDenyProtocol:
         assert "ERR01" in reason
         assert "WARN01" in reason
 
-    def test_posttooluse_error_uses_system_message(self) -> None:
-        """Non-PreToolUse events should use systemMessage even for errors."""
-        violations = [_make_violation(severity=Severity.ERROR)]
+    def test_posttooluse_error_uses_additional_context_and_decision(self) -> None:
+        """PostToolUse errors should use additionalContext + decision block."""
+        violations = [_make_violation(severity=Severity.ERROR, rule_id="ERR01")]
         reporter = Reporter(violations=violations)
 
         output = reporter.format_hook_output(event="PostToolUse")
         parsed = json.loads(output)
+        assert "hookSpecificOutput" in parsed
+        assert "ERR01" in parsed["hookSpecificOutput"]["additionalContext"]
+        assert parsed["decision"] == "block"
+        assert "ERR01" in parsed["reason"]
+
+    def test_posttooluse_warning_uses_decision_block(self) -> None:
+        """PostToolUse WARNING uses decision: block + reason for strong advisory."""
+        violations = [_make_violation(severity=Severity.WARNING, rule_id="WARN01", message="Fix this")]
+        reporter = Reporter(violations=violations)
+
+        output = reporter.format_hook_output(event="PostToolUse")
+        parsed = json.loads(output)
+        assert parsed["decision"] == "block"
+        assert "WARN01" in parsed["reason"]
+        assert "WARN01" in parsed["hookSpecificOutput"]["additionalContext"]
+
+    def test_posttooluse_info_uses_additional_context_only(self) -> None:
+        """PostToolUse INFO uses additionalContext without decision block."""
+        violations = [_make_violation(severity=Severity.INFO, rule_id="INFO01")]
+        reporter = Reporter(violations=violations)
+
+        output = reporter.format_hook_output(event="PostToolUse")
+        parsed = json.loads(output)
+        assert "hookSpecificOutput" in parsed
+        assert "INFO01" in parsed["hookSpecificOutput"]["additionalContext"]
+        assert "decision" not in parsed
+
+    def test_posttooluse_warning_and_info_combined(self) -> None:
+        """Both WARNING and INFO in PostToolUse — decision block for warning, both in context."""
+        violations = [
+            _make_violation(severity=Severity.WARNING, rule_id="WARN01"),
+            _make_violation(severity=Severity.INFO, rule_id="INFO01"),
+        ]
+        reporter = Reporter(violations=violations)
+
+        output = reporter.format_hook_output(event="PostToolUse")
+        parsed = json.loads(output)
+        context = parsed["hookSpecificOutput"]["additionalContext"]
+        assert "WARN01" in context
+        assert "INFO01" in context
+        assert parsed["decision"] == "block"
+        # reason only includes warnings, not infos
+        assert "WARN01" in parsed["reason"]
+
+    def test_posttooluse_includes_suggestion_in_context(self) -> None:
+        violations = [_make_violation(
+            severity=Severity.WARNING,
+            suggestion="Try this approach",
+        )]
+        reporter = Reporter(violations=violations)
+
+        output = reporter.format_hook_output(event="PostToolUse")
+        parsed = json.loads(output)
+        assert "Try this approach" in parsed["hookSpecificOutput"]["additionalContext"]
+
+    def test_other_events_still_use_system_message(self) -> None:
+        """Events without additionalContext support fall back to systemMessage."""
+        violations = [_make_violation(severity=Severity.WARNING, rule_id="WARN01")]
+        reporter = Reporter(violations=violations)
+
+        # Stop event doesn't support additionalContext
+        output = reporter.format_hook_output(event="Stop")
+        parsed = json.loads(output)
         assert "systemMessage" in parsed
-        assert "hookSpecificOutput" not in parsed
+        assert "WARN01" in parsed["systemMessage"]
 
     def test_no_event_uses_system_message(self) -> None:
         """Default (no event) should use systemMessage."""

@@ -63,30 +63,59 @@ class Reporter:
                 }
             })
 
-        # Advisory output for warnings/info (or non-PreToolUse events)
-        lines = ["", "AgentLint:"]
+        # Build formatted violation lines for reuse across output paths
+        context_lines: list[str] = []
+        for v in errors + warnings + infos:
+            context_lines.append(f"[{v.rule_id}] {v.message}")
+            if v.suggestion:
+                context_lines.append(f"  -> {v.suggestion}")
 
+        # PreToolUse advisory (no errors) — inject into agent context before tool runs
+        if event == "PreToolUse":
+            return json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "additionalContext": "\n".join(context_lines),
+                }
+            })
+
+        # PostToolUse — inject into agent context so it influences next action
+        if event in ("PostToolUse", "PostToolUseFailure"):
+            result: dict = {
+                "hookSpecificOutput": {
+                    "hookEventName": event,
+                    "additionalContext": "\n".join(context_lines),
+                }
+            }
+            # WARNING/ERROR: stronger advisory signal that tells agent to reconsider
+            if warnings or errors:
+                reason_violations = errors + warnings
+                result["decision"] = "block"
+                result["reason"] = "\n".join(
+                    f"[{v.rule_id}] {v.message}" for v in reason_violations
+                )
+            return json.dumps(result)
+
+        # Other events (Stop, Notification, etc.) — systemMessage for user visibility
+        lines = ["", "AgentLint:"]
         if errors:
             lines.append("  BLOCKED:")
             for v in errors:
                 lines.append(f"    [{v.rule_id}] {v.message}")
                 if v.suggestion:
                     lines.append(f"      -> {v.suggestion}")
-
         if warnings:
             lines.append("  WARNINGS:")
             for v in warnings:
                 lines.append(f"    [{v.rule_id}] {v.message}")
                 if v.suggestion:
                     lines.append(f"      -> {v.suggestion}")
-
         if infos:
             lines.append("  INFO:")
             for v in infos:
                 lines.append(f"    [{v.rule_id}] {v.message}")
                 if v.suggestion:
                     lines.append(f"      -> {v.suggestion}")
-
         return json.dumps({"systemMessage": "\n".join(lines)})
 
     def format_subagent_start_output(self) -> str | None:

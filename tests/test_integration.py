@@ -78,7 +78,7 @@ class TestEndToEnd:
         )
         assert result.returncode == 0  # warning, not blocking
         output = json.loads(result.stdout)
-        assert "dependency-hygiene" in output["systemMessage"]
+        assert "dependency-hygiene" in output["hookSpecificOutput"]["additionalContext"]
 
     def test_blocks_env_file_write(self, tmp_path):
         """Writing .env should be blocked via deny protocol."""
@@ -119,7 +119,7 @@ class TestEndToEnd:
         )
         assert check_result.returncode == 0  # warning, not error
         output = json.loads(check_result.stdout)
-        assert "dependency-hygiene" in output["systemMessage"]
+        assert "dependency-hygiene" in output["hookSpecificOutput"]["additionalContext"]
 
     def test_strict_mode_blocks_warnings(self, tmp_path):
         """In strict mode, warnings become errors and use deny protocol."""
@@ -171,9 +171,10 @@ class TestEndToEnd:
                 assert "hookSpecificOutput" in output, f"Fire {i+1} should block"
                 assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
             else:
-                # 3rd fire should be degraded to warning (systemMessage, not deny)
-                assert "systemMessage" in output, f"Fire {i+1} should be degraded to warning"
-                assert "hookSpecificOutput" not in output
+                # 3rd fire should be degraded to warning (additionalContext, not deny)
+                assert "hookSpecificOutput" in output, f"Fire {i+1} should be degraded to warning"
+                assert "additionalContext" in output["hookSpecificOutput"]
+                assert "permissionDecision" not in output["hookSpecificOutput"]
 
     def test_circuit_breaker_never_degrades_secrets(self, tmp_path):
         """no-secrets should never be degraded by circuit breaker."""
