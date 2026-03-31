@@ -24,10 +24,10 @@ _WRITE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\btee\s+(?:-a\s+)?(\S+)"), "tee"),
     # sed -i (in-place edit).
     (re.compile(r"\bsed\s+(?:.*\s)?-i\s"), "sed -i"),
-    # cp — copying to a target.
-    (re.compile(r"\bcp\s+\S+\s+(\S+)"), "cp"),
-    # mv — moving to a target.
-    (re.compile(r"\bmv\s+\S+\s+(\S+)"), "mv"),
+    # cp — copying to a target (exclude git cp).
+    (re.compile(r"(?<!\bgit )\bcp\s+\S+\s+(\S+)"), "cp"),
+    # mv — moving to a target (exclude git mv which is a VCS rename).
+    (re.compile(r"(?<!\bgit )\bmv\s+\S+\s+(\S+)"), "mv"),
     # perl -pi -e (in-place edit).
     (re.compile(r"\bperl\s+.*-[a-zA-Z]*p[a-zA-Z]*i"), "perl -pi -e"),
     # awk outputting to a file (exclude fd redirects).
@@ -51,10 +51,10 @@ _TARGET_EXTRACTORS: list[re.Pattern[str]] = [
     re.compile(r"(?<!\d)>{1,2}\s*(\S+)"),
     # tee file
     re.compile(r"\btee\s+(?:-a\s+)?(\S+)"),
-    # cp src dest
-    re.compile(r"\bcp\s+\S+\s+(\S+)"),
-    # mv src dest
-    re.compile(r"\bmv\s+\S+\s+(\S+)"),
+    # cp src dest (exclude git cp)
+    re.compile(r"(?<!\bgit )\bcp\s+\S+\s+(\S+)"),
+    # mv src dest (exclude git mv)
+    re.compile(r"(?<!\bgit )\bmv\s+\S+\s+(\S+)"),
     # dd of=file
     re.compile(r"\bdd\b.*\bof=(\S+)"),
     # sed -i '' 's/old/new/' filename (macOS) or sed -i 's/old/new/' filename (Linux)

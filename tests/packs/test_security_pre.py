@@ -74,6 +74,22 @@ class TestNoBashFileWrite:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
+    def test_allows_git_mv(self):
+        """Regression: git mv is a VCS rename, not a file write."""
+        ctx = _ctx("Bash", {"command": "git mv docs/INFRA.md docs/infra.md"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allows_git_mv_chained(self):
+        ctx = _ctx("Bash", {"command": "git mv docs/A.md docs/a.md && git mv docs/B.md docs/b.md"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_allows_git_cp(self):
+        ctx = _ctx("Bash", {"command": "git cp source.py dest.py"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
     def test_blocks_perl_in_place(self):
         ctx = _ctx("Bash", {"command": "perl -pi -e 's/old/new/' file.py"})
         violations = self.rule.evaluate(ctx)
