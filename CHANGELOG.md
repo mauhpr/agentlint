@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.9.10 (2026-04-02) — Status Count Fix
+
+### Fix
+
+- **`status` active rule count** — Was counting orphaned custom rules (pack not in `packs:` list) as "active". Now only counts rules the engine will actually evaluate.
+- **README example consistency** — Custom rule example now uses `pack = "myproject"` matching the activation config below it.
+
+### Tests
+
+1357 tests, 96% coverage.
+
 ## v0.9.9 (2026-04-02) — First-Class Custom Packs
 
 ### The change
