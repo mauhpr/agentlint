@@ -408,6 +408,43 @@ class TestStatusCommand:
         result = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
         assert "universal" in result.output
 
+    def test_status_excludes_orphaned_custom_rules(self, tmp_path) -> None:
+        """status should not count custom rules whose pack isn't in packs: list."""
+        rules_dir = tmp_path / "rules"
+        rules_dir.mkdir()
+        (rules_dir / "my_rule.py").write_text(
+            "from agentlint.models import Rule, RuleContext, Violation, HookEvent, Severity\n"
+            "\n"
+            "class MyRule(Rule):\n"
+            "    id = 'orphan-rule'\n"
+            "    description = 'Orphaned'\n"
+            "    severity = Severity.WARNING\n"
+            "    events = [HookEvent.PRE_TOOL_USE]\n"
+            "    pack = 'fintech'\n"
+            "\n"
+            "    def evaluate(self, context: RuleContext) -> list[Violation]:\n"
+            "        return []\n"
+        )
+        # fintech NOT in packs: list
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\ncustom_rules_dir: rules/\n"
+        )
+
+        runner = CliRunner()
+        result_without = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
+
+        # Now add fintech to packs
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n  - fintech\ncustom_rules_dir: rules/\n"
+        )
+        result_with = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
+
+        # Extract rule counts
+        import re
+        count_without = int(re.search(r"Rules: (\d+) active", result_without.output).group(1))
+        count_with = int(re.search(r"Rules: (\d+) active", result_with.output).group(1))
+        assert count_with == count_without + 1
+
 
 class TestDoctorCommand:
     def test_doctor_all_checks_pass(self, tmp_path) -> None:

@@ -409,7 +409,8 @@ def status(project_dir: str | None):
     config = load_config(project_dir)
     rules = load_rules(config.packs)
     if config.custom_rules_dir:
-        rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
+        custom = load_custom_rules(config.custom_rules_dir, project_dir)
+        rules.extend(r for r in custom if r.pack in config.packs)
 
     session_state = load_session()
     budget = session_state.get("token_budget", {})

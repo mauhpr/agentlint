@@ -388,11 +388,11 @@ Create a Python file in your custom rules directory:
 from agentlint.models import Rule, RuleContext, Violation, Severity, HookEvent
 
 class NoDirectDB(Rule):
-    id = "custom/no-direct-db"
+    id = "no-direct-db"
     description = "API routes must not import database layer directly"
     severity = Severity.WARNING
     events = [HookEvent.POST_TOOL_USE]
-    pack = "custom"
+    pack = "myproject"
 
     def evaluate(self, context: RuleContext) -> list[Violation]:
         if not context.file_path or "/routes/" not in context.file_path:
@@ -407,16 +407,12 @@ class NoDirectDB(Rule):
         return []
 ```
 
-Then set `custom_rules_dir: .agentlint/rules/` in your config.
-
-### Activating custom packs
-
-Custom rules are grouped by their `pack` attribute. Add the pack name to your `packs:` list to activate it:
+Then activate the pack in your config:
 
 ```yaml
 packs:
   - universal
-  - fintech        # activates all rules with pack = "fintech"
+  - myproject      # activates all rules with pack = "myproject"
 
 custom_rules_dir: .agentlint/rules/
 ```
