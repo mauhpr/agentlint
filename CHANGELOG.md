@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.9.9 (2026-04-02) — First-Class Custom Packs
+
+### The change
+
+Custom packs are now first-class citizens. Add your custom pack name to `packs:` and it works everywhere:
+
+- `list-rules --pack fintech` shows your custom rules
+- `doctor` warns when custom rules have orphaned packs (pack not in `packs:`)
+- `init` template hints at custom pack usage
+- Config no longer warns about "unknown pack" when `custom_rules_dir` is set
+
+### Fixes
+
+- **`list-rules` now shows custom rules** — previously only showed built-in packs
+- **`list-rules --pack <name>` works for custom packs** — `--pack fintech` filters to fintech rules only
+- **`list-rules --pack universal` includes custom rules with `pack = "universal"`** — was silently hiding them
+- **`doctor` validates `custom_rules_dir`** — warns if directory missing, empty, or packs orphaned
+- **reporter.py docstring updated** — accurately reflects additionalContext usage
+
+### Tests
+
+1356 tests, 96% coverage.
+
 ## v0.9.8 (2026-03-31) — Advisory Output Now Influences Agent Behavior
 
 ### The problem
