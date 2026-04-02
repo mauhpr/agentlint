@@ -308,6 +308,91 @@ class TestListRulesCommand:
         assert "Severity" in result.output
         assert "Description" in result.output
 
+    def test_list_rules_includes_custom_rules(self, tmp_path) -> None:
+        """list-rules should include custom rules from project config."""
+        # Create custom rule
+        rules_dir = tmp_path / "custom_rules"
+        rules_dir.mkdir()
+        (rules_dir / "my_rule.py").write_text(
+            "from agentlint.models import Rule, RuleContext, Violation, HookEvent, Severity\n"
+            "\n"
+            "class MyRule(Rule):\n"
+            "    id = 'my-custom-rule'\n"
+            "    description = 'A test custom rule'\n"
+            "    severity = Severity.WARNING\n"
+            "    events = [HookEvent.PRE_TOOL_USE]\n"
+            "    pack = 'mypack'\n"
+            "\n"
+            "    def evaluate(self, context: RuleContext) -> list[Violation]:\n"
+            "        return []\n"
+        )
+        # Create agentlint.yml with custom_rules_dir
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\ncustom_rules_dir: custom_rules/\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "my-custom-rule" in result.output
+        assert "mypack" in result.output
+
+    def test_list_rules_filter_custom_pack(self, tmp_path) -> None:
+        """list-rules --pack mypack should show only custom rules with that pack."""
+        rules_dir = tmp_path / "custom_rules"
+        rules_dir.mkdir()
+        (rules_dir / "my_rule.py").write_text(
+            "from agentlint.models import Rule, RuleContext, Violation, HookEvent, Severity\n"
+            "\n"
+            "class MyRule(Rule):\n"
+            "    id = 'my-custom-rule'\n"
+            "    description = 'A test custom rule'\n"
+            "    severity = Severity.WARNING\n"
+            "    events = [HookEvent.PRE_TOOL_USE]\n"
+            "    pack = 'mypack'\n"
+            "\n"
+            "    def evaluate(self, context: RuleContext) -> list[Violation]:\n"
+            "        return []\n"
+        )
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\ncustom_rules_dir: custom_rules/\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules", "--pack", "mypack", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "my-custom-rule" in result.output
+        assert "1 rules total" in result.output
+        # Built-in rules should not appear
+        assert "no-secrets" not in result.output
+
+    def test_list_rules_custom_rule_with_builtin_pack_name(self, tmp_path) -> None:
+        """Custom rule with pack='universal' should appear in --pack universal."""
+        rules_dir = tmp_path / "custom_rules"
+        rules_dir.mkdir()
+        (rules_dir / "extra_universal.py").write_text(
+            "from agentlint.models import Rule, RuleContext, Violation, HookEvent, Severity\n"
+            "\n"
+            "class ExtraUniversal(Rule):\n"
+            "    id = 'custom-extra-universal'\n"
+            "    description = 'A custom rule in the universal pack'\n"
+            "    severity = Severity.INFO\n"
+            "    events = [HookEvent.PRE_TOOL_USE]\n"
+            "    pack = 'universal'\n"
+            "\n"
+            "    def evaluate(self, context: RuleContext) -> list[Violation]:\n"
+            "        return []\n"
+        )
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\ncustom_rules_dir: custom_rules/\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules", "--pack", "universal", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "custom-extra-universal" in result.output
+        assert "no-secrets" in result.output  # built-in universal rules still present
+
 
 class TestStatusCommand:
     def test_status_outputs_version_and_rules(self, tmp_path) -> None:
@@ -379,6 +464,77 @@ class TestDoctorCommand:
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
         assert "Recordings dir:" in result.output
         assert "writable" in result.output
+
+
+    def test_doctor_validates_custom_rules_dir_exists(self, tmp_path) -> None:
+        """doctor should warn when custom_rules_dir is configured but missing."""
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\ncustom_rules_dir: nonexistent_rules/\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "directory not found" in result.output
+
+    def test_doctor_warns_empty_custom_rules_dir(self, tmp_path) -> None:
+        """doctor should warn when custom_rules_dir exists but has no .py files."""
+        rules_dir = tmp_path / "rules"
+        rules_dir.mkdir()
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\ncustom_rules_dir: rules/\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "has no .py files" in result.output
+
+    def test_doctor_warns_orphaned_custom_pack(self, tmp_path) -> None:
+        """doctor should warn when custom rules have packs not in packs: list."""
+        rules_dir = tmp_path / "rules"
+        rules_dir.mkdir()
+        (rules_dir / "my_rule.py").write_text(
+            "from agentlint.models import Rule, RuleContext, Violation, HookEvent, Severity\n"
+            "\n"
+            "class MyRule(Rule):\n"
+            "    id = 'orphan-rule'\n"
+            "    description = 'Orphaned'\n"
+            "    severity = Severity.WARNING\n"
+            "    events = [HookEvent.PRE_TOOL_USE]\n"
+            "    pack = 'fintech'\n"
+            "\n"
+            "    def evaluate(self, context: RuleContext) -> list[Violation]:\n"
+            "        return []\n"
+        )
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\ncustom_rules_dir: rules/\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "fintech" in result.output
+        assert "not in packs" in result.output
+
+    def test_doctor_ok_when_custom_pack_in_packs_list(self, tmp_path) -> None:
+        """doctor should not warn when custom pack is properly listed in packs:."""
+        rules_dir = tmp_path / "rules"
+        rules_dir.mkdir()
+        (rules_dir / "my_rule.py").write_text(
+            "from agentlint.models import Rule, RuleContext, Violation, HookEvent, Severity\n"
+            "\n"
+            "class MyRule(Rule):\n"
+            "    id = 'good-rule'\n"
+            "    description = 'Properly configured'\n"
+            "    severity = Severity.WARNING\n"
+            "    events = [HookEvent.PRE_TOOL_USE]\n"
+            "    pack = 'fintech'\n"
+            "\n"
+            "    def evaluate(self, context: RuleContext) -> list[Violation]:\n"
+            "        return []\n"
+        )
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n  - fintech\ncustom_rules_dir: rules/\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "1 rule file(s)" in result.output
+        assert "not in packs" not in result.output
 
 
 class TestReportCommand:

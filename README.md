@@ -362,16 +362,20 @@ When `AGENTS.md` exists and `stack: auto` is set, AgentLint also uses it for pac
 ## Discovering rules
 
 ```bash
-# List all available rules
+# List all rules (built-in + custom)
 agentlint list-rules
 
-# List rules in a specific pack
+# List rules in a specific pack (built-in or custom)
 agentlint list-rules --pack security
+agentlint list-rules --pack fintech
+
+# List rules for a different project
+agentlint list-rules --project-dir /path/to/project
 
 # Show current status (version, packs, rule count, session activity)
 agentlint status
 
-# Diagnose common misconfigurations
+# Diagnose common misconfigurations (including custom rules validation)
 agentlint doctor
 ```
 
@@ -405,7 +409,19 @@ class NoDirectDB(Rule):
 
 Then set `custom_rules_dir: .agentlint/rules/` in your config.
 
-See [docs/custom-rules.md](docs/custom-rules.md) for the full guide.
+### Activating custom packs
+
+Custom rules are grouped by their `pack` attribute. Add the pack name to your `packs:` list to activate it:
+
+```yaml
+packs:
+  - universal
+  - fintech        # activates all rules with pack = "fintech"
+
+custom_rules_dir: .agentlint/rules/
+```
+
+Rules whose `pack` is not in `packs:` are loaded but silently skipped. Use `agentlint doctor` to detect orphaned packs.
 
 ## How it works
 
@@ -421,7 +437,7 @@ AgentLint supports all 17 Claude Code hook events. `agentlint setup` registers 7
 | **Notification** | On system notifications | Evaluates notification-triggered rules |
 | **Stop** | End of session | Generates a quality report |
 
-Custom rules can target any of the 17 events (SessionStart, PreCompact, WorktreeCreate, TaskCompleted, etc.) — see [docs/custom-rules.md](docs/custom-rules.md) for the full list.
+Custom rules can target any of the 17 events (SessionStart, PreCompact, WorktreeCreate, TaskCompleted, etc.).
 
 Each invocation loads your config, evaluates matching rules, and returns JSON that Claude Code understands. Session state persists across invocations so rules like `drift-detector` can track cumulative behavior.
 

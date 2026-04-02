@@ -103,6 +103,23 @@ class TestLoadConfig:
         # Config still loads — the warning is logged
         assert config.packs == ["universal", "nonexistent-pack"]
 
+    def test_unknown_pack_no_warning_when_custom_rules_dir_set(self, tmp_path, caplog):
+        """Custom pack names should not warn when custom_rules_dir is configured."""
+        cfg = {"packs": ["universal", "fintech"], "custom_rules_dir": "rules/"}
+        (tmp_path / "agentlint.yml").write_text(yaml.dump(cfg))
+        with caplog.at_level("WARNING", logger="agentlint"):
+            config = load_config(str(tmp_path))
+        assert config.packs == ["universal", "fintech"]
+        assert "Unknown pack" not in caplog.text
+
+    def test_unknown_pack_warns_when_no_custom_rules_dir(self, tmp_path, caplog):
+        """Unknown pack names should warn when custom_rules_dir is NOT set."""
+        cfg = {"packs": ["universal", "nonexistent"]}
+        (tmp_path / "agentlint.yml").write_text(yaml.dump(cfg))
+        with caplog.at_level("WARNING", logger="agentlint"):
+            load_config(str(tmp_path))
+        assert "Unknown pack 'nonexistent'" in caplog.text
+
 
 class TestAgentLintConfig:
     def test_is_rule_enabled_default_true(self):

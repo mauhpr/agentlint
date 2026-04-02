@@ -31,9 +31,12 @@ class Reporter:
     def format_hook_output(self, event: str = "") -> str | None:
         """Format violations as Claude Code hook JSON output. Returns None if no violations.
 
-        For PreToolUse ERROR violations, uses hookSpecificOutput with
-        permissionDecision="deny" so Claude Code actually blocks the tool call.
-        For advisory output (warnings/info), uses systemMessage.
+        Output channel depends on event type:
+        - PreToolUse ERROR: hookSpecificOutput with permissionDecision="deny"
+        - PreToolUse advisory (WARNING/INFO): hookSpecificOutput with additionalContext
+        - PostToolUse/PostToolUseFailure: hookSpecificOutput with additionalContext
+          (+ decision "block" for WARNINGs as strong advisory signal)
+        - Other events (Stop, Notification, etc.): systemMessage for user visibility
         """
         if not self.violations:
             return None
@@ -87,7 +90,10 @@ class Reporter:
                     "additionalContext": "\n".join(context_lines),
                 }
             }
-            # WARNING/ERROR: stronger advisory signal that tells agent to reconsider
+            # PostToolUse "block" is a strong advisory signal — the tool already ran,
+            # so this doesn't undo the action. Claude Code treats it as "hook is
+            # unhappy, reconsider before next action." If the protocol adds a
+            # dedicated advisory decision value in the future, switch to that.
             if warnings or errors:
                 reason_violations = errors + warnings
                 result["decision"] = "block"

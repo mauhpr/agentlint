@@ -82,10 +82,10 @@ def load_config(project_dir: str) -> AgentLintConfig:
 
     if explicit_packs:
         packs = explicit_packs
-        # Warn about unregistered packs
+        custom_dir = raw.get("custom_rules_dir")
         for p in packs:
-            if p not in PACK_MODULES:
-                logger.warning("Unknown pack '%s' in config (not registered)", p)
+            if p not in PACK_MODULES and not custom_dir:
+                logger.warning("Unknown pack '%s' — set custom_rules_dir to use custom packs", p)
     elif stack_mode == "auto":
         packs = detect_stack(project_dir)
     else:

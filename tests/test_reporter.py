@@ -185,6 +185,30 @@ class TestPreToolUseDenyProtocol:
         assert "systemMessage" in parsed
         assert "WARN01" in parsed["systemMessage"]
 
+    def test_posttooluse_failure_uses_additional_context(self) -> None:
+        """PostToolUseFailure should use same path as PostToolUse."""
+        violations = [_make_violation(severity=Severity.WARNING, rule_id="WARN01")]
+        reporter = Reporter(violations=violations)
+
+        output = reporter.format_hook_output(event="PostToolUseFailure")
+        parsed = json.loads(output)
+        assert "hookSpecificOutput" in parsed
+        assert parsed["hookSpecificOutput"]["hookEventName"] == "PostToolUseFailure"
+        assert "WARN01" in parsed["hookSpecificOutput"]["additionalContext"]
+        assert parsed["decision"] == "block"
+
+    def test_pretooluse_info_only_uses_additional_context(self) -> None:
+        """PreToolUse with INFO-only violations should use additionalContext, not systemMessage."""
+        violations = [_make_violation(severity=Severity.INFO, rule_id="INFO01")]
+        reporter = Reporter(violations=violations)
+
+        output = reporter.format_hook_output(event="PreToolUse")
+        parsed = json.loads(output)
+        assert "hookSpecificOutput" in parsed
+        assert "INFO01" in parsed["hookSpecificOutput"]["additionalContext"]
+        assert "systemMessage" not in parsed
+        assert "permissionDecision" not in parsed.get("hookSpecificOutput", {})
+
     def test_no_event_uses_system_message(self) -> None:
         """Default (no event) should use systemMessage."""
         violations = [_make_violation(severity=Severity.ERROR)]

@@ -228,6 +228,7 @@ packs:
 {pack_lines}
   # - security  # opt-in: blocks Bash file writes, network exfiltration
   # - autopilot  # opt-in: production guard, cloud/infra safety, CI/CD pipeline, docker, firewall
+  # - mypack     # custom packs: add name here + set custom_rules_dir below
 
 rules: {{}}
   # Override individual rules:
@@ -240,6 +241,7 @@ rules: {{}}
 #   enabled: false  # opt-in session recording for product insights
 
 # custom_rules_dir: .agentlint/rules/
+# Custom rules with pack = "mypack" activate when "mypack" is listed in packs above
 """
     config_path = os.path.join(project_dir, "agentlint.yml")
     with open(config_path, "w") as f:
@@ -352,10 +354,21 @@ def setup(scope: str, project_dir: str | None):
 
 @main.command("list-rules")
 @click.option("--pack", default=None, help="Filter rules by pack name")
-def list_rules(pack: str | None):
+@click.option("--project-dir", default=None, help="Project directory")
+def list_rules(pack: str | None, project_dir: str | None):
     """List all available rules."""
-    all_packs = sorted(PACK_MODULES.keys()) if pack is None else [pack]
-    rules = load_rules(all_packs)
+    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+
+    builtin_packs = sorted(PACK_MODULES.keys()) if pack is None else [p for p in [pack] if p in PACK_MODULES]
+    rules = load_rules(builtin_packs)
+
+    # Load custom rules
+    config = load_config(project_dir)
+    if config.custom_rules_dir:
+        custom = load_custom_rules(config.custom_rules_dir, project_dir)
+        if pack is not None:
+            custom = [r for r in custom if r.pack == pack]
+        rules.extend(custom)
 
     if not rules:
         if pack:
@@ -457,8 +470,26 @@ def doctor(project_dir: str | None):
     else:
         issues.append(f"Session cache: {cache_dir} is not writable")
 
-    # Check recordings dir writable (when recording is enabled)
+    # Check custom rules
     config = load_config(project_dir)
+    if config.custom_rules_dir:
+        from pathlib import Path as _Path
+        custom_dir = _Path(project_dir) / config.custom_rules_dir
+        if custom_dir.is_dir():
+            py_files = [f for f in custom_dir.glob("*.py") if not f.name.startswith("_")]
+            if py_files:
+                checks_ok.append(f"Custom rules: {len(py_files)} rule file(s) in {config.custom_rules_dir}")
+                # Check for orphaned packs (rules whose pack isn't in packs: list)
+                custom_rules = load_custom_rules(config.custom_rules_dir, project_dir)
+                orphaned = {r.pack for r in custom_rules} - set(config.packs)
+                for p in sorted(orphaned):
+                    issues.append(f"Custom pack '{p}' not in packs: list — rules will be skipped")
+            else:
+                issues.append(f"Custom rules: {config.custom_rules_dir} exists but has no .py files")
+        else:
+            issues.append(f"Custom rules: {config.custom_rules_dir} configured but directory not found")
+
+    # Check recordings dir writable (when recording is enabled)
     from agentlint.recorder import is_recording_enabled
     if is_recording_enabled(config):
         from agentlint.recorder import _recordings_dir
