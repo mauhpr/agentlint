@@ -297,3 +297,22 @@ class TestNamingConventions:
             project_dir="/project",
         )
         assert rule.evaluate(ctx) == []
+
+    def test_index_tsx_exempt(self):
+        """index.tsx is extremely common in React — should not warn."""
+        rule = NamingConventions()
+        assert rule.evaluate(self._pre_context("/project/src/index.tsx")) == []
+        assert rule.evaluate(self._pre_context("/project/src/index.ts")) == []
+        assert rule.evaluate(self._pre_context("/project/src/index.js")) == []
+
+    def test_kebab_case_tsx_accepted(self):
+        """my-component.tsx is common in React — kebab-case should be accepted."""
+        rule = NamingConventions()
+        assert rule.evaluate(self._pre_context("/project/src/my-component.tsx")) == []
+        assert rule.evaluate(self._pre_context("/project/src/button-group.jsx")) == []
+
+    def test_kebab_case_ts_warns(self):
+        """my-utils.ts should still warn — TS expects camelCase, not kebab-case."""
+        rule = NamingConventions()
+        violations = rule.evaluate(self._pre_context("/project/src/my-utils.ts"))
+        assert len(violations) == 1

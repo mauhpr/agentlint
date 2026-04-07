@@ -8,13 +8,14 @@ Validates that file names follow expected patterns per language:
 from __future__ import annotations
 
 import re
-from pathlib import PurePosixPath
+from pathlib import PurePath
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _SNAKE_CASE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _CAMEL_CASE_RE = re.compile(r"^[a-z][a-zA-Z0-9]*$")
 _PASCAL_CASE_RE = re.compile(r"^[A-Z][a-zA-Z0-9]*$")
+_KEBAB_CASE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 
 _EXT_TO_CONVENTION = {
     "py": "snake_case",
@@ -27,16 +28,23 @@ _EXT_TO_CONVENTION = {
     "jsx": "PascalCase",
 }
 
+# TSX/JSX also accept kebab-case (very common in React: my-component.tsx)
+_ALTERNATIVE_CONVENTIONS = {
+    "tsx": ["kebab-case"],
+    "jsx": ["kebab-case"],
+}
+
 _CONVENTION_RE = {
     "snake_case": _SNAKE_CASE_RE,
     "camelCase": _CAMEL_CASE_RE,
     "PascalCase": _PASCAL_CASE_RE,
+    "kebab-case": _KEBAB_CASE_RE,
 }
 
 # Files that are conventionally allowed to break naming rules
 _EXEMPT_NAMES = {
-    "__init__", "__main__", "conftest", "setup", "Makefile",
-    "Dockerfile", "Procfile", "Gemfile", "Rakefile", "Vagrantfile",
+    "__init__", "__main__", "conftest", "setup", "index",
+    "Makefile", "Dockerfile", "Procfile", "Gemfile", "Rakefile", "Vagrantfile",
 }
 
 
@@ -55,7 +63,7 @@ class NamingConventions(Rule):
         if not file_path:
             return []
 
-        p = PurePosixPath(file_path)
+        p = PurePath(file_path)
         stem = p.stem
         ext = p.suffix.lstrip(".")
 
@@ -91,16 +99,22 @@ class NamingConventions(Rule):
         if not pattern:
             return []
 
-        if not pattern.match(stem):
-            return [Violation(
-                rule_id=self.id,
-                message=f"File '{p.name}' doesn't follow {convention_name} convention",
-                severity=self.severity,
-                file_path=file_path,
-                suggestion=f"Rename to {convention_name} format (e.g., {self._suggest_name(stem, convention_name, ext)})",
-            )]
+        if pattern.match(stem):
+            return []
 
-        return []
+        # Check alternative conventions (e.g., kebab-case for TSX/JSX)
+        for alt_name in _ALTERNATIVE_CONVENTIONS.get(ext, []):
+            alt_pattern = _CONVENTION_RE.get(alt_name)
+            if alt_pattern and alt_pattern.match(stem):
+                return []
+
+        return [Violation(
+            rule_id=self.id,
+            message=f"File '{p.name}' doesn't follow {convention_name} convention",
+            severity=self.severity,
+            file_path=file_path,
+            suggestion=f"Rename to {convention_name} format (e.g., {self._suggest_name(stem, convention_name, ext)})",
+        )]
 
     def _suggest_name(self, stem: str, convention: str, ext: str) -> str:
         """Generate a suggested filename in the target convention."""

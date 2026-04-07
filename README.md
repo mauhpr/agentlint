@@ -12,7 +12,7 @@ AI coding agents drift during long sessions — they introduce API keys into sou
 
 ## Vision
 
-The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 65 rules that run locally in milliseconds.
+The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 68 rules that run locally in milliseconds.
 
 The longer-term question is harder: **what does it mean for an agent to operate safely on real infrastructure?** When an agent can run `gcloud`, `kubectl`, `terraform`, or `iptables`, the blast radius is no longer a bad commit — it's a production outage or a deleted database.
 
@@ -20,7 +20,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 ## What it catches
 
-AgentLint ships with 65 rules across 8 packs, covering all 17 Claude Code hook events. The 19 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental:
+AgentLint ships with 68 rules across 8 packs, covering all 17 Claude Code hook events. The 19 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental:
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -43,12 +43,15 @@ AgentLint ships with 65 rules across 8 packs, covering all 17 Claude Code hook e
 **ERROR** rules block the agent's action. **WARNING** rules inject advice into the agent's context. **INFO** rules appear in the session report.
 
 <details>
-<summary><strong>Quality pack</strong> (4 rules) — always active alongside universal</summary>
+<summary><strong>Quality pack</strong> (7 rules) — always active alongside universal</summary>
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
 | `commit-message-format` | WARNING | Validates commit messages follow conventional format |
 | `no-error-handling-removal` | WARNING | Warns when try/except or .catch() blocks are removed |
+| `no-large-diff` | WARNING | Warns when a single edit adds >200 or removes >100 lines |
+| `no-file-creation-sprawl` | WARNING | Warns when >10 new files created in a session |
+| `naming-conventions` | INFO | Checks file names match language conventions (snake_case, camelCase, PascalCase) |
 | `no-dead-imports` | INFO | Detects unused imports in Python and JS/TS files |
 | `self-review-prompt` | INFO | Injects adversarial self-review prompt at session end |
 
