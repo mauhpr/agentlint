@@ -316,3 +316,39 @@ class TestNamingConventions:
         rule = NamingConventions()
         violations = rule.evaluate(self._pre_context("/project/src/my-utils.ts"))
         assert len(violations) == 1
+
+    def test_file_without_extension_passes(self):
+        rule = NamingConventions()
+        ctx = self._pre_context("/project/Makefile")
+        assert rule.evaluate(ctx) == []
+
+    def test_typescript_config_override(self):
+        rule = NamingConventions()
+        ctx = self._pre_context(
+            "/project/src/MyUtils.ts",
+            config={"naming-conventions": {"typescript": "PascalCase"}},
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_react_components_config_override(self):
+        rule = NamingConventions()
+        ctx = self._pre_context(
+            "/project/src/my_component.tsx",
+            config={"naming-conventions": {"react_components": "snake_case"}},
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_invalid_convention_name_passes(self):
+        """Unknown convention name in config should not crash."""
+        rule = NamingConventions()
+        ctx = self._pre_context(
+            "/project/src/app.py",
+            config={"naming-conventions": {"python": "SCREAMING_CASE"}},
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_suggest_name_fallback(self):
+        """_suggest_name with unknown convention returns original."""
+        rule = NamingConventions()
+        result = rule._suggest_name("myFile", "unknown_convention", "py")
+        assert result == "myFile.py"
