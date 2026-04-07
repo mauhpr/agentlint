@@ -81,75 +81,81 @@ Generic subprocess execution rule that subsumes linter wrapping, dependency scan
 
 ## Backlog — Prioritized
 
-### 1. File-Scope Governance (P1, Size: M)
+### 1. File-Scope Governance (P1, Size: M) — PR #24
 
-Security rule that restricts which files an agent can read/write based on glob patterns:
+Security rule that restricts which files an agent can read/write based on allow/deny glob patterns. Deny takes precedence. Blocks Write, Edit, Read, and Bash file operations. Path traversal blocked via `os.path.realpath()`.
+
+---
+
+### 2. Quality Rules from Reddit Research (P1, Size: M)
+
+Three new rules addressing top community pain points:
+
+- **`no-large-diff`** (quality, PostToolUse, WARNING) — Warns when a single Write/Edit produces a diff larger than a threshold. Forces smaller, reviewable chunks. Uses `file_content_before` diff. Config: `max_lines_added: 200`, `max_lines_removed: 100`.
+
+- **`no-file-creation-sprawl`** (quality, PostToolUse, WARNING) — Tracks files created during the session. Warns after N new files. Encourages extending existing files. Config: `max_new_files: 10`.
+
+- **`naming-conventions`** (quality, PreToolUse, INFO) — Checks file names against configurable patterns (snake_case for Python, camelCase/PascalCase for JS/TS, test_ prefix).
+
+---
+
+### 3. CI Mode (P2, Size: M)
+
+`agentlint ci` command that scans a git diff and exits non-zero on violations. Runs the same rules and config as hooks, but triggered in CI pipelines instead of Claude Code.
+
 ```yaml
-rules:
-  file-scope:
-    allow: ["src/**", "tests/**", "docs/**"]
-    deny: ["*.env", "credentials/**", ".github/workflows/**"]
+# .github/workflows/agentlint.yml
+name: AgentLint
+on: [pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: pip install agentlint
+      - run: agentlint ci --diff origin/main...HEAD
 ```
 
-PreToolUse rule on Write/Edit/Read. Deny takes precedence over allow. Path normalization resolves symlinks and `../` traversal.
+**Design:**
+- `git diff --name-only` to get changed files
+- For each file: read content, build RuleContext with event=PostToolUse, evaluate
+- Report violations in human-readable format (not JSON hook protocol)
+- Exit 0 = clean, exit 1 = violations found
+- Respects `agentlint.yml` config (packs, severity, rule overrides)
+- `--format json` option for CI integrations that parse output
 
-Deferred from v0.4.0 — security-critical, needed for regulated environments (Dar3 fintech).
-
----
-
-### ~~2. Linter Wrapping~~ → Subsumed by CLI Integration (v1.0.0) ✅
-
-### ~~3. Dependency Vulnerability Scanning~~ → Subsumed by CLI Integration (v1.0.0) ✅
-
----
-
-### 2. MCP Server for AgentLint (P2, Size: L)
-
-Expose agentlint as an MCP server so Claude can query rules and violations programmatically.
-
-**Resources:**
-- `agentlint://rules` — list all rules with metadata
-- `agentlint://rules/{rule-id}` — rule detail with examples
-- `agentlint://session/violations` — current session violations
-- `agentlint://session/state` — session state (edited files, drift count)
-- `agentlint://config` — current effective configuration
-
-**Tools:**
-- `agentlint.check_content` — check arbitrary content against rules without going through hooks
-- `agentlint.toggle_rule` — enable/disable a rule for the current session
-- `agentlint.explain_violation` — get detailed explanation + remediation for a violation
-
-The killer feature is `check_content` — lets agents pre-validate code before writing it, avoiding the block-then-retry loop.
+**Why:** Agentlint becomes a second line of defense — catches violations even when developers don't use Claude Code. Makes agentlint a "code quality platform" not just a "Claude Code plugin."
 
 ---
 
-### ~~3. Dead Code Detection~~ → Subsumed by CLI Integration (v1.0.0) ✅
+### 4. Doctor CLI Integration Recipes (P2, Size: S)
 
-Configure `ruff check --select F841,F811 {file.path}` or `eslint --rule 'no-unused-vars: error' {file.path}` via CLI integration.
+When `doctor` detects project tools in PATH (ruff, eslint, mypy, pytest), suggest CLI integration config snippets. Low effort, high discoverability.
+
+---
+
+### 5. MCP Server (P2, Size: L)
+
+Expose agentlint as an MCP server. Resources: rules, config, session state. Tools: `check_content` (pre-validate code), `toggle_rule`, `list_rules`. The killer feature is `check_content` — agents pre-validate before writing, avoiding the block-then-retry loop.
 
 ---
 
-### 4. Multi-Project / Monorepo Support (P3, Size: M)
+### 6. Multi-Project / Monorepo Support (P3, Size: M)
 
-Support monorepos where different subdirectories have different stacks:
-```yaml
-# agentlint.yml
-projects:
-  frontend/:
-    packs: [universal, frontend, react]
-  backend/:
-    packs: [universal, python]
-  infra/:
-    packs: [universal, security]
-```
-
-The engine already supports per-directory resolution via `project_dir`. Main work is config parsing + `doctor` validation of project boundaries.
+Per-subdirectory pack configuration via `projects:` config key. The engine already supports per-directory resolution. Main work is config parsing + `doctor` validation.
 
 ---
+
+### Completed (originally in backlog)
+
+- ~~Linter Wrapping~~ → Subsumed by CLI Integration (v1.0.0)
+- ~~Dependency Vulnerability Scanning~~ → Subsumed by CLI Integration (v1.0.0)
+- ~~Dead Code Detection~~ → Subsumed by CLI Integration (v1.0.0). Configure `ruff --select F841` or `eslint no-unused-vars` via CLI integration.
 
 ### Deferred
 
-**Plugin Settings UI** (P3, Size: M) — Enable severity/pack toggles without editing YAML directly. Requires Claude Code plugin settings API support (not yet available — track upstream).
+**Plugin Settings UI** (P3, Size: M) — Requires Claude Code plugin settings API support (not yet available — track upstream).
 
 ---
 
