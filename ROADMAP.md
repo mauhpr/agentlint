@@ -1,6 +1,6 @@
 # AgentLint Roadmap
 
-> **Current state:** v1.0.0 — 64 rules across 8 packs, 1412 tests, 96% coverage.
+> **Current state:** v1.1.0 — 65 rules across 8 packs, 1432 tests, 96% coverage.
 
 ---
 
@@ -156,6 +156,42 @@ Per-subdirectory pack configuration via `projects:` config key. The engine alrea
 ### Deferred
 
 **Plugin Settings UI** (P3, Size: M) — Requires Claude Code plugin settings API support (not yet available — track upstream).
+
+---
+
+## After the Backlog — What's Next
+
+### GitHub Actions Marketplace Action (P1 post-backlog)
+
+`mauhpr/agentlint-action` — one-line reusable action for any repo:
+
+```yaml
+- uses: mauhpr/agentlint-action@v1
+```
+
+Posts violations as inline PR review comments. Requires CI mode (backlog #3) to ship first. ~30 lines of action config wrapping `agentlint ci`. This is the single highest-leverage growth move — makes agentlint visible on every PR.
+
+### Community Growth
+
+- Example configs for popular stacks (Rails, Django, Next.js, Rust, Go)
+- Blog posts: "How to prevent your AI agent from deleting production" (Reddit signal: 2800+ upvotes)
+- `agentlint init` generates better defaults per detected stack
+
+### Other Agent Tools
+
+- **Cursor** — AfterFileEdit / BeforeShellExecution hooks (similar to Claude Code)
+- **Aider** — post-edit hook integration
+- **Codex / OpenAI Agents** — if they adopt a hook protocol
+
+CI mode covers all of these indirectly — if agentlint runs in the pipeline, the coding tool doesn't matter.
+
+### Enterprise (on demand)
+
+- Team-level config inheritance (org → repo → project)
+- Centralized rule management
+- Reporting dashboard (session recordings infra already exists)
+
+Build when someone asks and is willing to pay. Not before.
 
 ---
 

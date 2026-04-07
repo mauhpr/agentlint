@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.1.0 (2026-04-07) — File-Scope Governance
+
+### The change
+
+New PreToolUse rule that restricts which files the agent can read/write based on configurable allow/deny glob patterns. Addresses the #1 safety gap reported by the community — agents deleting files, overwriting archives, and accessing sensitive paths.
+
+```yaml
+rules:
+  file-scope:
+    allow: ["src/**", "tests/**", "docs/**"]
+    deny: ["*.env", "credentials/**", "/etc/**", "/boot/**"]
+```
+
+### Design
+
+- **Deny wins over allow** — if a file matches both, it's blocked
+- **Zero-config = inactive** — rule does nothing without explicit config
+- **Blocks Write, Edit, Read, Bash** — extracts file paths from Bash commands (cat, rm, cp, mv)
+- **Path traversal blocked** — `os.path.realpath()` prevents `../` attacks
+- **macOS symlink handling** — matches against resolved, original, relative, and basename paths
+
+### Tests
+
+1432 tests, 96% coverage. 100% coverage on file_scope.py.
+
 ## v1.0.0 (2026-04-07) — CLI Integration
 
 ### The change
