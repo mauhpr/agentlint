@@ -1,6 +1,6 @@
 # AgentLint Roadmap
 
-> **Current state:** v0.9.10 — 63 rules across 8 packs, 1357 tests, 96% coverage.
+> **Current state:** v1.0.0 — 64 rules across 8 packs, 1412 tests, 96% coverage.
 
 ---
 
@@ -65,6 +65,10 @@ Custom packs are first-class citizens:
 
 - `status` active rule count now excludes orphaned custom rules
 
+### v1.0.0 — "CLI Integration" ✅
+
+Generic subprocess execution rule that subsumes linter wrapping, dependency scanning, and dead code detection. Configure any CLI tool as a PostToolUse check with template placeholders, glob filters, timeouts, and severity levels. All placeholder values shell-escaped via `shlex.quote()` for injection prevention.
+
 ### Unplanned Features Shipped (not in original roadmap)
 
 - **Session Recordings** (v0.9.x) — `recordings {list,show,stats,clear}` for session replay and product insights
@@ -93,46 +97,13 @@ Deferred from v0.4.0 — security-critical, needed for regulated environments (D
 
 ---
 
-### 2. Linter Wrapping (P2, Size: L)
+### ~~2. Linter Wrapping~~ → Subsumed by CLI Integration (v1.0.0) ✅
 
-PostToolUse rule that runs the project's configured linter on changed files after Write/Edit:
-```yaml
-rules:
-  run-linter:
-    commands:
-      python: "ruff check {file}"
-      typescript: "npx eslint {file}"
-    timeout: 10
-```
-
-Subprocess execution with configurable timeout. Reports linter output as WARNING violations via `additionalContext`. Skips files outside project dir.
+### ~~3. Dependency Vulnerability Scanning~~ → Subsumed by CLI Integration (v1.0.0) ✅
 
 ---
 
-### 3. Dependency Vulnerability Scanning (P2, Size: M)
-
-PostToolUse rule that fires when `package.json`, `pyproject.toml`, `requirements.txt`, or `Cargo.toml` is modified.
-
-Wraps existing tools:
-- Python: `pip-audit`
-- JavaScript: `npm audit --json`
-- Go: `govulncheck`
-- Rust: `cargo audit`
-
-```yaml
-rules:
-  dependency-audit:
-    tools:
-      python: "pip-audit"
-      javascript: "npm audit --json"
-    severity_threshold: "high"  # only report high/critical CVEs
-```
-
-Shares subprocess infrastructure with Linter Wrapping.
-
----
-
-### 4. MCP Server for AgentLint (P2, Size: L)
+### 2. MCP Server for AgentLint (P2, Size: L)
 
 Expose agentlint as an MCP server so Claude can query rules and violations programmatically.
 
@@ -152,18 +123,13 @@ The killer feature is `check_content` — lets agents pre-validate code before w
 
 ---
 
-### 5. Dead Code Detection (P3, Size: L)
+### ~~3. Dead Code Detection~~ → Subsumed by CLI Integration (v1.0.0) ✅
 
-PostToolUse rule that detects unreachable or unused code after Write/Edit:
-- Unreachable code after `return`, `raise`, `break`
-- Unused variables in the written/edited function
-- Functions defined but never called within the file
-
-**Approach:** Python uses `ast` module; TypeScript delegates to linter wrapping (eslint no-unused-vars). Python-only as built-in rule, others via linter wrapping.
+Configure `ruff check --select F841,F811 {file.path}` or `eslint --rule 'no-unused-vars: error' {file.path}` via CLI integration.
 
 ---
 
-### 6. Multi-Project / Monorepo Support (P3, Size: M)
+### 4. Multi-Project / Monorepo Support (P3, Size: M)
 
 Support monorepos where different subdirectories have different stacks:
 ```yaml

@@ -203,3 +203,70 @@ class TestEndToEnd:
             # Should ALWAYS block — never degraded
             assert "hookSpecificOutput" in output, f"Fire {i+1}: no-secrets should always block"
             assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_cli_integration_runs_echo(self, tmp_path):
+        """CLI integration with echo (exit 0) should produce no violation."""
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n"
+            "rules:\n  cli-integration:\n    commands:\n"
+            "      - name: echo-test\n        command: echo ok\n"
+            "        on: [Write]\n        glob: '**/*'\n"
+        )
+        result = self._run_agentlint(
+            ["check", "--event", "PostToolUse"],
+            stdin_data={
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(tmp_path / "app.py"), "content": "x=1"},
+            },
+            project_dir=str(tmp_path),
+        )
+        assert result.returncode == 0
+        # echo exits 0 → no violation → empty output or no cli-integration violation
+        if result.stdout.strip():
+            output = json.loads(result.stdout)
+            assert "cli-integration/echo-test" not in str(output)
+
+    def test_cli_integration_runs_false(self, tmp_path):
+        """CLI integration with false (exit 1) should create a violation."""
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n"
+            "rules:\n  cli-integration:\n    commands:\n"
+            "      - name: fail-test\n        command: 'false'\n"
+            "        on: [Write]\n        glob: '**/*'\n"
+        )
+        result = self._run_agentlint(
+            ["check", "--event", "PostToolUse"],
+            stdin_data={
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(tmp_path / "app.py"), "content": "x=1"},
+            },
+            project_dir=str(tmp_path),
+        )
+        assert result.returncode == 0
+        output = json.loads(result.stdout)
+        assert "cli-integration/fail-test" in str(output)
+
+    def test_cli_integration_shell_injection_safe(self, tmp_path):
+        """File with shell metacharacters in name should not cause injection."""
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n"
+            "rules:\n  cli-integration:\n    commands:\n"
+            "      - name: echo-path\n"
+            "        command: echo {file.path}\n"
+            "        on: [Write]\n        glob: '**/*'\n"
+        )
+        # File path with semicolon — would be dangerous without shlex.quote
+        malicious_path = str(tmp_path / "foo;whoami;.py")
+        result = self._run_agentlint(
+            ["check", "--event", "PostToolUse"],
+            stdin_data={
+                "tool_name": "Write",
+                "tool_input": {"file_path": malicious_path, "content": "x=1"},
+            },
+            project_dir=str(tmp_path),
+        )
+        assert result.returncode == 0
+        # echo should exit 0 (the semicolons are quoted, not shell-interpreted)
+        if result.stdout.strip():
+            output = json.loads(result.stdout)
+            assert "cli-integration/echo-path" not in str(output)

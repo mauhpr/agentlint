@@ -1120,7 +1120,7 @@ class TestPackLoader:
         from agentlint.packs import load_rules
 
         rules = load_rules(["universal"])
-        assert len(rules) == 17  # 14 original + git-checkpoint + cicd-pipeline-guard + package-publish-guard
+        assert len(rules) == 18  # 14 original + git-checkpoint + cicd-pipeline-guard + package-publish-guard + cli-integration
         ids = {r.id for r in rules}
         assert "no-secrets" in ids
         assert "no-env-commit" in ids

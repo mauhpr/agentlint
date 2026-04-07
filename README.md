@@ -12,7 +12,7 @@ AI coding agents drift during long sessions — they introduce API keys into sou
 
 ## Vision
 
-The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 63 rules that run locally in milliseconds.
+The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 64 rules that run locally in milliseconds.
 
 The longer-term question is harder: **what does it mean for an agent to operate safely on real infrastructure?** When an agent can run `gcloud`, `kubectl`, `terraform`, or `iptables`, the blast radius is no longer a bad commit — it's a production outage or a deleted database.
 
@@ -20,7 +20,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 ## What it catches
 
-AgentLint ships with 63 rules across 8 packs, covering all 17 Claude Code hook events. The 17 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental:
+AgentLint ships with 64 rules across 8 packs, covering all 17 Claude Code hook events. The 18 **universal** rules and 4 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental:
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -418,6 +418,54 @@ custom_rules_dir: .agentlint/rules/
 ```
 
 Rules whose `pack` is not in `packs:` are loaded but silently skipped. Use `agentlint doctor` to detect orphaned packs.
+
+## CLI Integration
+
+Run any command-line tool as a PostToolUse check. AgentLint executes the command after Write/Edit and reports non-zero exit codes as violations:
+
+```yaml
+rules:
+  cli-integration:
+    commands:
+      - name: ruff
+        on: ["Write", "Edit"]
+        glob: "**/*.py"
+        command: "ruff check {file.path} --output-format=concise"
+        timeout: 10
+        severity: warning
+
+      - name: pip-audit
+        on: ["Write", "Edit"]
+        glob: "**/requirements*.txt"
+        command: "pip-audit -r {file.path}"
+        timeout: 30
+        severity: warning
+
+      - name: pytest-related
+        on: ["Write", "Edit"]
+        glob: "src/**/*.py"
+        command: "pytest tests/ -k {file.stem} -x -q --tb=short"
+        timeout: 60
+        severity: info
+```
+
+### Available placeholders
+
+| Placeholder | Value | Example |
+|---|---|---|
+| `{file.path}` | Absolute file path | `/home/user/project/src/app.py` |
+| `{file.relative}` | Relative to project | `src/app.py` |
+| `{file.name}` | Filename | `app.py` |
+| `{file.stem}` | Filename without extension | `app` |
+| `{file.ext}` | Extension | `py` |
+| `{file.dir}` | Parent directory | `/home/user/project/src` |
+| `{file.dir.relative}` | Parent dir (relative) | `src` |
+| `{project.dir}` | Project root | `/home/user/project` |
+| `{tool.name}` | Tool that triggered | `Write` |
+| `{session.changed_files}` | All changed files (space-separated) | `src/a.py src/b.py` |
+| `{env.VARNAME}` | Environment variable | _(value of $VARNAME)_ |
+
+Commands with unresolvable placeholders are silently skipped. All placeholder values are shell-escaped (`shlex.quote`) to prevent injection. File paths outside the project directory are rejected.
 
 ## How it works
 

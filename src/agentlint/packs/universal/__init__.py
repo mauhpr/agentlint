@@ -1,5 +1,6 @@
 """Universal rule pack — PreToolUse, PostToolUse, and Stop rules."""
 from agentlint.packs.universal.cicd_pipeline_guard import CicdPipelineGuard
+from agentlint.packs.universal.cli_integration import CliIntegration
 from agentlint.packs.universal.dependency_hygiene import DependencyHygiene
 from agentlint.packs.universal.drift_detector import DriftDetector
 from agentlint.packs.universal.git_checkpoint import GitCheckpoint
@@ -31,6 +32,7 @@ RULES = [
     CicdPipelineGuard(),
     PackagePublishGuard(),
     # PostToolUse
+    CliIntegration(),
     MaxFileSize(),
     DriftDetector(),
     TokenBudget(),

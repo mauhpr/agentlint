@@ -490,6 +490,22 @@ def doctor(project_dir: str | None):
         else:
             issues.append(f"Custom rules: {config.custom_rules_dir} configured but directory not found")
 
+    # Check CLI integration commands
+    cli_config = config.rules.get("cli-integration", {})
+    cli_commands = cli_config.get("commands", [])
+    if cli_commands:
+        import shutil
+        for cmd_cfg in cli_commands:
+            name = cmd_cfg.get("name", "unnamed")
+            command = cmd_cfg.get("command", "")
+            # Extract the binary name (first word, ignoring placeholders)
+            binary = command.split()[0] if command else ""
+            if binary and not binary.startswith("{"):
+                if shutil.which(binary):
+                    checks_ok.append(f"CLI integration: '{name}' → {binary} found")
+                else:
+                    issues.append(f"CLI integration: '{name}' → {binary} not found in PATH")
+
     # Check recordings dir writable (when recording is enabled)
     from agentlint.recorder import is_recording_enabled
     if is_recording_enabled(config):
