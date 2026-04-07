@@ -2,6 +2,7 @@
 from agentlint.packs.universal.cicd_pipeline_guard import CicdPipelineGuard
 from agentlint.packs.universal.cli_integration import CliIntegration
 from agentlint.packs.universal.dependency_hygiene import DependencyHygiene
+from agentlint.packs.universal.file_scope import FileScope
 from agentlint.packs.universal.drift_detector import DriftDetector
 from agentlint.packs.universal.git_checkpoint import GitCheckpoint
 from agentlint.packs.universal.max_file_size import MaxFileSize
@@ -30,6 +31,7 @@ RULES = [
     NoTestWeakening(),
     GitCheckpoint(),  # disabled by default — opt in via config
     CicdPipelineGuard(),
+    FileScope(),
     PackagePublishGuard(),
     # PostToolUse
     CliIntegration(),

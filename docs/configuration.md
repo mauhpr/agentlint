@@ -254,6 +254,29 @@ Tracks session activity (tool invocations, content bytes, duration). Warns at co
 - `max_content_bytes` — Maximum content bytes (default: `500000`)
 - `warn_at_percent` — Warning threshold (default: `80`)
 
+### `file-scope` (PreToolUse, ERROR)
+
+Restricts which files the agent can read/write based on allow/deny glob patterns. If no `file-scope` config is present, the rule is inactive (zero-config = no restrictions).
+
+```yaml
+rules:
+  file-scope:
+    allow: ["src/**", "tests/**", "docs/**"]
+    deny: ["*.env", "credentials/**", ".github/workflows/**", "/etc/**"]
+    deny_message: "File access denied by governance policy"
+```
+
+**Config options:**
+- `allow` — Glob patterns for allowed files. If present, only matching files are accessible.
+- `deny` — Glob patterns for denied files. Deny takes precedence over allow.
+- `deny_message` — Custom message shown when access is denied (default: "File access denied by file-scope rule")
+
+**Behavior:**
+- Blocks Write, Edit, Read tool calls and Bash file operations (cat, rm, cp, mv)
+- Path traversal (`../`) blocked via `os.path.realpath()`
+- Matches against resolved path, original path, relative path, and basename
+- Files outside the project directory are matched against absolute path patterns
+
 ### `cicd-pipeline-guard` (PreToolUse, ERROR)
 
 Blocks modifications to CI/CD pipeline files (`.github/workflows/`, `.gitlab-ci.yml`, `Jenkinsfile`, etc.) without a session-level confirmation key. Prevents accidental pipeline changes during autonomous sessions.
