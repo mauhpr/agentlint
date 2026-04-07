@@ -237,6 +237,29 @@ class TestFileScopeToolTypes:
         assert rule.evaluate(ctx) == []
 
 
+class TestFileScopeRelPathFallback:
+    def test_relpath_value_error_falls_back(self, tmp_path, monkeypatch):
+        """When os.path.relpath raises ValueError, fall back to resolved path."""
+        import os as _os
+        original_relpath = _os.path.relpath
+
+        def _raising_relpath(path, start):
+            raise ValueError("path is on mount 'C:', start on mount 'D:'")
+
+        monkeypatch.setattr(_os.path, "relpath", _raising_relpath)
+
+        f = tmp_path / ".env"
+        f.touch()
+        rule = FileScope()
+        ctx = _make_context(
+            file_path=str(f),
+            project_dir=str(tmp_path),
+            config={"file-scope": {"deny": ["*.env"]}},
+        )
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 1
+
+
 class TestFileScopeViolationDetails:
     def test_violation_has_file_path(self, tmp_path):
         f = tmp_path / ".env"
