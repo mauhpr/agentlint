@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.0.0 (2026-04-07) — CLI Integration
+
+### The change
+
+AgentLint becomes a platform. The new `cli-integration` rule runs any command-line tool as a PostToolUse check — linters, scanners, test runners, custom scripts. One rule replaces three roadmap items.
+
+```yaml
+rules:
+  cli-integration:
+    commands:
+      - name: ruff
+        on: ["Write", "Edit"]
+        glob: "**/*.py"
+        command: "ruff check {file.path} --output-format=concise"
+        timeout: 10
+        severity: warning
+```
+
+### Placeholders
+
+Template placeholders (`{file.path}`, `{file.stem}`, `{file.dir}`, `{project.dir}`, `{tool.name}`, `{session.changed_files}`, `{env.VARNAME}`) resolve from the hook context. All values are **shell-escaped via `shlex.quote()`** to prevent injection from adversarial file names. File paths outside the project directory are rejected.
+
+### Doctor
+
+`agentlint doctor` now validates CLI integration commands — warns if configured binaries aren't in PATH.
+
+### Tests
+
+1412 tests, 96% coverage.
+
 ## v0.9.10 (2026-04-02) — Status Count Fix
 
 ### Fix
