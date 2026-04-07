@@ -9,13 +9,14 @@ AgentLint is configured via `agentlint.yml` (or `agentlint.yaml`, `.agentlint.ym
 stack: auto                    # auto | manual
 severity: standard             # strict | standard | relaxed
 packs:
-  - universal                  # Always active
+  - universal                  # Always active (18 rules)
   # - python                   # Auto-detected from pyproject.toml / setup.py
   # - frontend                 # Auto-detected from package.json
   # - react                    # Auto-detected from react in dependencies
   # - seo                      # Auto-detected from SSR/SSG framework
   # - security                 # Opt-in: blocks Bash file writes, network exfiltration
   # - autopilot                # Opt-in: guards for unattended/autonomous sessions
+  # - mypack                   # Custom packs: name matches pack attribute in custom rules
 # custom_rules_dir: .agentlint/rules/   # Path to custom rule files
 
 rules:
@@ -34,6 +35,9 @@ rules:
   no-skip-hooks:     { enabled: true }                   # WARNING - warns on git commit --no-verify
   no-test-weakening: { enabled: true }                   # WARNING - warns on skipped tests, assert True
   git-checkpoint:    { enabled: false }                  # INFO - creates git stash before destructive ops (opt-in)
+  cicd-pipeline-guard: { enabled: true }            # ERROR - blocks CI/CD pipeline changes without approval
+  package-publish-guard: { enabled: true }           # ERROR - blocks npm publish, twine upload, gem push
+  cli-integration: {}                                 # Run external CLI tools on PostToolUse (see below)
   # === Quality pack (always-active) ===
   commit-message-format: { enabled: true }               # WARNING - validates conventional commits
   no-error-handling-removal: { enabled: true }            # WARNING - warns when error handling removed
@@ -78,14 +82,19 @@ Global severity mode. Transforms all violation severities:
 
 Explicit list of rule packs to activate. Overrides auto-detection.
 
-Available packs: `universal`, `quality`, `python`, `frontend`, `react`, `seo`, `security`, `autopilot`.
+Built-in packs: `universal`, `quality`, `python`, `frontend`, `react`, `seo`, `security`, `autopilot`.
+
+Custom packs are also supported — add any pack name to `packs:` and set `custom_rules_dir`. Rules whose `pack` attribute matches the name will activate.
 
 ```yaml
 packs:
   - universal
   - python
   - frontend
+  - fintech          # custom pack — rules in custom_rules_dir with pack = "fintech"
 ```
+
+Use `agentlint doctor` to detect orphaned packs (custom rules whose pack isn't in `packs:`).
 
 ### `custom_rules_dir`
 
@@ -244,6 +253,62 @@ Tracks session activity (tool invocations, content bytes, duration). Warns at co
 - `max_tool_invocations` — Maximum tool calls before warning (default: `200`)
 - `max_content_bytes` — Maximum content bytes (default: `500000`)
 - `warn_at_percent` — Warning threshold (default: `80`)
+
+### `cicd-pipeline-guard` (PreToolUse, ERROR)
+
+Blocks modifications to CI/CD pipeline files (`.github/workflows/`, `.gitlab-ci.yml`, `Jenkinsfile`, etc.) without a session-level confirmation key. Prevents accidental pipeline changes during autonomous sessions.
+
+### `package-publish-guard` (PreToolUse, ERROR)
+
+Blocks package publish commands: `npm publish`, `twine upload`, `gem push`, `cargo publish`. Prevents accidental releases during automated sessions.
+
+### `cli-integration` (PostToolUse, configurable)
+
+Runs external CLI tools on file changes and reports non-zero exit codes as violations. Configure commands with template placeholders:
+
+```yaml
+rules:
+  cli-integration:
+    commands:
+      - name: ruff
+        on: ["Write", "Edit"]        # Tool filter (default: Write, Edit)
+        glob: "**/*.py"              # File filter (default: **/*)
+        command: "ruff check {file.path} --output-format=concise"
+        timeout: 10                  # Seconds (default: 10)
+        severity: warning            # error | warning | info (default: warning)
+
+      - name: pip-audit
+        on: ["Write", "Edit"]
+        glob: "**/requirements*.txt"
+        command: "pip-audit -r {file.path}"
+        timeout: 30
+        severity: warning
+
+      - name: pytest-related
+        on: ["Write", "Edit"]
+        glob: "src/**/*.py"
+        command: "pytest tests/ -k {file.stem} -x -q --tb=short"
+        timeout: 60
+        severity: info
+```
+
+**Available placeholders:**
+
+| Placeholder | Value | Example |
+|---|---|---|
+| `{file.path}` | Absolute file path | `/home/user/project/src/app.py` |
+| `{file.relative}` | Relative to project | `src/app.py` |
+| `{file.name}` | Filename | `app.py` |
+| `{file.stem}` | Filename without extension | `app` |
+| `{file.ext}` | Extension | `py` |
+| `{file.dir}` | Parent directory | `/home/user/project/src` |
+| `{file.dir.relative}` | Parent dir (relative) | `src` |
+| `{project.dir}` | Project root | `/home/user/project` |
+| `{tool.name}` | Tool that triggered | `Write` |
+| `{session.changed_files}` | All changed files (space-separated) | `src/a.py src/b.py` |
+| `{env.VARNAME}` | Environment variable | _(value of $VARNAME)_ |
+
+**Security:** All placeholder values are shell-escaped via `shlex.quote()`. File paths outside the project directory are rejected. Commands with unresolvable placeholders are silently skipped.
 
 ## AGENTS.md Integration
 
@@ -528,6 +593,22 @@ Injects a safety notice into subagent context on spawn. Tracks spawned subagents
 
 Audits subagent JSONL transcripts for dangerous commands (rm -rf, terraform destroy, cloud deletions, etc.) after execution. Records audit results in `session_state` for the session report.
 
+### `ssh-destructive-command-guard` (PreToolUse, WARNING/ERROR)
+
+Detects destructive commands via SSH: `rm -rf`, `mkfs`, `dd`, `reboot`, `iptables flush`, `terraform destroy`. ERROR for catastrophic patterns, WARNING for risky ones.
+
+### `remote-boot-partition-guard` (PreToolUse, ERROR)
+
+Blocks `rm` or `dd` targeting `/boot` kernel and bootloader files via SSH.
+
+### `remote-chroot-guard` (PreToolUse, WARNING/ERROR)
+
+Detects bootloader package removal and risky repair commands inside chroot environments. ERROR for bootloader removal, WARNING for risky repair.
+
+### `package-manager-in-chroot` (PreToolUse, WARNING)
+
+Warns on `apt`/`dpkg`/`yum`/`dnf`/`pacman` usage inside chroot environments.
+
 ## Full example
 
 ```yaml
@@ -630,6 +711,16 @@ rules:
   seo-structured-data:
     content_path_patterns: ["product", "article", "blog"]
 
+  # CLI integration — run external tools on PostToolUse
+  # cli-integration:
+  #   commands:
+  #     - name: ruff
+  #       on: ["Write", "Edit"]
+  #       glob: "**/*.py"
+  #       command: "ruff check {file.path} --output-format=concise"
+  #       timeout: 10
+  #       severity: warning
+
   # Autopilot (opt-in)
   production-guard:
     allowed_projects: []      # Cloud projects to allow
@@ -651,4 +742,5 @@ rules:
     allowed_ops: []
 
 # custom_rules_dir: .agentlint/rules/
+# Custom rules with pack = "mypack" activate when "mypack" is in packs above
 ```

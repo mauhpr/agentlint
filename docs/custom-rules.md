@@ -10,11 +10,17 @@ AgentLint lets you create project-specific rules using the same interface as bui
 mkdir -p .agentlint/rules
 ```
 
-2. Enable it in `agentlint.yml`:
+2. Enable it in `agentlint.yml` and add your pack name to `packs:`:
 
 ```yaml
+packs:
+  - universal
+  - myproject          # activates rules with pack = "myproject"
+
 custom_rules_dir: .agentlint/rules/
 ```
+
+Rules whose `pack` is not in `packs:` are loaded but silently skipped. Use `agentlint doctor` to detect this.
 
 ## Creating a rule
 
@@ -26,11 +32,11 @@ from agentlint.models import Rule, RuleContext, Violation, Severity, HookEvent
 
 
 class NoRawSQL(Rule):
-    id = "custom/no-raw-sql"
+    id = "no-raw-sql"
     description = "Blocks raw SQL queries — use the ORM instead"
     severity = Severity.WARNING
     events = [HookEvent.PRE_TOOL_USE]
-    pack = "custom"
+    pack = "myproject"
 
     def evaluate(self, context: RuleContext) -> list[Violation]:
         content = context.file_content or ""
@@ -61,7 +67,7 @@ Every rule needs these class attributes:
 | `description` | `str` | One-line description. |
 | `severity` | `Severity` | `ERROR` (blocks), `WARNING` (advises), or `INFO` (reports). |
 | `events` | `list[HookEvent]` | When this rule runs. |
-| `pack` | `str` | Set to `"custom"` for custom rules. |
+| `pack` | `str` | Pack name — any string. Must be listed in `packs:` to activate. |
 
 And one method:
 
@@ -180,7 +186,7 @@ AgentLint auto-loads custom rules by scanning the configured directory:
 - **File naming**: Any `.py` file in the directory is loaded (non-recursive)
 - **Skipped files**: Files starting with `_` (e.g., `_helpers.py`, `__init__.py`) are ignored — use these for shared utilities
 - **Class detection**: Each file is scanned for subclasses of `Rule` — you can have multiple rule classes per file
-- **Pack attribute**: Set `pack = "custom"` on your rules to distinguish them from built-in rules
+- **Pack attribute**: Set `pack` to any name (e.g., `"fintech"`, `"myproject"`). The pack name must appear in your `packs:` list to activate — use `agentlint doctor` to detect orphaned packs
 
 ### Debugging tips
 
