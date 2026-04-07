@@ -41,6 +41,9 @@ rules:
   # === Quality pack (always-active) ===
   commit-message-format: { enabled: true }               # WARNING - validates conventional commits
   no-error-handling-removal: { enabled: true }            # WARNING - warns when error handling removed
+  no-large-diff:     { max_lines_added: 200, max_lines_removed: 100 }  # WARNING - large edit detection
+  no-file-creation-sprawl: { max_new_files: 10 }         # WARNING - file sprawl detection
+  naming-conventions: { enabled: true }                   # INFO - file naming conventions
   no-dead-imports:   { enabled: true }                   # INFO - detects unused imports
   self-review-prompt: { enabled: true }                  # INFO - adversarial self-review at session end
   # === Security pack (opt-in) ===

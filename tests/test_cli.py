@@ -289,7 +289,9 @@ class TestListRulesCommand:
         assert "commit-message-format" in result.output
         assert "no-dead-imports" in result.output
         assert "no-error-handling-removal" in result.output
-        assert "4 rules total" in result.output
+        assert "no-large-diff" in result.output
+        assert "naming-conventions" in result.output
+        assert "7 rules total" in result.output
 
     def test_list_rules_unknown_pack(self) -> None:
         """list-rules with unknown pack should show no rules."""

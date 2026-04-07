@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.2.0 (2026-04-07) — Quality Rules from Community Research
+
+### The change
+
+Three new quality pack rules addressing top pain points from the Claude Code and AI coding communities.
+
+### New rules
+
+- **`no-large-diff`** (PostToolUse, WARNING) — Warns when a single Write/Edit adds >200 or removes >100 lines. Forces smaller, reviewable changes. Inspired by: "I don't trust any commit over 1k lines."
+- **`no-file-creation-sprawl`** (PostToolUse, WARNING) — Tracks new files per session. Warns after 10+ new files. Inspired by: "Why vibe coded projects fail" (8278 upvotes on Reddit).
+- **`naming-conventions`** (PreToolUse, INFO) — Checks file names against language conventions (snake_case for Python, camelCase for TS/JS, PascalCase for TSX/JSX). Accepts kebab-case for React components. Exempts index, test files, and common config files. Inspired by: "2500 lines of perfect code but named a directory wrong" (1740 upvotes).
+
+### Tests
+
+1467 tests, 96% coverage.
+
 ## v1.1.0 (2026-04-07) — File-Scope Governance
 
 ### The change

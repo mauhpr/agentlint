@@ -1,6 +1,6 @@
 # AgentLint Roadmap
 
-> **Current state:** v1.1.0 — 65 rules across 8 packs, 1432 tests, 96% coverage.
+> **Current state:** v1.2.0 — 68 rules across 8 packs, 1467 tests, 96% coverage.
 
 ---
 
@@ -87,7 +87,7 @@ Security rule that restricts which files an agent can read/write based on allow/
 
 ---
 
-### 2. Quality Rules from Reddit Research (P1, Size: M)
+### 2. Quality Rules from Reddit Research (P1, Size: M) — PR #25
 
 Three new rules addressing top community pain points:
 
