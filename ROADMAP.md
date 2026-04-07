@@ -1,168 +1,124 @@
 # AgentLint Roadmap
 
-## v0.4.0 — "The Platform Release" (COMPLETED)
-
-### All 17 Hook Events ✅
-
-- Full `HookEvent` enum: PreToolUse, PostToolUse, Stop, plus 14 passthrough events (SessionStart, SubagentStop, UserPromptSubmit, Notification, etc.)
-- CLI routing and plugin hooks.json for all events
-
-### File Content Caching ✅
-
-- PreToolUse caches pre-edit file content → PostToolUse provides `file_content_before` for diff-based rules
-- Enables error handling removal detection, test weakening v2, assertion change detection
-
-### Quality Pack (4 rules, always-active) ✅
-
-- `no-error-handling-removal` — detects removal of try/except, null checks, `.catch()`
-- `no-dead-imports` — detects unused imports after Write/Edit
-- `no-unnecessary-async` — flags unnecessary async/await patterns
-- `drift-detector` — tracks edit drift from test runs
-
-### Token Budget Monitoring ✅
-
-- Proxy metrics: tool invocations, content bytes, Bash command lengths
-- Configurable thresholds with `warn_at_percent`
-- Session activity summary at Stop
+> **Current state:** v0.9.10 — 63 rules across 8 packs, 1357 tests, 96% coverage.
 
 ---
 
-## v0.5.0 — "The Standards Release" (COMPLETED)
+## Completed Releases
 
-### AGENTS.md Compatibility ✅
+### v0.4.0 — "The Platform Release" ✅
 
-- `agentlint import-agents-md` CLI command with `--dry-run` and `--merge` flags
-- AGENTS.md parser and heuristic keyword-to-config mapping
-- Integrated into stack auto-detection (additive pack discovery)
+- **All 17 Hook Events** — Full `HookEvent` enum: PreToolUse, PostToolUse, Stop, plus 14 passthrough events (SessionStart, SubagentStop, UserPromptSubmit, Notification, etc.)
+- **File Content Caching** — PreToolUse caches pre-edit content → PostToolUse provides `file_content_before` for diff-based rules
+- **Quality Pack (4 rules, always-active)** — `no-error-handling-removal`, `no-dead-imports`, `commit-message-format`, `self-review-prompt`
+- **Token Budget Monitoring** — proxy metrics, configurable thresholds, session activity summary
 
-### Git Auto-Checkpoint ✅
+### v0.5.0 — "The Standards Release" ✅
 
-- `git-checkpoint` rule (INFO, disabled by default, opt-in via config)
-- Creates `git stash` before destructive operations (`rm -rf`, `git reset --hard`, etc.)
-- Automatic cleanup of old checkpoints on session Stop
-- Configurable triggers and cleanup schedule
+- **AGENTS.md Compatibility** — `agentlint import-agents-md` with `--dry-run` and `--merge` flags
+- **Git Auto-Checkpoint** — `git-checkpoint` rule (INFO, disabled by default, opt-in)
+- **Plugin Agent Definitions** — `/agentlint:security-audit`, `/agentlint:doctor`, `/agentlint:fix`
 
-### Plugin Agent Definitions ✅
+### v0.6.0 — "Progressive Trust" ✅
 
-- `/agentlint:security-audit` — comprehensive codebase security scan
-- `/agentlint:doctor` — configuration and hook diagnostics
-- `/agentlint:fix` — auto-fix common violations
+- **Circuit Breaker** — automatic degradation (ERROR → WARNING → INFO → suppressed) based on fire count. Security-critical rules exempt. Time-based and clean-evaluation auto-reset.
 
----
+### v0.7.0 — "Autopilot Pack" ✅
 
-## v0.6.0 — "Progressive Trust" (COMPLETED)
+14 production-grade guardrails for unattended/autonomous sessions:
 
-### Circuit Breaker ✅
+- **Infrastructure:** `production-guard`, `cloud-resource-deletion`, `cloud-infra-mutation`, `cloud-paid-resource-creation`, `network-firewall-guard`, `docker-volume-guard`, `system-scheduler-guard`
+- **Session safety:** `destructive-confirmation-gate`, `dry-run-required`, `bash-rate-limiter`, `cross-account-guard`, `operation-journal`
+- **Universal additions:** `cicd-pipeline-guard`, `package-publish-guard`
+- **Security addition:** `env-credential-reference`
 
-- Automatic degradation: ERROR → WARNING → INFO → suppressed based on fire count thresholds
-- Security-critical rules (`no-secrets`, `no-env-commit`) exempt — always block
-- Time-based and clean-evaluation auto-reset
-- Session report includes circuit breaker status section
-- Fully configurable globally and per-rule
-- Hardened: defensive coding for corrupted session state, logging for transitions
+### v0.8.0 — "Subagent Safety" ✅
 
-### Tests ✅
+- **Subagent Lifecycle Hooks** — `subagent-safety-briefing` (SubagentStart), `subagent-transcript-audit` (SubagentStop)
+- **Session Report** — subagent activity section with spawn counts, audit results, agent_id disambiguation
 
-- 812 tests, 96% coverage
+### v0.9.0 — "Remote Server Safety" ✅
 
----
+4 new autopilot rules for SSH/chroot operations:
 
-## v0.7.0 — "Autopilot Pack" (COMPLETED)
+- `ssh-destructive-command-guard` — detects destructive commands via SSH (WARNING/ERROR)
+- `remote-boot-partition-guard` — blocks rm/dd targeting `/boot` kernel files
+- `remote-chroot-guard` — detects bootloader removal and risky repair inside chroot
+- `package-manager-in-chroot` — warns on apt/yum/dnf/pacman inside chroot
 
-### Autopilot Pack (14 rules) ✅
+Also: per-pattern severity (individual violations can override rule severity).
 
-Production-grade guardrails for unattended/autonomous agent sessions:
+### v0.9.8 — "Agent-Visible Advisory Output" ✅
 
-**Infrastructure protection:**
-- `production-guard` — blocks commands targeting production environments
-- `cloud-resource-deletion` — blocks AWS/GCP/Azure deletions without confirmation
-- `cloud-infra-mutation` — blocks NAT, firewall, VPC, IAM, load balancer mutations
-- `cloud-paid-resource-creation` — warns on creating paid cloud resources
-- `network-firewall-guard` — blocks iptables flush, ufw disable, route changes
-- `docker-volume-guard` — blocks privileged containers, warns on volume deletion
-- `system-scheduler-guard` — warns on crontab, systemctl, launchctl changes
+PostToolUse and PreToolUse advisory violations (WARNING/INFO) now use `additionalContext` (agent-visible) instead of `systemMessage` (user-only). PostToolUse WARNING uses `decision: "block"` as strong advisory signal.
 
-**Session safety:**
-- `destructive-confirmation-gate` — requires session confirmation for DROP/destroy
-- `dry-run-required` — requires --dry-run for terraform/kubectl/ansible/helm
-- `bash-rate-limiter` — circuit-breaks after N destructive commands
-- `cross-account-guard` — warns on cloud account/project switches
-- `operation-journal` — audit log of all tool operations
+### v0.9.9 — "First-Class Custom Packs" ✅
 
-**New universal rules:**
-- `cicd-pipeline-guard` — session-state approval gate for CI/CD changes
-- `package-publish-guard` — blocks npm publish, twine upload, gem push
+Custom packs are first-class citizens:
 
-**New security rule:**
-- `env-credential-reference` — warns on `*_FILE` env vars referencing local paths
+- `packs:` list controls activation for both built-in and custom packs
+- `list-rules --pack fintech` shows custom rules
+- `doctor` validates `custom_rules_dir` and detects orphaned packs
+- Config no longer warns about "unknown pack" when `custom_rules_dir` is set
 
-### Tests ✅
+### v0.9.10 — "Status Count Fix" ✅
 
-- 1061 tests, 96% coverage
+- `status` active rule count now excludes orphaned custom rules
+
+### Unplanned Features Shipped (not in original roadmap)
+
+- **Session Recordings** (v0.9.x) — `recordings {list,show,stats,clear}` for session replay and product insights
+- **Python Pack** (6 rules) — `no-bare-except`, `no-dangerous-migration`, `no-sql-injection`, `no-unnecessary-async`, `no-unsafe-shell`, `no-wildcard-import`
+- **Frontend Pack** (8 rules) — accessibility, responsive patterns, touch targets, style rules
+- **React Pack** (3 rules) — empty states, lazy loading, query loading state
+- **SEO Pack** (4 rules) — Open Graph, metadata, semantic HTML, structured data
 
 ---
 
-## v0.8.0 — "Subagent Safety" (COMPLETED)
+## Backlog — Prioritized
 
-### Subagent Lifecycle Hooks ✅
-
-- `subagent-safety-briefing` (SubagentStart) — injects safety notice into subagent context
-- `subagent-transcript-audit` (SubagentStop) — audits JSONL transcripts for dangerous commands
-- Shared dangerous patterns module (`_dangerous_patterns.py`) used across autopilot rules
-
-### Session Report Enhancements ✅
-
-- Subagent Activity section with spawn counts, audit results, and agent_id disambiguation
-- Circuit Breaker status section for degraded rules
-
-### Tests ✅
-
-- 1136 tests, 96% coverage
-
----
-
-## v0.9.0+ Backlog
-
-### Governance / File-Scope Enforcement (Priority: P1, Size: L)
+### 1. File-Scope Governance (P1, Size: M)
 
 Security rule that restricts which files an agent can read/write based on glob patterns:
 ```yaml
-governance:
-  file_scope:
+rules:
+  file-scope:
     allow: ["src/**", "tests/**", "docs/**"]
     deny: ["*.env", "credentials/**", ".github/workflows/**"]
 ```
 
-Deferred from v0.4.0 — security-critical, needs careful path normalization design.
+PreToolUse rule on Write/Edit/Read. Deny takes precedence over allow. Path normalization resolves symlinks and `../` traversal.
+
+Deferred from v0.4.0 — security-critical, needed for regulated environments (Dar3 fintech).
 
 ---
 
-### Linter Wrapping (Priority: P2, Size: L)
+### 2. Linter Wrapping (P2, Size: L)
 
 PostToolUse rule that runs the project's configured linter on changed files after Write/Edit:
 ```yaml
-run-linter:
-  commands:
-    python: "ruff check {file}"
-    typescript: "npx eslint {file}"
-  timeout: 10
+rules:
+  run-linter:
+    commands:
+      python: "ruff check {file}"
+      typescript: "npx eslint {file}"
+    timeout: 10
 ```
 
-Needs shared subprocess architecture (same infra as dependency scanning). Most complex feature in the roadmap.
+Subprocess execution with configurable timeout. Reports linter output as WARNING violations via `additionalContext`. Skips files outside project dir.
 
 ---
 
-### Dependency Vulnerability Scanning (Priority: P2, Size: L)
+### 3. Dependency Vulnerability Scanning (P2, Size: M)
 
 PostToolUse rule that fires when `package.json`, `pyproject.toml`, `requirements.txt`, or `Cargo.toml` is modified.
 
-**Approach:** Wrap existing tools:
-- Python: `pip-audit` or `safety check`
-- JavaScript: `npm audit` or `yarn audit`
+Wraps existing tools:
+- Python: `pip-audit`
+- JavaScript: `npm audit --json`
 - Go: `govulncheck`
 - Rust: `cargo audit`
 
-**Config:**
 ```yaml
 rules:
   dependency-audit:
@@ -172,9 +128,11 @@ rules:
     severity_threshold: "high"  # only report high/critical CVEs
 ```
 
+Shares subprocess infrastructure with Linter Wrapping.
+
 ---
 
-### MCP Server for AgentLint (Priority: P2, Size: L)
+### 4. MCP Server for AgentLint (P2, Size: L)
 
 Expose agentlint as an MCP server so Claude can query rules and violations programmatically.
 
@@ -190,36 +148,22 @@ Expose agentlint as an MCP server so Claude can query rules and violations progr
 - `agentlint.toggle_rule` — enable/disable a rule for the current session
 - `agentlint.explain_violation` — get detailed explanation + remediation for a violation
 
----
-
-### Plugin Settings UI (Priority: P3, Size: M)
-
-Enable severity/pack toggles without editing YAML directly. Plugin-level settings schema:
-```json
-{
-  "settings": {
-    "severity": { "type": "enum", "values": ["strict", "standard", "relaxed"], "default": "standard" },
-    "packs": { "type": "multiselect", "values": ["universal", "python", "frontend", "react", "seo", "security", "autopilot"] }
-  }
-}
-```
-
-Requires Claude Code plugin settings API support (not yet available — track upstream).
+The killer feature is `check_content` — lets agents pre-validate code before writing it, avoiding the block-then-retry loop.
 
 ---
 
-### Dead Code Detection (Priority: P3, Size: L)
+### 5. Dead Code Detection (P3, Size: L)
 
 PostToolUse rule that detects unreachable or unused code after Write/Edit:
 - Unreachable code after `return`, `raise`, `break`
 - Unused variables in the written/edited function
 - Functions defined but never called within the file
 
-**Limitation:** Requires AST parsing (not just regex). Would need `ast` module for Python, TypeScript compiler API for TS. Significantly more complex than regex-based rules.
+**Approach:** Python uses `ast` module; TypeScript delegates to linter wrapping (eslint no-unused-vars). Python-only as built-in rule, others via linter wrapping.
 
 ---
 
-### Multi-Project / Monorepo Support (Priority: P3, Size: M)
+### 6. Multi-Project / Monorepo Support (P3, Size: M)
 
 Support monorepos where different subdirectories have different stacks:
 ```yaml
@@ -232,6 +176,14 @@ projects:
   infra/:
     packs: [universal, security]
 ```
+
+The engine already supports per-directory resolution via `project_dir`. Main work is config parsing + `doctor` validation of project boundaries.
+
+---
+
+### Deferred
+
+**Plugin Settings UI** (P3, Size: M) — Enable severity/pack toggles without editing YAML directly. Requires Claude Code plugin settings API support (not yet available — track upstream).
 
 ---
 
