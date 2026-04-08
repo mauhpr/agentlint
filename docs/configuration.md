@@ -121,6 +121,49 @@ rules:
     threshold: 5          # Override default (10)
 ```
 
+### Global config defaults
+
+Top-level keys inside `rules:` act as defaults for all rules. Per-rule keys override globals:
+
+```yaml
+rules:
+  # Global defaults
+  strict_mode: true          # all rules inherit strict_mode: true
+  allow_paths: ["*.log"]     # all rules inherit this allow_paths list
+  auto_suppress_after: 5     # auto-suppress any rule after 5 consecutive fires
+
+  # Per-rule overrides
+  no-secrets:
+    strict_mode: false       # overrides global true for this rule only
+  no-bash-file-write:
+    allow_paths: ["deploy/*"]  # overrides global (not merged)
+```
+
+Rules that support global defaults: `no-secrets`, `no-bash-file-write`, `no-network-exfil`, `env-credential-reference`, `production-guard`.
+
+### Warning suppression
+
+Suppress a warning rule for the rest of the session:
+
+```bash
+agentlint suppress drift-detector    # suppress drift-detector
+agentlint suppress --list            # show suppressed rules
+agentlint suppress --clear           # clear all suppressions
+```
+
+The MCP server also exposes a `suppress_rule` tool. ERRORs cannot be suppressed (safety invariant).
+
+**Auto-suppress:** Set `auto_suppress_after: N` to automatically suppress a rule after N consecutive fires:
+
+```yaml
+rules:
+  auto_suppress_after: 5          # global default
+  drift-detector:
+    auto_suppress_after: 3        # per-rule override
+```
+
+Counters reset when a rule stops firing (clean evaluation). ERRORs are never auto-suppressed.
+
 ## Universal rules reference
 
 ### `no-secrets` (PreToolUse, ERROR)
@@ -187,10 +230,11 @@ Warns when a written/edited file exceeds a line count threshold.
 
 ### `drift-detector` (PostToolUse, WARNING)
 
-Tracks file edits and test runs. Warns after N edits without running tests.
+Tracks file edits and test runs. Warns after N edits without running tests. Only counts code files — config files (`.yml`, `.md`, etc.) are excluded.
 
 **Config options:**
 - `threshold` — Edit count before warning (default: `10`)
+- `extensions` — List of file extensions to count (default: `.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.rs`, `.go`, `.rb`, `.java`, `.kt`, `.swift`, `.c`, `.cpp`, `.h`, `.cs`, `.ex`, `.vue`, `.svelte`)
 
 ### `no-debug-artifacts` (Stop, WARNING)
 
@@ -290,33 +334,43 @@ Blocks package publish commands: `npm publish`, `twine upload`, `gem push`, `car
 
 ### `cli-integration` (PostToolUse, configurable)
 
-Runs external CLI tools on file changes and reports non-zero exit codes as violations. Configure commands with template placeholders:
+Runs external CLI tools on file changes and reports non-zero exit codes as violations. Configure commands with template placeholders.
+
+**Global defaults:** Top-level keys apply to all commands. Per-command keys override:
 
 ```yaml
 rules:
   cli-integration:
+    timeout: 15           # default for all commands
+    severity: warning     # default for all commands
+    diff_only: true       # default for all commands — filter to changed lines only
+    max_output: 1000      # default for all commands
+    on: ["Write", "Edit"] # default for all commands
     commands:
       - name: ruff
-        on: ["Write", "Edit"]        # Tool filter (default: Write, Edit)
-        glob: "**/*.py"              # File filter (default: **/*)
+        glob: "**/*.py"
         command: "ruff check {file.path} --output-format=concise"
-        timeout: 10                  # Seconds (default: 10)
-        severity: warning            # error | warning | info (default: warning)
+        timeout: 30       # override for ruff only
+
+      - name: mypy
+        glob: "**/*.py"
+        command: "mypy {file.path}"
+        # inherits timeout: 15, diff_only: true from global
 
       - name: pip-audit
-        on: ["Write", "Edit"]
         glob: "**/requirements*.txt"
         command: "pip-audit -r {file.path}"
         timeout: 30
         severity: warning
 
       - name: pytest-related
-        on: ["Write", "Edit"]
         glob: "src/**/*.py"
         command: "pytest tests/ -k {file.stem} -x -q --tb=short"
         timeout: 60
         severity: info
 ```
+
+**`diff_only` mode:** When `true`, CLI output is filtered to only violations on changed lines (using the diff between pre-edit and post-edit file content). Pre-existing violations are suppressed. Works with any CLI tool that reports `:LINE:` format (ruff, mypy, eslint, etc.).
 
 **Available placeholders:**
 
@@ -410,6 +464,10 @@ List all available rules. Returns JSON array.
 #### `get_config()`
 
 Returns the current agentlint configuration as JSON (severity, packs, rules overrides, custom_rules_dir).
+
+#### `suppress_rule(rule_id)`
+
+Suppress a warning rule for the rest of the session. ERRORs cannot be suppressed. Returns JSON with `suppressed` and `total_suppressed` fields.
 
 ### Resources
 

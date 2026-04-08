@@ -202,6 +202,127 @@ class TestEngine:
         assert result.violations == []  # CrashingRule's exception caught, PassRule passes
 
 
+class TestEngineSuppression:
+    def test_suppressed_rule_skipped(self) -> None:
+        config = AgentLintConfig(packs=["test"])
+        session_state: dict = {"suppressed_rules": ["warn-rule"]}
+        context = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "test.py"},
+            project_dir="/tmp",
+            session_state=session_state,
+        )
+        engine = Engine(config=config, rules=[WarnRule()])
+        result = engine.evaluate(context)
+        assert len(result.violations) == 0
+
+    def test_error_never_suppressed(self) -> None:
+        config = AgentLintConfig(packs=["test"])
+        session_state: dict = {"suppressed_rules": ["fail-rule"]}
+        context = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Bash",
+            tool_input={"command": "rm -rf /"},
+            project_dir="/tmp",
+            session_state=session_state,
+        )
+        engine = Engine(config=config, rules=[FailRule()])
+        result = engine.evaluate(context)
+        assert len(result.violations) == 1
+        assert result.violations[0].severity == Severity.ERROR
+
+    def test_auto_suppress_after_threshold(self) -> None:
+        config = AgentLintConfig(packs=["test"])
+        session_state: dict = {}
+        context = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "test.py"},
+            project_dir="/tmp",
+            config={"auto_suppress_after": 2},
+            session_state=session_state,
+        )
+        engine = Engine(config=config, rules=[WarnRule()])
+        # Fire 1 — under threshold
+        r1 = engine.evaluate(context)
+        assert len(r1.violations) == 1
+        # Fire 2 — at threshold
+        r2 = engine.evaluate(context)
+        assert len(r2.violations) == 1
+        # Fire 3 — over threshold, auto-suppressed
+        r3 = engine.evaluate(context)
+        assert len(r3.violations) == 0
+        assert "warn-rule" in session_state["suppressed_rules"]
+
+    def test_auto_suppress_never_error(self) -> None:
+        config = AgentLintConfig(packs=["test"])
+        session_state: dict = {}
+        context = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Bash",
+            tool_input={"command": "rm -rf /"},
+            project_dir="/tmp",
+            config={"auto_suppress_after": 1},
+            session_state=session_state,
+        )
+        engine = Engine(config=config, rules=[FailRule()])
+        engine.evaluate(context)
+        engine.evaluate(context)
+        result = engine.evaluate(context)
+        # ERRORs never auto-suppress
+        assert len(result.violations) == 1
+        assert "fail-rule" not in session_state.get("suppressed_rules", [])
+
+    def test_auto_suppress_resets_on_clean(self) -> None:
+        config = AgentLintConfig(packs=["test"])
+        session_state: dict = {}
+
+        # Fire warn-rule twice
+        warn_ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "test.py"},
+            project_dir="/tmp",
+            config={"auto_suppress_after": 3},
+            session_state=session_state,
+        )
+        engine = Engine(config=config, rules=[WarnRule()])
+        engine.evaluate(warn_ctx)
+        engine.evaluate(warn_ctx)
+        assert session_state["rule_fire_counts"]["warn-rule"] == 2
+
+        # Evaluate with no violations — counter should reset
+        pass_ctx = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "test.py"},
+            project_dir="/tmp",
+            config={"auto_suppress_after": 3},
+            session_state=session_state,
+        )
+        engine2 = Engine(config=config, rules=[PassRule()])
+        engine2.evaluate(pass_ctx)
+        assert session_state["rule_fire_counts"]["warn-rule"] == 0
+
+    def test_auto_suppress_per_rule_override(self) -> None:
+        config = AgentLintConfig(packs=["test"])
+        session_state: dict = {}
+        context = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "test.py"},
+            project_dir="/tmp",
+            config={"auto_suppress_after": 10, "warn-rule": {"auto_suppress_after": 1}},
+            session_state=session_state,
+        )
+        engine = Engine(config=config, rules=[WarnRule()])
+        engine.evaluate(context)
+        r2 = engine.evaluate(context)
+        assert len(r2.violations) == 0
+        assert "warn-rule" in session_state["suppressed_rules"]
+
+
 class TestEngineCircuitBreaker:
     def test_engine_applies_circuit_breaker(self) -> None:
         """After threshold fires, engine should degrade ERROR to WARNING."""

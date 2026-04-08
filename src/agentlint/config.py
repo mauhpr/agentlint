@@ -88,6 +88,25 @@ class AgentLintConfig:
         )
 
 
+def get_rule_setting(rules_dict: dict, rule_id: str, key: str, default=None):
+    """Get config value with cascade: per-rule → global → default.
+
+    Allows users to set global defaults in the ``rules:`` block and
+    override them per-rule:
+
+        rules:
+          strict_mode: true          # global default
+          no-secrets:
+            strict_mode: false       # per-rule override
+    """
+    rule_cfg = rules_dict.get(rule_id, {})
+    if isinstance(rule_cfg, dict) and key in rule_cfg:
+        return rule_cfg[key]
+    if key in rules_dict:
+        return rules_dict[key]
+    return default
+
+
 def load_config(project_dir: str) -> AgentLintConfig:
     """Load config from agentlint.yml or auto-detect defaults."""
     root = Path(project_dir)

@@ -1,6 +1,6 @@
 # AgentLint Roadmap
 
-> **Current state:** v1.5.0 — 68 rules across 8 packs, 1511 tests, 96% coverage. Full backlog complete.
+> **Current state:** v1.6.0 — 68 rules across 8 packs, ~1555 tests, 96% coverage. Production feedback features shipped.
 
 ---
 

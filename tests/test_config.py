@@ -5,7 +5,7 @@ import json
 
 import yaml
 
-from agentlint.config import AgentLintConfig, load_config
+from agentlint.config import AgentLintConfig, get_rule_setting, load_config
 from agentlint.models import Severity
 
 
@@ -246,6 +246,40 @@ class TestMonorepoProjects:
         )
         result = config.resolve_packs_for_file("/other/drive/file.py", "/project")
         assert result == ["universal"]
+
+
+class TestGetRuleSetting:
+    def test_per_rule_wins(self):
+        rules = {"strict_mode": True, "no-secrets": {"strict_mode": False}}
+        assert get_rule_setting(rules, "no-secrets", "strict_mode", True) is False
+
+    def test_global_fallback(self):
+        rules = {"strict_mode": True, "no-secrets": {}}
+        assert get_rule_setting(rules, "no-secrets", "strict_mode", False) is True
+
+    def test_default_fallback(self):
+        rules = {}
+        assert get_rule_setting(rules, "no-secrets", "strict_mode", False) is False
+
+    def test_nonexistent_rule(self):
+        rules = {"strict_mode": True}
+        assert get_rule_setting(rules, "no-secrets", "strict_mode", False) is True
+
+    def test_strict_mode_global_applies_to_no_secrets(self):
+        rules = {"strict_mode": True}
+        assert get_rule_setting(rules, "no-secrets", "strict_mode", False) is True
+
+    def test_strict_mode_per_rule_overrides_global(self):
+        rules = {"strict_mode": True, "no-secrets": {"strict_mode": False}}
+        assert get_rule_setting(rules, "no-secrets", "strict_mode", True) is False
+
+    def test_allow_paths_global_applies(self):
+        rules = {"allow_paths": ["*.log", "/tmp/*"]}
+        assert get_rule_setting(rules, "no-bash-file-write", "allow_paths", []) == ["*.log", "/tmp/*"]
+
+    def test_allow_paths_per_rule_overrides(self):
+        rules = {"allow_paths": ["*.log"], "no-bash-file-write": {"allow_paths": ["deploy/*"]}}
+        assert get_rule_setting(rules, "no-bash-file-write", "allow_paths", []) == ["deploy/*"]
 
 
 class TestCircuitBreakerConfig:

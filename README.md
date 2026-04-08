@@ -20,7 +20,9 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 ## What it catches
 
-AgentLint ships with 68 rules across 8 packs, covering all 17 Claude Code hook events. The 19 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental:
+AgentLint ships with 68 rules across 8 packs, covering all 17 Claude Code hook events. The 19 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
+
+**v1.6.0 highlights:** Global config defaults (`strict_mode: true` at top level cascades to all rules), warning suppression (`agentlint suppress <rule>`), auto-suppress after N fires, `diff_only` mode for CLI integration, and drift detector extension filtering.
 
 | Rule | Severity | What it does |
 |------|----------|-------------|

@@ -28,6 +28,41 @@ _SEVERITY_MAP = {
 }
 
 
+def _filter_diff_violations(
+    output: str, content_before: str | None, content_after: str | None,
+) -> str:
+    """Filter CLI output to only violations on changed lines."""
+    if not content_before or not content_after:
+        return output  # new file or no before content — show everything
+
+    import difflib
+    before_lines = content_before.splitlines(keepends=True)
+    after_lines = content_after.splitlines(keepends=True)
+    changed_lines: set[int] = set()
+
+    for group in difflib.SequenceMatcher(None, before_lines, after_lines).get_opcodes():
+        tag, _, _, j1, j2 = group
+        if tag in ("replace", "insert"):
+            changed_lines.update(range(j1 + 1, j2 + 1))  # 1-indexed
+
+    if not changed_lines:
+        return ""  # no changes — suppress all output
+
+    import re
+    filtered = []
+    for line in output.splitlines():
+        match = re.search(r":(\d+)[:\s]|line\s+(\d+)", line)
+        if match:
+            lineno = int(match.group(1) or match.group(2))
+            if lineno in changed_lines:
+                filtered.append(line)
+        else:
+            # Non-line-specific output (headers, summaries) — keep
+            filtered.append(line)
+
+    return "\n".join(filtered)
+
+
 class CliIntegration(Rule):
     id = "cli-integration"
     description = "Run external CLI tools on file changes and report violations"
@@ -41,6 +76,13 @@ class CliIntegration(Rule):
         if not commands:
             return []
 
+        # Global defaults from rule config (top-level keys)
+        global_timeout = rule_config.get("timeout", _DEFAULT_TIMEOUT)
+        global_severity = rule_config.get("severity", _DEFAULT_SEVERITY)
+        global_diff_only = rule_config.get("diff_only", False)
+        global_max_output = rule_config.get("max_output", _MAX_OUTPUT_CHARS)
+        global_on = rule_config.get("on", _DEFAULT_ON)
+
         template_ctx = build_template_context(context)
         violations: list[Violation] = []
 
@@ -49,8 +91,8 @@ class CliIntegration(Rule):
             if not name:
                 continue
 
-            # Filter by tool name
-            on_tools = cmd_config.get("on", _DEFAULT_ON)
+            # Filter by tool name (per-command overrides global)
+            on_tools = cmd_config.get("on", global_on)
             if context.tool_name not in on_tools:
                 continue
 
@@ -71,10 +113,12 @@ class CliIntegration(Rule):
             if resolved is None:
                 continue
 
-            # Execute
-            timeout = cmd_config.get("timeout", _DEFAULT_TIMEOUT)
-            severity_str = cmd_config.get("severity", _DEFAULT_SEVERITY)
+            # Per-command overrides global defaults
+            timeout = cmd_config.get("timeout", global_timeout)
+            severity_str = cmd_config.get("severity", global_severity)
             severity = _SEVERITY_MAP.get(severity_str, Severity.WARNING)
+            diff_only = cmd_config.get("diff_only", global_diff_only)
+            max_output = cmd_config.get("max_output", global_max_output)
 
             try:
                 result = subprocess.run(
@@ -94,8 +138,17 @@ class CliIntegration(Rule):
 
             if result.returncode != 0:
                 output = (result.stdout or result.stderr or "").strip()
-                if len(output) > _MAX_OUTPUT_CHARS:
-                    output = output[:_MAX_OUTPUT_CHARS] + "..."
+
+                # diff_only: filter to changed lines only
+                if diff_only:
+                    output = _filter_diff_violations(
+                        output, context.file_content_before, context.file_content,
+                    )
+                    if not output:
+                        continue  # all violations were pre-existing
+
+                if len(output) > max_output:
+                    output = output[:max_output] + "..."
                 violations.append(Violation(
                     rule_id=f"{self.id}/{name}",
                     message=output or f"Command exited with code {result.returncode}",

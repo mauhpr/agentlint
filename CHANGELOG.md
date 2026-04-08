@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.6.0 (2026-04-08) — Production Feedback Mega Release
+
+Real-world feedback from production monorepo usage. Global config defaults, warning suppression, diff-only CLI integration, and drift detector extension filtering.
+
+### Features
+
+- **Global config defaults** — Set `strict_mode`, `allow_paths`, or any key at the top level of `rules:` and it cascades to all rules. Per-rule overrides still win. New `get_rule_setting()` function.
+- **Warning acknowledgment** — `agentlint suppress <rule-id>` silences a warning for the rest of the session. `--list` and `--clear` flags. MCP `suppress_rule` tool. ERRORs are never suppressed (safety invariant).
+- **Auto-suppress** — Set `auto_suppress_after: N` in config to auto-suppress rules after N consecutive fires. Per-rule override supported. Resets when rule stops firing.
+- **CLI integration global defaults** — Top-level `timeout`, `severity`, `diff_only`, `max_output`, `on` in `cli-integration` config apply to all commands. Per-command overrides still win.
+- **CLI integration `diff_only` mode** — When `diff_only: true`, CLI output is filtered to only violations on changed lines. Pre-existing violations are suppressed.
+- **Drift detector extension filter** — Only code files (`.py`, `.ts`, `.go`, etc.) count toward drift threshold. Config files and docs no longer inflate the count. Configurable via `extensions` list.
+- **Status shows per-project packs** — `agentlint status` now displays monorepo project→pack mappings.
+
+### Tests
+
+~35 new tests. Total: ~1555 tests, 96% coverage.
+
 ## v1.5.1 (2026-04-08) — Heredoc Commit Message Fix + Quality Docs
 
 ### Fixes

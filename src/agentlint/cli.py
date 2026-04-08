@@ -513,6 +513,12 @@ def status(project_dir: str | None):
     click.echo(f"AgentLint v{ver} | Severity: {config.severity} | Packs: {packs_str}")
     click.echo(f"Rules: {len(rules)} active | Session: {total_calls} tool calls tracked")
 
+    if config.projects:
+        click.echo("Projects:")
+        for prefix, proj in sorted(config.projects.items()):
+            proj_packs = ", ".join(proj.get("packs", []))
+            click.echo(f"  {prefix} → {proj_packs}")
+
 
 @main.command()
 @click.option("--project-dir", default=None, help="Project directory")
@@ -627,6 +633,34 @@ def doctor(project_dir: str | None):
         click.echo(f"\n{len(issues)} issue(s) found.")
     else:
         click.echo("\nAll checks passed.")
+
+
+@main.command()
+@click.argument("rule_id", required=False)
+@click.option("--list", "list_mode", is_flag=True, help="Show suppressed rules")
+@click.option("--clear", is_flag=True, help="Clear all suppressions")
+def suppress(rule_id: str | None, list_mode: bool, clear: bool):
+    """Suppress a warning rule for the rest of the session."""
+    session_state = load_session()
+    suppressed = session_state.setdefault("suppressed_rules", [])
+
+    if clear:
+        session_state["suppressed_rules"] = []
+        save_session(session_state)
+        click.echo("All suppressions cleared.")
+    elif list_mode:
+        if suppressed:
+            for rid in suppressed:
+                click.echo(f"  {rid}")
+        else:
+            click.echo("No rules suppressed.")
+    elif rule_id:
+        if rule_id not in suppressed:
+            suppressed.append(rule_id)
+        save_session(session_state)
+        click.echo(f"Suppressed '{rule_id}' for this session.")
+    else:
+        click.echo("Usage: agentlint suppress RULE_ID | --list | --clear")
 
 
 @main.command("import-agents-md")

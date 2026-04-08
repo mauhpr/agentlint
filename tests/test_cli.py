@@ -480,6 +480,25 @@ class TestStatusCommand:
         assert count_with == count_without + 1
 
 
+    def test_status_shows_project_packs(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n"
+            "projects:\n  frontend/:\n    packs: [universal, frontend]\n"
+            "  backend/:\n    packs: [universal, python]\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
+        assert "Projects:" in result.output
+        assert "frontend/" in result.output
+        assert "backend/" in result.output
+
+    def test_status_no_projects_no_section(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
+        assert "Projects:" not in result.output
+
+
 class TestDoctorCommand:
     def test_doctor_all_checks_pass(self, tmp_path) -> None:
         # Create config and hooks so checks pass
@@ -1124,3 +1143,31 @@ class TestRecordingIntegration:
         )
         assert result.exit_code == 0
         assert "AgentLint" in result.output
+
+
+class TestSuppressCommand:
+    def test_suppress_adds_to_session(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress")
+        runner = CliRunner()
+        result = runner.invoke(main, ["suppress", "drift-detector"])
+        assert result.exit_code == 0
+        assert "Suppressed 'drift-detector'" in result.output
+
+    def test_suppress_list(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-list")
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "drift-detector"])
+        result = runner.invoke(main, ["suppress", "--list"])
+        assert "drift-detector" in result.output
+
+    def test_suppress_clear(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-clear")
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "drift-detector"])
+        result = runner.invoke(main, ["suppress", "--clear"])
+        assert "cleared" in result.output.lower()
+        result2 = runner.invoke(main, ["suppress", "--list"])
+        assert "No rules suppressed" in result2.output

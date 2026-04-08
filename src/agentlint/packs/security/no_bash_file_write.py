@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from fnmatch import fnmatch
 
+from agentlint.config import get_rule_setting
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _BASH_TOOLS = {"Bash"}
@@ -107,10 +108,9 @@ class NoBashFileWrite(Rule):
             return []
 
         # Load config.
-        rule_config = context.config.get(self.id, {})
-        allow_patterns: list[str] = rule_config.get("allow_patterns", [])
-        allow_paths: list[str] = rule_config.get("allow_paths", [])
-        strict_mode: bool = rule_config.get("strict_mode", False)
+        allow_patterns: list[str] = get_rule_setting(context.config, self.id, "allow_patterns", [])
+        allow_paths: list[str] = get_rule_setting(context.config, self.id, "allow_paths", [])
+        strict_mode: bool = get_rule_setting(context.config, self.id, "strict_mode", False)
 
         # Merge default safe patterns unless strict mode is on.
         effective_patterns = allow_patterns if strict_mode else _DEFAULT_SAFE_PATTERNS + allow_patterns

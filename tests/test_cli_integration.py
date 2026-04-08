@@ -4,7 +4,7 @@ from __future__ import annotations
 import subprocess
 
 from agentlint.models import HookEvent, RuleContext, Severity
-from agentlint.packs.universal.cli_integration import CliIntegration
+from agentlint.packs.universal.cli_integration import CliIntegration, _filter_diff_violations
 
 
 def _make_context(
@@ -356,3 +356,130 @@ class TestCliIntegrationSecurity:
         )
         rule.evaluate(ctx)
         assert captured_kwargs.get("cwd") == "/my/project"
+
+
+class TestCliIntegrationGlobalDefaults:
+    def test_global_timeout_applied(self, monkeypatch):
+        captured_kwargs = {}
+        def _capture(*a, **kw):
+            captured_kwargs.update(kw)
+            return subprocess.CompletedProcess(a[0], 0, stdout="", stderr="")
+        monkeypatch.setattr(subprocess, "run", _capture)
+
+        rule = CliIntegration()
+        config = {"cli-integration": {
+            "timeout": 15,
+            "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
+        }}
+        ctx = _make_context(config=config)
+        rule.evaluate(ctx)
+        assert captured_kwargs.get("timeout") == 15
+
+    def test_per_command_timeout_overrides_global(self, monkeypatch):
+        captured_kwargs = {}
+        def _capture(*a, **kw):
+            captured_kwargs.update(kw)
+            return subprocess.CompletedProcess(a[0], 0, stdout="", stderr="")
+        monkeypatch.setattr(subprocess, "run", _capture)
+
+        rule = CliIntegration()
+        config = {"cli-integration": {
+            "timeout": 15,
+            "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*", "timeout": 30}],
+        }}
+        ctx = _make_context(config=config)
+        rule.evaluate(ctx)
+        assert captured_kwargs.get("timeout") == 30
+
+    def test_global_diff_only_applied(self, monkeypatch):
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="app.py:5: E501", stderr=""),
+        )
+        rule = CliIntegration()
+        config = {"cli-integration": {
+            "diff_only": True,
+            "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
+        }}
+        # No before/after content → shows all (new file)
+        ctx = _make_context(config=config)
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_global_severity_applied(self, monkeypatch):
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="err", stderr=""),
+        )
+        rule = CliIntegration()
+        config = {"cli-integration": {
+            "severity": "error",
+            "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
+        }}
+        ctx = _make_context(config=config)
+        violations = rule.evaluate(ctx)
+        assert violations[0].severity == Severity.ERROR
+
+    def test_global_max_output_applied(self, monkeypatch):
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="x" * 200, stderr=""),
+        )
+        rule = CliIntegration()
+        config = {"cli-integration": {
+            "max_output": 50,
+            "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
+        }}
+        ctx = _make_context(config=config)
+        violations = rule.evaluate(ctx)
+        assert len(violations[0].message) <= 54  # 50 + "..."
+
+
+class TestFilterDiffViolations:
+    def test_new_file_shows_all(self):
+        output = "app.py:1: E501\napp.py:2: E502"
+        result = _filter_diff_violations(output, None, "line1\nline2\n")
+        assert result == output
+
+    def test_no_changes_suppresses(self):
+        content = "same\n"
+        result = _filter_diff_violations("app.py:1: E501", content, content)
+        assert result == ""
+
+    def test_filters_to_changed_lines(self):
+        before = "line1\nline2\nline3\n"
+        after = "line1\nchanged\nline3\n"
+        output = "app.py:1: E501\napp.py:2: E502\napp.py:3: E503"
+        result = _filter_diff_violations(output, before, after)
+        assert "app.py:2: E502" in result
+        assert "app.py:1: E501" not in result
+        assert "app.py:3: E503" not in result
+
+    def test_keeps_non_line_output(self):
+        before = "line1\n"
+        after = "line1\nline2\n"
+        output = "Summary: 1 error\napp.py:2: E501"
+        result = _filter_diff_violations(output, before, after)
+        assert "Summary: 1 error" in result
+        assert "app.py:2: E501" in result
+
+    def test_diff_only_false_shows_all(self, monkeypatch):
+        """When diff_only is False, all output is shown."""
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="app.py:1: E501", stderr=""),
+        )
+        rule = CliIntegration()
+        ctx = _make_context(config=_config_with_commands([
+            {"name": "ruff", "command": "ruff", "glob": "**/*", "diff_only": False},
+        ]))
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_diff_only_ruff_line_format(self):
+        before = "import os\n\nx = 1\n"
+        after = "import os\nimport sys\n\nx = 1\n"
+        output = "app.py:1:8: F401\napp.py:2:8: F401\napp.py:4:1: E303"
+        result = _filter_diff_violations(output, before, after)
+        assert "app.py:2:8: F401" in result
+        assert "app.py:1:8: F401" not in result
