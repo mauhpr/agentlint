@@ -336,6 +336,61 @@ rules:
 
 **Security:** All placeholder values are shell-escaped via `shlex.quote()`. File paths outside the project directory are rejected. Commands with unresolvable placeholders are silently skipped.
 
+## MCP Server
+
+AgentLint exposes an MCP server so Claude (and any MCP client) can query rules, check content, and read configuration programmatically.
+
+### Installation
+
+```bash
+pip install agentlint[mcp]    # includes fastmcp
+agentlint-mcp                 # run via stdio transport
+```
+
+### Tools
+
+#### `check_content(content, file_path, tool_name?, event?)`
+
+Pre-validate code or Bash commands against agentlint rules before writing/executing. Returns JSON list of violations.
+
+**Parameters:**
+- `content` (str, required) — The code content or Bash command to check
+- `file_path` (str, required) — Target file path
+- `tool_name` (str, default: `"Write"`) — Tool to simulate (`"Write"`, `"Edit"`, or `"Bash"`)
+- `event` (str, default: `"PreToolUse"`) — Hook event to simulate
+
+**Example:** Pre-check code for secrets before writing:
+```
+check_content(content='API_KEY = "sk_live_..."', file_path="config.py")
+→ [{"rule_id": "no-secrets", "message": "Hardcoded API key detected", ...}]
+```
+
+**Example:** Pre-check a Bash command:
+```
+check_content(content="git push --force origin main", file_path="", tool_name="Bash")
+→ [{"rule_id": "no-force-push", "message": "Force push to main blocked", ...}]
+```
+
+#### `list_rules(pack?)`
+
+List all available rules. Returns JSON array.
+
+**Parameters:**
+- `pack` (str, optional) — Filter by pack name (e.g., `"security"`, `"universal"`)
+
+#### `get_config()`
+
+Returns the current agentlint configuration as JSON (severity, packs, rules overrides, custom_rules_dir).
+
+### Resources
+
+- `agentlint://rules` — All rules with metadata (JSON)
+- `agentlint://config` — Current effective configuration (JSON)
+
+### Plugin Integration
+
+When the agentlint plugin is installed, the MCP server is registered automatically via `mcp.json`. Requires `pip install agentlint[mcp]`.
+
 ## CI Mode
 
 `agentlint ci` scans changed files and reports violations for CI pipelines:

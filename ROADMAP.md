@@ -1,6 +1,6 @@
 # AgentLint Roadmap
 
-> **Current state:** v1.4.0 — 68 rules across 8 packs, 1498 tests, 96% coverage. MCP server available.
+> **Current state:** v1.4.0 — 68 rules across 8 packs, 1500 tests, 96% coverage. MCP server available.
 
 ---
 
