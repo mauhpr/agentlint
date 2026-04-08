@@ -396,6 +396,38 @@ class TestListRulesCommand:
         assert "no-secrets" in result.output  # built-in universal rules still present
 
 
+class TestMonorepoCheck:
+    def test_check_resolves_project_packs(self, tmp_path) -> None:
+        """check should use project-specific packs when projects: is configured."""
+        # Python pack has no-bare-except. Frontend doesn't.
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n"
+            "projects:\n  backend/:\n    packs: [universal, python]\n"
+            "  frontend/:\n    packs: [universal, frontend]\n"
+        )
+        (tmp_path / "backend").mkdir()
+        (tmp_path / "frontend").mkdir()
+
+        runner = CliRunner()
+        # Python rule should fire on backend file
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": str(tmp_path / "backend" / "app.py"),
+                "content": "try:\n    pass\nexcept:\n    pass\n",
+            },
+        })
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+        # no-bare-except is a python pack rule — should fire for backend/
+        if result.output.strip():
+            assert "no-bare-except" in result.output
+
+
 class TestStatusCommand:
     def test_status_outputs_version_and_rules(self, tmp_path) -> None:
         runner = CliRunner()

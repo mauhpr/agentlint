@@ -236,6 +236,17 @@ class TestMonorepoProjects:
         config = load_config(str(tmp_path))
         assert config.projects == {}
 
+    def test_resolve_packs_value_error_fallback(self, monkeypatch):
+        """ValueError in relpath falls back to global packs."""
+        import os as _os
+        monkeypatch.setattr(_os.path, "relpath", lambda *a: (_ for _ in ()).throw(ValueError("cross-drive")))
+        config = AgentLintConfig(
+            packs=["universal"],
+            projects={"frontend/": {"packs": ["universal", "frontend"]}},
+        )
+        result = config.resolve_packs_for_file("/other/drive/file.py", "/project")
+        assert result == ["universal"]
+
 
 class TestCircuitBreakerConfig:
     def test_cb_config_loaded_from_yaml(self, tmp_path) -> None:
