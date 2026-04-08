@@ -483,3 +483,58 @@ class TestFilterDiffViolations:
         result = _filter_diff_violations(output, before, after)
         assert "app.py:2:8: F401" in result
         assert "app.py:1:8: F401" not in result
+
+
+class TestCliIntegrationAutoFix:
+    def test_auto_fix_success_no_violation(self, monkeypatch):
+        """auto-fix mode with exit 0 produces no violation."""
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(a[0], 0, stdout="1 file reformatted", stderr=""),
+        )
+        rule = CliIntegration()
+        ctx = _make_context(config=_config_with_commands([
+            {"name": "ruff-format", "command": "ruff format {file.path}", "glob": "**/*.py", "mode": "auto-fix"},
+        ]))
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_auto_fix_failure_creates_violation(self, monkeypatch):
+        """auto-fix mode with non-zero exit creates a violation."""
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="error: invalid syntax", stderr=""),
+        )
+        rule = CliIntegration()
+        ctx = _make_context(config=_config_with_commands([
+            {"name": "ruff-format", "command": "ruff format {file.path}", "glob": "**/*.py", "mode": "auto-fix"},
+        ]))
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert "Auto-fix failed" in violations[0].message or "invalid syntax" in violations[0].message
+
+    def test_auto_fix_timeout_skips(self, monkeypatch):
+        """auto-fix mode with timeout does not crash."""
+        def _timeout(*a, **kw):
+            raise subprocess.TimeoutExpired(cmd="slow", timeout=10)
+        monkeypatch.setattr(subprocess, "run", _timeout)
+
+        rule = CliIntegration()
+        ctx = _make_context(config=_config_with_commands([
+            {"name": "formatter", "command": "slow-format", "glob": "**/*", "mode": "auto-fix", "timeout": 1},
+        ]))
+        assert rule.evaluate(ctx) == []
+
+    def test_default_mode_is_check(self, monkeypatch):
+        """Without mode specified, behavior is normal check (not auto-fix)."""
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="err", stderr=""),
+        )
+        rule = CliIntegration()
+        ctx = _make_context(config=_config_with_commands([
+            {"name": "ruff", "command": "ruff check", "glob": "**/*"},
+        ]))
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert "Auto-fix" not in violations[0].message

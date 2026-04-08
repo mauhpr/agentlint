@@ -607,10 +607,30 @@ def doctor(project_dir: str | None):
 
     # Suggest CLI integration recipes for detected tools
     if not cli_commands:
-        _TOOL_RECIPES = ["ruff", "mypy", "pytest", "black"]
-        for tool in _TOOL_RECIPES:
+        _TOOL_RECIPES = {
+            # Python
+            "ruff": [
+                "ruff check {file.path} --output-format=concise",
+                "ruff format {file.path} --check --diff",
+            ],
+            "mypy": ["mypy {file.path}"],
+            "black": ["black --check {file.path}"],
+            # JavaScript / TypeScript
+            "eslint": ["eslint {file.path}"],
+            "prettier": ["prettier --check {file.path}"],
+            "tsc": ["tsc --noEmit"],
+            "biome": ["biome check {file.path}"],
+            # Go
+            "golangci-lint": ["golangci-lint run {file.path}"],
+            # Rust
+            "clippy-driver": ["cargo clippy -- -D warnings"],
+            # Ruby
+            "rubocop": ["rubocop {file.path}"],
+        }
+        for tool, recipes in _TOOL_RECIPES.items():
             if shutil.which(tool):
-                checks_ok.append(f"CLI recipe: {tool} found — consider adding to cli-integration")
+                recipe_str = " + ".join(f"`{r.split()[0]} {r.split()[1]}`" for r in recipes)
+                checks_ok.append(f"CLI recipe: {tool} found — consider adding to cli-integration ({recipe_str})")
 
     # Check recordings dir writable (when recording is enabled)
     from agentlint.recorder import is_recording_enabled

@@ -636,6 +636,17 @@ class TestDoctorCommand:
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
         assert "CLI recipe: ruff found" in result.output
 
+    def test_doctor_suggests_ruff_format_recipe(self, tmp_path, monkeypatch) -> None:
+        """doctor should suggest ruff format alongside ruff check."""
+        import shutil
+        original_which = shutil.which
+        monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/ruff" if cmd == "ruff" else original_which(cmd))
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "ruff check" in result.output
+        assert "ruff format" in result.output
+
     def test_doctor_no_recipes_when_cli_configured(self, tmp_path, monkeypatch) -> None:
         """doctor should not suggest recipes when cli-integration is already configured."""
         import shutil

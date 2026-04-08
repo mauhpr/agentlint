@@ -372,6 +372,24 @@ rules:
 
 **`diff_only` mode:** When `true`, CLI output is filtered to only violations on changed lines (using the diff between pre-edit and post-edit file content). Pre-existing violations are suppressed. Works with any CLI tool that reports `:LINE:` format (ruff, mypy, eslint, etc.).
 
+**`auto-fix` mode:** For deterministic fixers like `ruff format`, `prettier`, or `black`, set `mode: auto-fix` to run the fixer silently on every Write/Edit. No violation is created on success — only on actual failure (crash, timeout):
+
+```yaml
+rules:
+  cli-integration:
+    commands:
+      - name: ruff-format
+        command: "ruff format {file.path}"
+        glob: "**/*.py"
+        mode: auto-fix     # run silently, apply fix, no warning
+      - name: prettier
+        command: "prettier --write {file.path}"
+        glob: "**/*.{ts,tsx,js,jsx}"
+        mode: auto-fix
+```
+
+Valid modes: `check` (default — report violations), `auto-fix` (run silently, warn only on failure).
+
 **Available placeholders:**
 
 | Placeholder | Value | Example |

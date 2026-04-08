@@ -119,6 +119,7 @@ class CliIntegration(Rule):
             severity = _SEVERITY_MAP.get(severity_str, Severity.WARNING)
             diff_only = cmd_config.get("diff_only", global_diff_only)
             max_output = cmd_config.get("max_output", global_max_output)
+            mode = cmd_config.get("mode", "check")
 
             try:
                 result = subprocess.run(
@@ -134,6 +135,21 @@ class CliIntegration(Rule):
                 continue
             except (FileNotFoundError, OSError) as exc:
                 logger.warning("CLI command '%s' failed to start: %s", name, exc)
+                continue
+
+            # auto-fix mode: run silently, only warn on actual failure
+            if mode == "auto-fix":
+                if result.returncode != 0:
+                    output = (result.stdout or result.stderr or "").strip()
+                    if output and len(output) > max_output:
+                        output = output[:max_output] + "..."
+                    violations.append(Violation(
+                        rule_id=f"{self.id}/{name}",
+                        message=output or f"Auto-fix failed with code {result.returncode}",
+                        severity=severity,
+                        file_path=file_path,
+                        suggestion=f"Run `{command_template}` manually to debug",
+                    ))
                 continue
 
             if result.returncode != 0:
