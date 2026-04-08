@@ -22,7 +22,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 AgentLint ships with 68 rules across 8 packs, covering all 17 Claude Code hook events. The 19 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
 
-**v1.6.0 highlights:** Global config defaults (`strict_mode: true` at top level cascades to all rules), warning suppression (`agentlint suppress <rule>`), auto-suppress after N fires, `diff_only` mode for CLI integration, `auto-fix` mode for formatters (ruff format, prettier), and drift detector extension filtering.
+**v1.7.0 highlights:** Session summary dashboard (`agentlint report --summary`), MCP server documentation, cumulative violation tracking in Stop reports. Previous: global config defaults, warning suppression, auto-suppress, `diff_only` mode, `auto-fix` mode.
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -452,7 +452,7 @@ Files outside any project prefix use the global `packs:` list. Longest prefix wi
 
 ## MCP Server
 
-Expose agentlint to Claude and other MCP clients. Agents can pre-validate code before writing:
+Expose agentlint to Claude and other MCP clients. Agents can **pre-validate code before writing**, eliminating the block-retry loop where hooks reject code and the agent rewrites multiple times.
 
 ```bash
 pip install agentlint[mcp]
@@ -463,8 +463,11 @@ agentlint-mcp  # run via stdio
 - `check_content(content, file_path)` — pre-validate code against rules
 - `list_rules(pack?)` — discover available rules
 - `get_config()` — read current configuration
+- `suppress_rule(rule_id)` — suppress a warning for the session (ERRORs always enforced)
 
 **Resources:** `agentlint://rules`, `agentlint://config`
+
+See [docs/mcp.md](docs/mcp.md) for the full MCP guide with workflow recipes and troubleshooting.
 
 ## CI Mode
 

@@ -141,6 +141,136 @@ class Reporter:
             }
         })
 
+    def format_session_summary(
+        self,
+        session_state: dict | None = None,
+        output_format: str = "text",
+    ) -> str:
+        """Format a cumulative session summary dashboard.
+
+        Reads violation_log, token_budget, suppressed_rules, circuit_breaker,
+        subagents_spawned, subagent_audits, files_touched, and edited_files
+        from session_state to produce a comprehensive dashboard.
+        """
+        state = session_state or {}
+        vlog = state.get("violation_log", {})
+        total_evals = vlog.get("total_evaluations", 0)
+        total_blocked = vlog.get("total_blocked", 0)
+        total_warnings = vlog.get("total_warnings", 0)
+        total_info = vlog.get("total_info", 0)
+        total_violations = total_blocked + total_warnings + total_info
+        rule_violations = vlog.get("rule_violations", {})
+
+        # Top rules sorted by count descending
+        top_rules = sorted(rule_violations.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        budget = state.get("token_budget", {})
+        total_calls = budget.get("total_calls", 0)
+        total_bytes = budget.get("total_bytes_written", 0)
+
+        files_touched = state.get("files_touched", [])
+        edited_files = state.get("edited_files", [])
+        changed_files = state.get("changed_files", [])
+
+        suppressed = state.get("suppressed_rules", [])
+        cb_state = state.get("circuit_breaker", {})
+        spawned = state.get("subagents_spawned", [])
+        audits = state.get("subagent_audits", [])
+
+        if output_format == "json":
+            data = {
+                "evaluations": total_evals,
+                "tool_calls": total_calls,
+                "bytes_written": total_bytes,
+                "files_touched": len(files_touched),
+                "files_edited": len(edited_files),
+                "files_changed_git": len(changed_files),
+                "violations": {
+                    "total": total_violations,
+                    "blocked": total_blocked,
+                    "warnings": total_warnings,
+                    "info": total_info,
+                },
+                "top_rules": [{"rule_id": r, "count": c} for r, c in top_rules],
+                "suppressed_rules": suppressed,
+                "subagents_spawned": len(spawned),
+                "subagents_audited": len(audits),
+            }
+            # Add circuit breaker degraded rules
+            degraded = {
+                rid: data_cb for rid, data_cb in cb_state.items()
+                if data_cb.get("state", "active") != "active"
+            }
+            if degraded:
+                data["circuit_breaker"] = [
+                    {"rule_id": rid, "state": d.get("state"), "fire_count": d.get("fire_count", 0)}
+                    for rid, d in sorted(degraded.items())
+                ]
+            return json.dumps(data)
+
+        # Text format
+        lines = ["AgentLint Session Summary"]
+
+        # Session overview
+        parts = []
+        if total_evals:
+            parts.append(f"{total_evals} evaluations")
+        if total_calls:
+            parts.append(f"{total_calls} tool calls")
+        if total_bytes:
+            parts.append(f"{total_bytes:,} bytes written")
+        if parts:
+            lines.append(" | ".join(parts))
+
+        # Files
+        file_parts = []
+        if files_touched:
+            file_parts.append(f"{len(files_touched)} touched")
+        if edited_files:
+            file_parts.append(f"{len(edited_files)} edited")
+        if changed_files:
+            file_parts.append(f"{len(changed_files)} changed (git)")
+        if file_parts:
+            lines.append("Files: " + ", ".join(file_parts))
+
+        # Violations
+        if total_violations:
+            lines.append("")
+            lines.append(f"Violations ({total_violations} total)")
+            lines.append(f"  Blocked: {total_blocked} | Warnings: {total_warnings} | Info: {total_info}")
+
+        # Top rules
+        if top_rules:
+            lines.append("")
+            lines.append("Top Rules")
+            for rule_id, count in top_rules:
+                lines.append(f"  {rule_id:<30} {count}")
+
+        # Suppressed rules
+        if suppressed:
+            lines.append("")
+            lines.append(f"Suppressed: {', '.join(suppressed)}")
+
+        # Circuit breaker
+        degraded = {
+            rid: data_cb for rid, data_cb in cb_state.items()
+            if data_cb.get("state", "active") != "active"
+        }
+        if degraded:
+            lines.append("")
+            lines.append("Circuit Breaker")
+            for rid, data_cb in sorted(degraded.items()):
+                s = data_cb.get("state", "unknown")
+                c = data_cb.get("fire_count", 0)
+                lines.append(f"  {rid} {s} ({c}x)")
+
+        # Subagent activity
+        if spawned or audits:
+            lines.append("")
+            lines.append(f"Subagents: {len(spawned)} spawned, {len(audits)} audited")
+
+        return "\n".join(lines)
+
     def format_session_report(
         self,
         files_changed: int = 0,
@@ -184,8 +314,27 @@ class Reporter:
                     count = data.get("fire_count", 0)
                     lines.append(f"  [{rid}] {state} (fired {count}x)")
 
-        # Subagent activity (from session state)
+        # Cumulative violation summary (from session-wide violation_log)
         state = session_state or {}
+        vlog = state.get("violation_log")
+        if vlog:
+            cum_total = vlog.get("total_blocked", 0) + vlog.get("total_warnings", 0) + vlog.get("total_info", 0)
+            if cum_total:
+                lines.append("")
+                lines.append(
+                    f"Session totals: {cum_total} violation(s) across "
+                    f"{vlog.get('total_evaluations', 0)} evaluations"
+                )
+                top_rules = sorted(
+                    vlog.get("rule_violations", {}).items(),
+                    key=lambda x: x[1], reverse=True,
+                )[:5]
+                if top_rules:
+                    lines.append("Top rules:")
+                    for rule_id, count in top_rules:
+                        lines.append(f"  {rule_id:<30} {count}")
+
+        # Subagent activity (from session state)
         audits = state.get("subagent_audits", [])
         spawned = state.get("subagents_spawned", [])
         if spawned or audits:

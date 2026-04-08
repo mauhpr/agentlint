@@ -221,3 +221,21 @@ class TestResources:
         text = result[0].text if hasattr(result[0], "text") else str(result[0])
         config = json.loads(text)
         assert "packs" in config
+
+
+class TestViolationSchemaContract:
+    """v1.7.0 — Violation dicts from check_content contain all documented fields."""
+
+    REQUIRED_FIELDS = {"rule_id", "message", "severity", "file_path", "line", "suggestion"}
+
+    async def test_violation_dict_has_all_documented_fields(self, client):
+        """Every violation dict returned by check_content must include all 6 documented fields."""
+        result = await client.call_tool(
+            "check_content",
+            {"content": 'API_KEY = "sk_live_abc123def456ghi789"', "file_path": "app.py"},
+        )
+        violations = json.loads(result.data)
+        assert len(violations) > 0, "Expected at least one violation for schema check"
+        for v in violations:
+            missing = self.REQUIRED_FIELDS - set(v.keys())
+            assert not missing, f"Violation missing fields {missing}: {v}"

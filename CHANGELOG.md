@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.7.0 (2026-04-08) — Session Summary + MCP Documentation
+
+Two features: session-wide violation tracking with a dashboard CLI, and comprehensive MCP server documentation.
+
+### Features
+
+- **Session summary dashboard** — `agentlint report --summary` shows cumulative violations, top rules, files touched, suppressed rules, circuit breaker state, and subagent activity. `--format json` for structured output.
+- **Violation log tracking** — Every `check` invocation accumulates violation counts in `session_state["violation_log"]`. The Stop report now includes cumulative totals and top 5 rules when the log has data.
+- **MCP server documentation** — New `docs/mcp.md` guide: value proposition (pre-validate to avoid block-retry loops), quickstart, full tool reference with parameter tables and return schemas, workflow recipes, troubleshooting.
+- **MCP schema contract test** — Verifies that `check_content` violation dicts always contain all 6 documented fields (`rule_id`, `message`, `severity`, `file_path`, `line`, `suggestion`).
+- **Cross-references** — README MCP section expanded with `suppress_rule` tool and link to full guide. `docs/configuration.md` MCP section links to the new guide.
+
+### Tests
+
+~22 new tests. Total: ~1593 tests, 96% coverage.
+
 ## v1.6.0 (2026-04-08) — Production Feedback Mega Release
 
 Real-world feedback from production monorepo usage. Global config defaults, warning suppression, diff-only CLI integration, and drift detector extension filtering.
