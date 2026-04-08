@@ -1,6 +1,6 @@
 # AgentLint Roadmap
 
-> **Current state:** v1.3.0 — 68 rules across 8 packs, 1483 tests, 96% coverage.
+> **Current state:** v1.4.0 — 68 rules across 8 packs, 1498 tests, 96% coverage. MCP server available.
 
 ---
 
@@ -135,7 +135,7 @@ When `doctor` detects project tools in PATH (ruff, eslint, mypy, pytest), sugges
 
 ---
 
-### 5. MCP Server (P2, Size: L)
+### 5. MCP Server (P2, Size: L) — v1.4.0 ✅
 
 Expose agentlint as an MCP server. Resources: rules, config, session state. Tools: `check_content` (pre-validate code), `toggle_rule`, `list_rules`. The killer feature is `check_content` — agents pre-validate before writing, avoiding the block-then-retry loop.
 

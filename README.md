@@ -425,6 +425,22 @@ custom_rules_dir: .agentlint/rules/
 
 Rules whose `pack` is not in `packs:` are loaded but silently skipped. Use `agentlint doctor` to detect orphaned packs.
 
+## MCP Server
+
+Expose agentlint to Claude and other MCP clients. Agents can pre-validate code before writing:
+
+```bash
+pip install agentlint[mcp]
+agentlint-mcp  # run via stdio
+```
+
+**Tools:**
+- `check_content(content, file_path)` — pre-validate code against rules
+- `list_rules(pack?)` — discover available rules
+- `get_config()` — read current configuration
+
+**Resources:** `agentlint://rules`, `agentlint://config`
+
 ## CI Mode
 
 Run agentlint in CI pipelines — same rules, same config, different trigger:

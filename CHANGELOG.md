@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.4.0 (2026-04-08) — MCP Server
+
+### The change
+
+AgentLint is now an MCP server. Claude (and any MCP client) can query rules, check content, and read configuration programmatically.
+
+### Tools
+
+- **`check_content(content, file_path, event?)`** — Pre-validate code against rules before writing. Avoids the block-then-retry loop from PreToolUse hooks.
+- **`list_rules(pack?)`** — List all rules, optionally filtered by pack.
+- **`get_config()`** — Read current configuration.
+
+### Resources
+
+- **`agentlint://rules`** — All rules as structured data
+- **`agentlint://config`** — Current effective configuration
+
+### Install
+
+```bash
+pip install agentlint[mcp]    # includes fastmcp
+agentlint-mcp                 # run via stdio
+```
+
+### Tests
+
+1498 tests, 96% coverage.
+
 ## v1.3.0 (2026-04-07) — CI Mode + Doctor Recipes
 
 ### CI Mode
