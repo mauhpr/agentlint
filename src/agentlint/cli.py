@@ -629,7 +629,7 @@ def doctor(project_dir: str | None):
         }
         for tool, recipes in _TOOL_RECIPES.items():
             if shutil.which(tool):
-                recipe_str = " + ".join(f"`{r.split()[0]} {r.split()[1]}`" for r in recipes)
+                recipe_str = ", ".join(f"`{r}`" for r in recipes)
                 checks_ok.append(f"CLI recipe: {tool} found — consider adding to cli-integration ({recipe_str})")
 
     # Check recordings dir writable (when recording is enabled)
@@ -659,8 +659,14 @@ def doctor(project_dir: str | None):
 @click.argument("rule_id", required=False)
 @click.option("--list", "list_mode", is_flag=True, help="Show suppressed rules")
 @click.option("--clear", is_flag=True, help="Clear all suppressions")
-def suppress(rule_id: str | None, list_mode: bool, clear: bool):
+@click.option("--remove", "remove_id", default=None, help="Remove a single suppression")
+def suppress(rule_id: str | None, list_mode: bool, clear: bool, remove_id: str | None):
     """Suppress a warning rule for the rest of the session."""
+    # Mutual exclusion check
+    actions = sum([bool(rule_id), list_mode, clear, bool(remove_id)])
+    if actions > 1:
+        raise click.UsageError("RULE_ID, --list, --clear, and --remove are mutually exclusive.")
+
     session_state = load_session()
     suppressed = session_state.setdefault("suppressed_rules", [])
 
@@ -674,13 +680,22 @@ def suppress(rule_id: str | None, list_mode: bool, clear: bool):
                 click.echo(f"  {rid}")
         else:
             click.echo("No rules suppressed.")
+    elif remove_id:
+        if remove_id in suppressed:
+            suppressed.remove(remove_id)
+            save_session(session_state)
+            click.echo(f"Removed suppression for '{remove_id}'.")
+        else:
+            click.echo(f"'{remove_id}' is not suppressed.")
     elif rule_id:
         if rule_id not in suppressed:
             suppressed.append(rule_id)
-        save_session(session_state)
-        click.echo(f"Suppressed '{rule_id}' for this session.")
+            save_session(session_state)
+            click.echo(f"Suppressed '{rule_id}' for this session.")
+        else:
+            click.echo(f"'{rule_id}' is already suppressed.")
     else:
-        click.echo("Usage: agentlint suppress RULE_ID | --list | --clear")
+        click.echo("Usage: agentlint suppress RULE_ID | --list | --clear | --remove RULE_ID")
 
 
 @main.command("import-agents-md")

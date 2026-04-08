@@ -134,6 +134,15 @@ class TestAgentLintConfig:
         config = AgentLintConfig(rules={"R001": {"enabled": True}})
         assert config.is_rule_enabled("R001") is True
 
+    def test_is_rule_enabled_bare_false_disables(self):
+        """YAML `no-secrets: false` should disable the rule, not crash."""
+        config = AgentLintConfig(rules={"no-secrets": False})
+        assert config.is_rule_enabled("no-secrets") is False
+
+    def test_is_rule_enabled_bare_true_enables(self):
+        config = AgentLintConfig(rules={"no-secrets": True})
+        assert config.is_rule_enabled("no-secrets") is True
+
     def test_get_rule_config_returns_config(self):
         rule_cfg = {"enabled": True, "max_lines": 500}
         config = AgentLintConfig(rules={"R001": rule_cfg})

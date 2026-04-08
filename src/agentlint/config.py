@@ -39,6 +39,9 @@ class AgentLintConfig:
 
     def is_rule_enabled(self, rule_id: str) -> bool:
         rule_cfg = self.rules.get(rule_id, {})
+        if not isinstance(rule_cfg, dict):
+            # Treat bare boolean/scalar as enabled shorthand: `no-secrets: false`
+            return bool(rule_cfg) if rule_cfg is not None else (rule_id not in _DISABLED_BY_DEFAULT)
         default = rule_id not in _DISABLED_BY_DEFAULT
         return rule_cfg.get("enabled", default)
 

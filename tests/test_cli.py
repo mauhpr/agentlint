@@ -1182,3 +1182,30 @@ class TestSuppressCommand:
         assert "cleared" in result.output.lower()
         result2 = runner.invoke(main, ["suppress", "--list"])
         assert "No rules suppressed" in result2.output
+
+    def test_suppress_remove_single(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-remove")
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "drift-detector"])
+        runner.invoke(main, ["suppress", "max-file-size"])
+        result = runner.invoke(main, ["suppress", "--remove", "drift-detector"])
+        assert "Removed suppression" in result.output
+        result2 = runner.invoke(main, ["suppress", "--list"])
+        assert "drift-detector" not in result2.output
+        assert "max-file-size" in result2.output
+
+    def test_suppress_mutual_exclusion(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-mutex")
+        runner = CliRunner()
+        result = runner.invoke(main, ["suppress", "drift-detector", "--list"])
+        assert result.exit_code != 0
+
+    def test_suppress_already_suppressed(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-idem")
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "drift-detector"])
+        result = runner.invoke(main, ["suppress", "drift-detector"])
+        assert "already suppressed" in result.output

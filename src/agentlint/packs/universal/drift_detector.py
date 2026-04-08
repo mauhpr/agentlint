@@ -1,7 +1,7 @@
 """Rule: warn when many files are edited without running tests."""
 from __future__ import annotations
 
-from pathlib import PurePosixPath
+from pathlib import PurePath
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
@@ -46,7 +46,7 @@ class DriftDetector(Rule):
         if context.tool_name in _WRITE_TOOLS:
             edited = set(state.get("edited_files", []))
             file_path = context.file_path or context.tool_input.get("file_path", "")
-            if file_path and PurePosixPath(file_path).suffix in extensions:
+            if file_path and PurePath(file_path).suffix in extensions:
                 edited.add(file_path)
             state["edited_files"] = list(edited)
             state["last_test_run"] = False

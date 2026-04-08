@@ -323,6 +323,25 @@ class TestEngineSuppression:
         assert "warn-rule" in session_state["suppressed_rules"]
 
 
+    def test_manual_suppress_prevents_auto_suppress_counting(self) -> None:
+        """Already-suppressed rules should not accumulate auto-suppress counts."""
+        config = AgentLintConfig(packs=["test"])
+        session_state: dict = {"suppressed_rules": ["warn-rule"]}
+        context = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "test.py"},
+            project_dir="/tmp",
+            config={"auto_suppress_after": 2},
+            session_state=session_state,
+        )
+        engine = Engine(config=config, rules=[WarnRule()])
+        # Fire 3 times — should not accumulate counts since already suppressed
+        for _ in range(3):
+            engine.evaluate(context)
+        assert session_state.get("rule_fire_counts", {}).get("warn-rule", 0) == 0
+
+
 class TestEngineCircuitBreaker:
     def test_engine_applies_circuit_breaker(self) -> None:
         """After threshold fires, engine should degrade ERROR to WARNING."""

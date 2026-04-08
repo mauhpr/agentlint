@@ -59,29 +59,6 @@ class Engine:
             result.violations, context.session_state, context.config,
         )
 
-        # Auto-suppress: track consecutive fires per rule
-        auto_suppress_threshold = context.config.get("auto_suppress_after", 0) if context.config else 0
-        if auto_suppress_threshold and auto_suppress_threshold > 0:
-            fire_counts = context.session_state.setdefault("rule_fire_counts", {})
-            fired_ids: set[str] = set()
-            for v in result.violations:
-                if v.severity != Severity.ERROR:
-                    fired_ids.add(v.rule_id)
-                    count = fire_counts.get(v.rule_id, 0) + 1
-                    fire_counts[v.rule_id] = count
-                    threshold = get_rule_setting(
-                        context.config, v.rule_id, "auto_suppress_after", auto_suppress_threshold,
-                    )
-                    if count > threshold:
-                        suppressed_rules = context.session_state.setdefault("suppressed_rules", [])
-                        if v.rule_id not in suppressed_rules:
-                            suppressed_rules.append(v.rule_id)
-                            logger.info("Auto-suppressed '%s' after %d fires", v.rule_id, count)
-            # Reset count for rules that didn't fire
-            for rid in list(fire_counts):
-                if rid not in fired_ids:
-                    fire_counts[rid] = 0
-
         # Suppress acknowledged rules (ERRORs are never suppressed)
         suppressed = set(context.session_state.get("suppressed_rules", []))
         if suppressed:
@@ -89,5 +66,38 @@ class Engine:
                 v for v in result.violations
                 if v.rule_id not in suppressed or v.severity == Severity.ERROR
             ]
+
+        # Auto-suppress: track consecutive fires per rule (after manual suppress
+        # filter so already-suppressed rules don't accumulate counts)
+        auto_suppress_threshold = context.config.get("auto_suppress_after", 0) if context.config else 0
+        if auto_suppress_threshold and auto_suppress_threshold > 0:
+            fire_counts = context.session_state.setdefault("rule_fire_counts", {})
+            # Count once per rule per invocation, not per violation
+            fired_non_error_ids: set[str] = {
+                v.rule_id for v in result.violations if v.severity != Severity.ERROR
+            }
+            for rule_id in fired_non_error_ids:
+                count = fire_counts.get(rule_id, 0) + 1
+                fire_counts[rule_id] = count
+                threshold = get_rule_setting(
+                    context.config, rule_id, "auto_suppress_after", auto_suppress_threshold,
+                )
+                if count > threshold:
+                    suppressed_rules = context.session_state.setdefault("suppressed_rules", [])
+                    if rule_id not in suppressed_rules:
+                        suppressed_rules.append(rule_id)
+                        logger.info("Auto-suppressed '%s' after %d fires", rule_id, count)
+            # Reset count for rules that didn't fire
+            for rid in list(fire_counts):
+                if rid not in fired_non_error_ids:
+                    fire_counts[rid] = 0
+
+            # Filter newly auto-suppressed violations from this evaluation
+            newly_suppressed = set(context.session_state.get("suppressed_rules", [])) - suppressed
+            if newly_suppressed:
+                result.violations = [
+                    v for v in result.violations
+                    if v.rule_id not in newly_suppressed or v.severity == Severity.ERROR
+                ]
 
         return result

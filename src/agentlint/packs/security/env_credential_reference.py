@@ -81,7 +81,7 @@ class EnvCredentialReference(Rule):
 
         # Smart default: CI/CD files are expected to reference secret paths.
         # Downgrade to INFO unless strict_mode is enabled.
-        strict_mode: bool = get_rule_setting(context.config or {}, self.id, "strict_mode", False)
+        strict_mode: bool = get_rule_setting(context.config, self.id, "strict_mode", False)
         is_cicd = _is_cicd_file(file_path)
 
         for pattern, label in _CRED_FILE_ENV_PATTERNS:

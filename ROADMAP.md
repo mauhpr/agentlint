@@ -81,21 +81,15 @@ Generic subprocess execution rule that subsumes linter wrapping, dependency scan
 
 ## Backlog — Prioritized
 
-### 1. File-Scope Governance (P1, Size: M) — PR #24
+### 1. File-Scope Governance (P1, Size: M) — v1.1.0 ✅
 
 Security rule that restricts which files an agent can read/write based on allow/deny glob patterns. Deny takes precedence. Blocks Write, Edit, Read, and Bash file operations. Path traversal blocked via `os.path.realpath()`.
 
 ---
 
-### 2. Quality Rules from Reddit Research (P1, Size: M) — PR #25
+### 2. Quality Rules from Reddit Research (P1, Size: M) — v1.2.0 ✅
 
-Three new rules addressing top community pain points:
-
-- **`no-large-diff`** (quality, PostToolUse, WARNING) — Warns when a single Write/Edit produces a diff larger than a threshold. Forces smaller, reviewable chunks. Uses `file_content_before` diff. Config: `max_lines_added: 200`, `max_lines_removed: 100`.
-
-- **`no-file-creation-sprawl`** (quality, PostToolUse, WARNING) — Tracks files created during the session. Warns after N new files. Encourages extending existing files. Config: `max_new_files: 10`.
-
-- **`naming-conventions`** (quality, PreToolUse, INFO) — Checks file names against configurable patterns (snake_case for Python, camelCase/PascalCase for JS/TS, test_ prefix).
+Three new rules addressing top community pain points: `no-large-diff`, `no-file-creation-sprawl`, `naming-conventions`.
 
 ---
 

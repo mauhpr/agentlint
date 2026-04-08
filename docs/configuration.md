@@ -139,7 +139,7 @@ rules:
     allow_paths: ["deploy/*"]  # overrides global (not merged)
 ```
 
-Rules that support global defaults: `no-secrets`, `no-bash-file-write`, `no-network-exfil`, `env-credential-reference`, `production-guard`.
+Any rule using `get_rule_setting()` inherits global defaults. Currently adopted by: `no-secrets`, `no-bash-file-write`, `no-network-exfil`, `env-credential-reference`, `production-guard`. `auto_suppress_after` is read globally by the engine itself and applies to all rules.
 
 ### Warning suppression
 
@@ -148,10 +148,11 @@ Suppress a warning rule for the rest of the session:
 ```bash
 agentlint suppress drift-detector    # suppress drift-detector
 agentlint suppress --list            # show suppressed rules
+agentlint suppress --remove drift-detector  # unsuppress a single rule
 agentlint suppress --clear           # clear all suppressions
 ```
 
-The MCP server also exposes a `suppress_rule` tool. ERRORs cannot be suppressed (safety invariant).
+The MCP server also exposes a `suppress_rule` tool. ERROR-severity violations are never suppressed at evaluation time — the engine always emits ERRORs regardless of the suppressed list (safety invariant). The suppress command accepts any rule ID but the suppression has no effect on ERROR rules.
 
 **Auto-suppress:** Set `auto_suppress_after: N` to automatically suppress a rule after N consecutive fires:
 
@@ -389,6 +390,8 @@ rules:
 ```
 
 Valid modes: `check` (default — report violations), `auto-fix` (run silently, warn only on failure).
+
+**Note:** `diff_only` is ignored when `mode: auto-fix` — fixers always run on the full file.
 
 **Available placeholders:**
 

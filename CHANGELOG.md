@@ -12,9 +12,10 @@ Real-world feedback from production monorepo usage. Global config defaults, warn
 - **CLI integration global defaults** — Top-level `timeout`, `severity`, `diff_only`, `max_output`, `on` in `cli-integration` config apply to all commands. Per-command overrides still win.
 - **CLI integration `diff_only` mode** — When `diff_only: true`, CLI output is filtered to only violations on changed lines. Pre-existing violations are suppressed.
 - **Drift detector extension filter** — Only code files (`.py`, `.ts`, `.go`, etc.) count toward drift threshold. Config files and docs no longer inflate the count. Configurable via `extensions` list.
-- **Status shows per-project packs** — `agentlint status` now displays monorepo project→pack mappings.
+- **Status per-project packs** — `agentlint status` now also displays monorepo project→pack mappings (extends v1.5.0 monorepo support).
 - **CLI integration `auto-fix` mode** — Set `mode: auto-fix` for deterministic fixers (ruff format, prettier, black). Runs silently on every Write/Edit — no violation on success, only on actual failure.
-- **Doctor tool recipes** — `agentlint doctor` now suggests recipes for ruff (check + format), eslint, prettier, tsc, biome, golangci-lint, rubocop, and more.
+- **Doctor tool recipes expanded** — Adds prettier, tsc, biome, golangci-lint, rubocop to existing ruff/mypy/black recipes. Ruff now suggests both check + format commands.
+- **Suppress `--remove`** — Unsuppress a single rule without clearing all (`agentlint suppress --remove RULE_ID`).
 
 ### Tests
 

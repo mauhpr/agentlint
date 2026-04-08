@@ -32,7 +32,7 @@ def _filter_diff_violations(
     output: str, content_before: str | None, content_after: str | None,
 ) -> str:
     """Filter CLI output to only violations on changed lines."""
-    if not content_before or not content_after:
+    if content_before is None or content_after is None:
         return output  # new file or no before content — show everything
 
     import difflib
@@ -51,7 +51,7 @@ def _filter_diff_violations(
     import re
     filtered = []
     for line in output.splitlines():
-        match = re.search(r":(\d+)[:\s]|line\s+(\d+)", line)
+        match = re.search(r":(\d+)(?:[:\s]|$)|line\s+(\d+)", line)
         if match:
             lineno = int(match.group(1) or match.group(2))
             if lineno in changed_lines:
@@ -150,6 +150,8 @@ class CliIntegration(Rule):
                         file_path=file_path,
                         suggestion=f"Run `{command_template}` manually to debug",
                     ))
+                else:
+                    logger.debug("Auto-fix '%s' succeeded on %s", name, file_path or "(no file)")
                 continue
 
             if result.returncode != 0:

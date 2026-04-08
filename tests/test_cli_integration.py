@@ -484,6 +484,21 @@ class TestFilterDiffViolations:
         assert "app.py:2:8: F401" in result
         assert "app.py:1:8: F401" not in result
 
+    def test_diff_only_terminal_line_number(self):
+        """Line number at end of line (no trailing char) should still match."""
+        before = "line1\n"
+        after = "line1\nline2\n"
+        # Some tools output "file:LINE" without trailing colon
+        output = "app.py:1\napp.py:2"
+        result = _filter_diff_violations(output, before, after)
+        assert "app.py:2" in result
+        assert "app.py:1" not in result
+
+    def test_diff_only_empty_before_empty_after(self):
+        """Empty before + empty after = no changes, suppress all."""
+        result = _filter_diff_violations("app.py:1: E501", "", "")
+        assert result == ""
+
 
 class TestCliIntegrationAutoFix:
     def test_auto_fix_success_no_violation(self, monkeypatch):
