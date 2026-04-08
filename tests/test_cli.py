@@ -575,6 +575,37 @@ class TestDoctorCommand:
         assert "1 rule file(s)" in result.output
         assert "not in packs" not in result.output
 
+    def test_doctor_suggests_cli_recipe(self, tmp_path, monkeypatch) -> None:
+        """doctor should suggest CLI recipes when tools are in PATH."""
+        import shutil
+        original_which = shutil.which
+        monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/ruff" if cmd == "ruff" else original_which(cmd))
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "CLI recipe: ruff found" in result.output
+
+    def test_doctor_no_recipes_when_cli_configured(self, tmp_path, monkeypatch) -> None:
+        """doctor should not suggest recipes when cli-integration is already configured."""
+        import shutil
+        monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/ruff")
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\nrules:\n  cli-integration:\n    commands:\n"
+            "      - name: ruff\n        command: ruff check\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "CLI recipe" not in result.output
+
+    def test_doctor_no_recipes_when_tool_missing(self, tmp_path, monkeypatch) -> None:
+        """doctor should not suggest recipes when tools aren't installed."""
+        import shutil
+        monkeypatch.setattr(shutil, "which", lambda cmd: None)
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "CLI recipe" not in result.output
+
 
 class TestReportCommand:
     def test_report_outputs_summary(self) -> None:

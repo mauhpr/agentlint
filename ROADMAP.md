@@ -1,6 +1,6 @@
 # AgentLint Roadmap
 
-> **Current state:** v1.2.0 — 68 rules across 8 packs, 1467 tests, 96% coverage.
+> **Current state:** v1.3.0 — 68 rules across 8 packs, 1483 tests, 96% coverage.
 
 ---
 
@@ -99,7 +99,7 @@ Three new rules addressing top community pain points:
 
 ---
 
-### 3. CI Mode (P2, Size: M)
+### 3. CI Mode (P2, Size: M) — v1.3.0 ✅
 
 `agentlint ci` command that scans a git diff and exits non-zero on violations. Runs the same rules and config as hooks, but triggered in CI pipelines instead of Claude Code.
 
@@ -129,7 +129,7 @@ jobs:
 
 ---
 
-### 4. Doctor CLI Integration Recipes (P2, Size: S)
+### 4. Doctor CLI Integration Recipes (P2, Size: S) — v1.3.0 ✅
 
 When `doctor` detects project tools in PATH (ruff, eslint, mypy, pytest), suggest CLI integration config snippets. Low effort, high discoverability.
 

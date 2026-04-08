@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.3.0 (2026-04-07) — CI Mode + Doctor Recipes
+
+### CI Mode
+
+New `agentlint ci` command scans changed files and reports violations for CI pipelines:
+
+```bash
+agentlint ci                              # scan uncommitted changes
+agentlint ci --diff origin/main...HEAD    # scan PR diff
+agentlint ci --format json                # machine-readable output
+```
+
+Exit 0 = clean or warnings only. Exit 1 = ERROR violations found. Same rules, same config, different trigger.
+
+### Doctor CLI Recipes
+
+`agentlint doctor` now detects ruff, mypy, pytest, and black in PATH and suggests CLI integration config when no commands are configured.
+
+### Tests
+
+1483 tests, 96% coverage.
+
 ## v1.2.0 (2026-04-07) — Quality Rules from Community Research
 
 ### The change

@@ -13,12 +13,12 @@ from agentlint.agents_md import find_agents_md, generate_config, map_to_config, 
 from agentlint.config import load_config
 from agentlint.detector import detect_stack
 from agentlint.engine import Engine
-from agentlint.models import HookEvent, RuleContext
+from agentlint.models import HookEvent, RuleContext, Severity
 from agentlint.packs import PACK_MODULES, load_custom_rules, load_rules
 from agentlint.reporter import Reporter
 from agentlint.session import cleanup_session, load_session, save_session
 from agentlint.setup import _resolve_command, merge_hooks, read_settings, remove_hooks, settings_path, write_settings
-from agentlint.utils.git import get_changed_files
+from agentlint.utils.git import get_changed_files, get_diff_files
 
 logger = logging.getLogger("agentlint")
 
@@ -207,6 +207,82 @@ def check(event: str, project_dir: str | None):
         click.echo(output)
 
     sys.exit(reporter.exit_code(event=event))
+
+
+@main.command()
+@click.option("--diff", default=None, help="Git diff range (e.g., origin/main...HEAD)")
+@click.option("--project-dir", default=None, help="Project directory")
+@click.option("--format", "output_format", default="text", type=click.Choice(["text", "json"]))
+def ci(diff: str | None, project_dir: str | None, output_format: str):
+    """Scan changed files and report violations for CI pipelines."""
+    project_dir = project_dir or os.getcwd()
+
+    config = load_config(project_dir)
+    rules = load_rules(config.packs)
+    if config.custom_rules_dir:
+        rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
+
+    changed_files = get_diff_files(project_dir, diff)
+    if not changed_files:
+        if output_format == "json":
+            click.echo(json.dumps({"violations": [], "files_scanned": 0, "rules_evaluated": 0}))
+        else:
+            click.echo("No changed files found.")
+        sys.exit(0)
+
+    all_violations: list = []
+    total_evaluated = 0
+
+    for file_path in changed_files:
+        try:
+            content = open(file_path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+
+        # Run PreToolUse (catches secrets, env, file-scope)
+        for event in (HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE):
+            context = RuleContext(
+                event=event,
+                tool_name="Write",
+                tool_input={"file_path": file_path, "content": content},
+                project_dir=project_dir,
+                file_content=content,
+                config=config.rules,
+            )
+            engine = Engine(config=config, rules=rules)
+            result = engine.evaluate(context)
+            all_violations.extend(result.violations)
+            total_evaluated += result.rules_evaluated
+
+    has_errors = any(v.severity == Severity.ERROR for v in all_violations)
+    errors = [v for v in all_violations if v.severity == Severity.ERROR]
+    warnings = [v for v in all_violations if v.severity == Severity.WARNING]
+    infos = [v for v in all_violations if v.severity == Severity.INFO]
+
+    if output_format == "json":
+        click.echo(json.dumps({
+            "violations": [v.to_dict() for v in all_violations],
+            "files_scanned": len(changed_files),
+            "rules_evaluated": total_evaluated,
+        }))
+    else:
+        if not all_violations:
+            click.echo(f"Clean — {len(changed_files)} files scanned, {total_evaluated} rules evaluated.")
+        else:
+            for v in all_violations:
+                sev = v.severity.value.upper()
+                loc = f"{v.file_path}" if v.file_path else "?"
+                click.echo(f"{loc}  [{v.rule_id}] {sev}  {v.message}")
+                if v.suggestion:
+                    click.echo(f"  → {v.suggestion}")
+                click.echo()
+            click.echo(
+                f"{len(all_violations)} violation(s) "
+                f"({len(errors)} error, {len(warnings)} warning, {len(infos)} info) "
+                f"in {len(changed_files)} files"
+            )
+
+    sys.exit(1 if has_errors else 0)
 
 
 @main.command()
@@ -505,6 +581,19 @@ def doctor(project_dir: str | None):
                     checks_ok.append(f"CLI integration: '{name}' → {binary} found")
                 else:
                     issues.append(f"CLI integration: '{name}' → {binary} not found in PATH")
+
+    # Suggest CLI integration recipes for detected tools
+    if not cli_commands:
+        import shutil as _shutil
+        _TOOL_RECIPES = [
+            ("ruff", "ruff check {file.path} --output-format=concise"),
+            ("mypy", "mypy {file.path} --no-error-summary"),
+            ("pytest", "pytest tests/ -x -q --tb=short"),
+            ("black", "black --check {file.path}"),
+        ]
+        for tool, _cmd in _TOOL_RECIPES:
+            if _shutil.which(tool):
+                checks_ok.append(f"CLI recipe: {tool} found — consider adding to cli-integration")
 
     # Check recordings dir writable (when recording is enabled)
     from agentlint.recorder import is_recording_enabled
