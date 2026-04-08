@@ -13,6 +13,12 @@ _COMMIT_MSG_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Extract message from heredoc: git commit -m "$(cat <<'EOF'\nmessage\nEOF\n)"
+_HEREDOC_MSG_RE = re.compile(
+    r"""\bgit\s+commit\b.*?-m\s+"\$\(cat\s+<<'?(\w+)'?\n(.*?)\n\1\s*\)""",
+    re.IGNORECASE | re.DOTALL,
+)
+
 _CONVENTIONAL_RE = re.compile(
     r"^(feat|fix|chore|docs|refactor|test|ci|style|perf|build|revert)(\(.+?\))?!?:\s.+",
 )
@@ -35,11 +41,16 @@ class CommitMessageFormat(Rule):
         if not command:
             return []
 
-        match = _COMMIT_MSG_RE.search(command)
-        if not match:
-            return []
+        # Try heredoc format first (git commit -m "$(cat <<'EOF'\n...\nEOF\n)")
+        heredoc_match = _HEREDOC_MSG_RE.search(command)
+        if heredoc_match:
+            message = heredoc_match.group(2).strip()
+        else:
+            match = _COMMIT_MSG_RE.search(command)
+            if not match:
+                return []
+            message = match.group(1) or match.group(2)
 
-        message = match.group(1) or match.group(2)
         if not message:
             return []
 

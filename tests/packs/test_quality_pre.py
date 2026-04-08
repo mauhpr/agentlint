@@ -70,6 +70,52 @@ class TestCommitMessageFormat:
         )
         assert self.rule.evaluate(ctx) == []
 
+    def test_heredoc_valid_conventional(self):
+        """Heredoc commit messages should be parsed and validated."""
+        cmd = """git commit -m "$(cat <<'EOF'
+feat: add login flow
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)" """
+        ctx = _ctx(tool_input={"command": cmd})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_heredoc_invalid_format(self):
+        """Heredoc with non-conventional message should warn."""
+        cmd = """git commit -m "$(cat <<'EOF'
+updated the thing
+
+Some body text
+EOF
+)" """
+        ctx = _ctx(tool_input={"command": cmd})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert "conventional format" in violations[0].message
+
+    def test_heredoc_long_subject(self):
+        """Heredoc with long subject line should warn."""
+        long_subject = "feat: " + "x" * 80
+        cmd = f"""git commit -m "$(cat <<'EOF'
+{long_subject}
+
+Body text
+EOF
+)" """
+        ctx = _ctx(tool_input={"command": cmd})
+        violations = self.rule.evaluate(ctx)
+        assert any("exceeds" in v.message for v in violations)
+
+    def test_heredoc_without_quotes_on_delimiter(self):
+        """Heredoc with unquoted EOF delimiter should also work."""
+        cmd = """git commit -m "$(cat <<EOF
+fix: resolve auth bug
+EOF
+)" """
+        ctx = _ctx(tool_input={"command": cmd})
+        assert self.rule.evaluate(ctx) == []
+
     def test_ignores_non_bash(self):
         ctx = _ctx(tool_name="Write", tool_input={"command": 'git commit -m "bad"'})
         assert self.rule.evaluate(ctx) == []

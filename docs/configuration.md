@@ -485,6 +485,59 @@ agentlint import-agents-md --project-dir /path/to/project
 **Auto-detection integration:**
 When `AGENTS.md` exists and `stack: auto` is set, AgentLint uses AGENTS.md hints to discover additional packs during stack detection. This is additive — existing detection logic is not affected.
 
+## Quality rules reference
+
+### `commit-message-format` (PreToolUse, WARNING)
+
+Validates git commit messages follow conventional format. Supports both simple `-m "message"` and heredoc format (`-m "$(cat <<'EOF'...EOF)"`).
+
+**Config options:**
+- `max_subject_length` — Maximum subject line length (default: `72`)
+- `format` — Format to enforce: `"conventional"` (default) or `"freeform"` (skip format check)
+
+```yaml
+rules:
+  commit-message-format:
+    max_subject_length: 100    # override default 72
+    format: conventional       # or "freeform" to skip type prefix check
+```
+
+### `no-error-handling-removal` (PreToolUse, WARNING)
+
+Warns when error handling patterns (`try/except`, `.catch()`, null checks) are removed from existing code. Uses diff-based detection via `file_content_before`.
+
+### `no-large-diff` (PostToolUse, WARNING)
+
+Warns when a single Write/Edit adds or removes too many lines.
+
+**Config options:**
+- `max_lines_added` — Maximum lines added (default: `200`)
+- `max_lines_removed` — Maximum lines removed (default: `100`)
+
+### `no-file-creation-sprawl` (PostToolUse, WARNING)
+
+Warns when too many new files are created in a single session.
+
+**Config options:**
+- `max_new_files` — Maximum new files before warning (default: `10`)
+
+### `naming-conventions` (PreToolUse, INFO)
+
+Checks file names against language-specific conventions (snake_case for Python, camelCase for TS/JS, PascalCase for TSX/JSX). Accepts kebab-case as alternative for TSX/JSX. Exempts test files, `index`, `__init__`, and common config files.
+
+**Config options:**
+- `python` — Convention for .py files (default: `"snake_case"`)
+- `typescript` — Convention for .ts/.js files (default: `"camelCase"`)
+- `react_components` — Convention for .tsx/.jsx files (default: `"PascalCase"`)
+
+### `no-dead-imports` (PostToolUse, INFO)
+
+Detects unused imports in Python and JS/TS files after Write/Edit.
+
+### `self-review-prompt` (Stop, INFO)
+
+Injects an adversarial self-review prompt at session end to catch bugs.
+
 ## Security rules reference
 
 The security pack is **opt-in** — add `security` to your `packs` list to enable it. These rules provide stricter enforcement for sensitive environments.
