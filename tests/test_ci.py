@@ -101,6 +101,68 @@ class TestCiCommand:
         # no-secrets is disabled, so should pass
         assert result.exit_code == 0
 
+    def test_ci_skips_binary_files(self, tmp_path):
+        """Binary files should be skipped without false positives."""
+        self._run_ci(tmp_path, files={"init.py": "x = 1\n"})
+        (tmp_path / "image.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00")
+        runner = CliRunner()
+        result = runner.invoke(main, ["ci", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+
+    def test_ci_json_no_changes(self, tmp_path):
+        """JSON format with no changes should return empty violations."""
+        result = self._run_ci(tmp_path, args=["--format", "json"], files={"app.py": "x = 1\n"})
+        parsed = json.loads(result.output)
+        assert parsed["violations"] == []
+        assert parsed["files_scanned"] == 0
+
+    def test_ci_clean_summary_text(self, tmp_path):
+        """Clean scan should show summary message."""
+        self._run_ci(tmp_path, files={"init.py": "x = 1\n"})
+        (tmp_path / "clean.py").write_text("x = 1\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["ci", "--project-dir", str(tmp_path)])
+        assert "Clean" in result.output or "No changed" in result.output
+
+
+class TestGetDiffFiles:
+    def test_diff_range_returns_files(self, tmp_path):
+        from agentlint.utils.git import get_diff_files
+        subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, capture_output=True)
+        (tmp_path / "a.py").write_text("x = 1\n")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "first"], cwd=tmp_path, capture_output=True)
+        (tmp_path / "b.py").write_text("y = 2\n")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "second"], cwd=tmp_path, capture_output=True)
+        files = get_diff_files(str(tmp_path), "HEAD~1...HEAD")
+        assert any("b.py" in f for f in files)
+
+    def test_diff_range_invalid_returns_empty(self, tmp_path):
+        from agentlint.utils.git import get_diff_files
+        subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, capture_output=True)
+        (tmp_path / "a.py").write_text("x = 1\n")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "first"], cwd=tmp_path, capture_output=True)
+        files = get_diff_files(str(tmp_path), "nonexistent...alsonotreal")
+        assert files == []
+
+    def test_diff_no_range_falls_back(self, tmp_path):
+        from agentlint.utils.git import get_diff_files
+        subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, capture_output=True)
+        (tmp_path / "a.py").write_text("x = 1\n")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "first"], cwd=tmp_path, capture_output=True)
+        (tmp_path / "new.py").write_text("y = 2\n")
+        files = get_diff_files(str(tmp_path), None)
+        assert any("new.py" in f for f in files)
+
 
 class TestCiEndToEnd:
     def _run_agentlint(self, args, project_dir, env=None):
