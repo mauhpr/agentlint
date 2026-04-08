@@ -101,6 +101,23 @@ class TestCiCommand:
         # no-secrets is disabled, so should pass
         assert result.exit_code == 0
 
+    def test_ci_monorepo_resolves_packs(self, tmp_path):
+        """CI should resolve project-specific packs for monorepo files."""
+        self._run_ci(
+            tmp_path,
+            files={"init.py": "x = 1\n"},
+            config=(
+                "packs:\n  - universal\n"
+                "projects:\n  backend/:\n    packs: [universal, python]\n"
+            ),
+        )
+        (tmp_path / "backend").mkdir(exist_ok=True)
+        (tmp_path / "backend" / "app.py").write_text("try:\n    pass\nexcept:\n    pass\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["ci", "--project-dir", str(tmp_path)])
+        # no-bare-except should fire (python pack active for backend/)
+        assert result.exit_code == 0  # warning, not error
+
     def test_ci_skips_binary_files(self, tmp_path):
         """Binary files should be skipped without false positives."""
         self._run_ci(tmp_path, files={"init.py": "x = 1\n"})

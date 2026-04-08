@@ -167,6 +167,27 @@ class TestWithCustomRules:
             assert any(r["id"] == "custom-test-rule" for r in rules)
 
 
+class TestMonorepoMCP:
+    async def test_check_content_resolves_project_packs(self, tmp_path, monkeypatch):
+        """MCP check_content should use project-specific packs."""
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n"
+            "projects:\n  backend/:\n    packs: [universal, python]\n"
+        )
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        (tmp_path / "backend").mkdir()
+        async with Client(mcp) as c:
+            result = await c.call_tool(
+                "check_content",
+                {
+                    "content": "try:\n    pass\nexcept:\n    pass\n",
+                    "file_path": str(tmp_path / "backend" / "app.py"),
+                },
+            )
+            violations = json.loads(result.data)
+            assert any(v["rule_id"] == "no-bare-except" for v in violations)
+
+
 class TestResources:
     async def test_rules_resource(self, client):
         result = await client.read_resource("agentlint://rules")

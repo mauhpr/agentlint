@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,6 +31,7 @@ class AgentLintConfig:
     custom_rules_dir: str | None = None
     circuit_breaker: dict = field(default_factory=dict)
     recording: dict = field(default_factory=dict)
+    projects: dict[str, dict] = field(default_factory=dict)
 
     @property
     def is_recording_enabled(self) -> bool:
@@ -53,6 +55,37 @@ class AgentLintConfig:
             if base == Severity.WARNING:
                 return Severity.INFO
         return base
+
+    def resolve_packs_for_file(self, file_path: str, project_dir: str) -> list[str]:
+        """Resolve effective packs for a file, checking project overrides."""
+        if not self.projects or not file_path:
+            return self.packs
+        try:
+            relative = os.path.relpath(file_path, project_dir)
+        except ValueError:
+            return self.packs
+
+        best_match = ""
+        best_packs = None
+        for prefix, project_config in self.projects.items():
+            clean = prefix.rstrip("/")
+            if relative.startswith(clean + "/") or relative.startswith(clean + os.sep):
+                if len(clean) > len(best_match):
+                    best_match = clean
+                    best_packs = project_config.get("packs")
+        return best_packs if best_packs else self.packs
+
+    def with_packs(self, packs: list[str]) -> AgentLintConfig:
+        """Return a copy with different packs."""
+        return AgentLintConfig(
+            severity=self.severity,
+            packs=packs,
+            rules=self.rules,
+            custom_rules_dir=self.custom_rules_dir,
+            circuit_breaker=self.circuit_breaker,
+            recording=self.recording,
+            projects=self.projects,
+        )
 
 
 def load_config(project_dir: str) -> AgentLintConfig:
@@ -98,4 +131,5 @@ def load_config(project_dir: str) -> AgentLintConfig:
         custom_rules_dir=raw.get("custom_rules_dir"),
         circuit_breaker=raw.get("circuit_breaker", {}),
         recording=raw.get("recording", {}),
+        projects=raw.get("projects", {}),
     )

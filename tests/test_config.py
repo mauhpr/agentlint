@@ -162,6 +162,92 @@ class TestAgentLintConfig:
         assert config.effective_severity(Severity.INFO) == Severity.INFO
 
 
+class TestMonorepoProjects:
+    def test_projects_parsed_from_yaml(self, tmp_path):
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n"
+            "projects:\n  frontend/:\n    packs: [universal, frontend]\n"
+            "  backend/:\n    packs: [universal, python]\n"
+        )
+        config = load_config(str(tmp_path))
+        assert "frontend/" in config.projects
+        assert config.projects["frontend/"]["packs"] == ["universal", "frontend"]
+
+    def test_resolve_packs_frontend_file(self):
+        config = AgentLintConfig(
+            packs=["universal"],
+            projects={"frontend/": {"packs": ["universal", "frontend", "react"]}},
+        )
+        result = config.resolve_packs_for_file("/project/frontend/App.tsx", "/project")
+        assert result == ["universal", "frontend", "react"]
+
+    def test_resolve_packs_backend_file(self):
+        config = AgentLintConfig(
+            packs=["universal"],
+            projects={
+                "frontend/": {"packs": ["universal", "frontend"]},
+                "backend/": {"packs": ["universal", "python"]},
+            },
+        )
+        result = config.resolve_packs_for_file("/project/backend/app.py", "/project")
+        assert result == ["universal", "python"]
+
+    def test_resolve_packs_root_file(self):
+        config = AgentLintConfig(
+            packs=["universal"],
+            projects={"frontend/": {"packs": ["universal", "frontend"]}},
+        )
+        result = config.resolve_packs_for_file("/project/README.md", "/project")
+        assert result == ["universal"]
+
+    def test_resolve_packs_no_projects(self):
+        config = AgentLintConfig(packs=["universal", "python"])
+        result = config.resolve_packs_for_file("/project/app.py", "/project")
+        assert result == ["universal", "python"]
+
+    def test_resolve_packs_longest_prefix_wins(self):
+        config = AgentLintConfig(
+            packs=["universal"],
+            projects={
+                "backend/": {"packs": ["universal", "python"]},
+                "backend/api/": {"packs": ["universal", "python", "security"]},
+            },
+        )
+        result = config.resolve_packs_for_file("/project/backend/api/views.py", "/project")
+        assert result == ["universal", "python", "security"]
+
+    def test_resolve_packs_no_file_path(self):
+        config = AgentLintConfig(
+            packs=["universal"],
+            projects={"frontend/": {"packs": ["universal", "frontend"]}},
+        )
+        result = config.resolve_packs_for_file("", "/project")
+        assert result == ["universal"]
+
+    def test_with_packs_returns_copy(self):
+        original = AgentLintConfig(packs=["universal"], severity="strict")
+        copy = original.with_packs(["universal", "python"])
+        assert copy.packs == ["universal", "python"]
+        assert original.packs == ["universal"]
+        assert copy.severity == "strict"
+
+    def test_no_projects_in_config(self, tmp_path):
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        config = load_config(str(tmp_path))
+        assert config.projects == {}
+
+    def test_resolve_packs_value_error_fallback(self, monkeypatch):
+        """ValueError in relpath falls back to global packs."""
+        import os as _os
+        monkeypatch.setattr(_os.path, "relpath", lambda *a: (_ for _ in ()).throw(ValueError("cross-drive")))
+        config = AgentLintConfig(
+            packs=["universal"],
+            projects={"frontend/": {"packs": ["universal", "frontend"]}},
+        )
+        result = config.resolve_packs_for_file("/other/drive/file.py", "/project")
+        assert result == ["universal"]
+
+
 class TestCircuitBreakerConfig:
     def test_cb_config_loaded_from_yaml(self, tmp_path) -> None:
         (tmp_path / "agentlint.yml").write_text(

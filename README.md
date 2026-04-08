@@ -425,6 +425,25 @@ custom_rules_dir: .agentlint/rules/
 
 Rules whose `pack` is not in `packs:` are loaded but silently skipped. Use `agentlint doctor` to detect orphaned packs.
 
+## Monorepo Support
+
+Different subdirectories can use different rule packs:
+
+```yaml
+packs:
+  - universal          # fallback for files outside any project
+
+projects:
+  frontend/:
+    packs: [universal, frontend, react]
+  backend/:
+    packs: [universal, python]
+  infra/:
+    packs: [universal, security, autopilot]
+```
+
+Files outside any project prefix use the global `packs:` list. Longest prefix wins for nested paths.
+
 ## MCP Server
 
 Expose agentlint to Claude and other MCP clients. Agents can pre-validate code before writing:
