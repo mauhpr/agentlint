@@ -380,6 +380,9 @@ agentlint status
 
 # Diagnose common misconfigurations (including custom rules validation)
 agentlint doctor
+
+# Scan changed files for CI pipelines
+agentlint ci --diff origin/main...HEAD
 ```
 
 ## Custom rules

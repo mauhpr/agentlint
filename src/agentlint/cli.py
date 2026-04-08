@@ -232,14 +232,20 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
 
     all_violations: list = []
     total_evaluated = 0
+    engine = Engine(config=config, rules=rules)
 
     for file_path in changed_files:
         try:
-            content = open(file_path, encoding="utf-8", errors="replace").read()
+            with open(file_path, "rb") as fb:
+                head = fb.read(512)
+            if b"\x00" in head:
+                continue  # skip binary files
+            with open(file_path, encoding="utf-8", errors="replace") as f:
+                content = f.read()
         except OSError:
             continue
 
-        # Run PreToolUse (catches secrets, env, file-scope)
+        # Run PreToolUse (catches secrets, env, file-scope) and PostToolUse (file quality)
         for event in (HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE):
             context = RuleContext(
                 event=event,
@@ -249,7 +255,6 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
                 file_content=content,
                 config=config.rules,
             )
-            engine = Engine(config=config, rules=rules)
             result = engine.evaluate(context)
             all_violations.extend(result.violations)
             total_evaluated += result.rules_evaluated
@@ -567,10 +572,10 @@ def doctor(project_dir: str | None):
             issues.append(f"Custom rules: {config.custom_rules_dir} configured but directory not found")
 
     # Check CLI integration commands
+    import shutil
     cli_config = config.rules.get("cli-integration", {})
     cli_commands = cli_config.get("commands", [])
     if cli_commands:
-        import shutil
         for cmd_cfg in cli_commands:
             name = cmd_cfg.get("name", "unnamed")
             command = cmd_cfg.get("command", "")
@@ -584,15 +589,9 @@ def doctor(project_dir: str | None):
 
     # Suggest CLI integration recipes for detected tools
     if not cli_commands:
-        import shutil as _shutil
-        _TOOL_RECIPES = [
-            ("ruff", "ruff check {file.path} --output-format=concise"),
-            ("mypy", "mypy {file.path} --no-error-summary"),
-            ("pytest", "pytest tests/ -x -q --tb=short"),
-            ("black", "black --check {file.path}"),
-        ]
-        for tool, _cmd in _TOOL_RECIPES:
-            if _shutil.which(tool):
+        _TOOL_RECIPES = ["ruff", "mypy", "pytest", "black"]
+        for tool in _TOOL_RECIPES:
+            if shutil.which(tool):
                 checks_ok.append(f"CLI recipe: {tool} found — consider adding to cli-integration")
 
     # Check recordings dir writable (when recording is enabled)

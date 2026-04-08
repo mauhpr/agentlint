@@ -63,6 +63,7 @@ def get_diff_files(project_dir: str, diff_range: str | None = None) -> list[str]
             return sorted(
                 str(root / f) for f in result.stdout.strip().split("\n") if f
             )
+        logger.warning("git diff failed (exit %d): %s", result.returncode, result.stderr.strip())
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
     return []
