@@ -1209,3 +1209,10 @@ class TestSuppressCommand:
         runner.invoke(main, ["suppress", "drift-detector"])
         result = runner.invoke(main, ["suppress", "drift-detector"])
         assert "already suppressed" in result.output
+
+    def test_suppress_remove_nonexistent(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-remove-none")
+        runner = CliRunner()
+        result = runner.invoke(main, ["suppress", "--remove", "nonexistent-rule"])
+        assert "is not suppressed" in result.output

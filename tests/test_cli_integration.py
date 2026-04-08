@@ -553,3 +553,44 @@ class TestCliIntegrationAutoFix:
         violations = rule.evaluate(ctx)
         assert len(violations) == 1
         assert "Auto-fix" not in violations[0].message
+
+    def test_auto_fix_failure_long_output_truncated(self, monkeypatch):
+        """auto-fix mode truncates long error output."""
+        long_output = "x" * 1000
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout=long_output, stderr=""),
+        )
+        rule = CliIntegration()
+        ctx = _make_context(config=_config_with_commands([
+            {"name": "fmt", "command": "fmt", "glob": "**/*", "mode": "auto-fix"},
+        ]))
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].message.endswith("...")
+        assert len(violations[0].message) < 600
+
+
+class TestCliIntegrationDiffOnlyFiltering:
+    def test_diff_only_suppresses_preexisting_violations(self, monkeypatch):
+        """diff_only=True with no changed lines suppresses all violations."""
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="app.py:1: E501\napp.py:2: E502", stderr=""),
+        )
+        rule = CliIntegration()
+        same_content = "line1\nline2\n"
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "/project/src/app.py"},
+            project_dir="/project",
+            config={"cli-integration": {
+                "diff_only": True,
+                "commands": [{"name": "ruff", "command": "ruff check", "glob": "**/*"}],
+            }},
+            file_content=same_content,
+            file_content_before=same_content,
+        )
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 0
