@@ -336,6 +336,42 @@ rules:
 
 **Security:** All placeholder values are shell-escaped via `shlex.quote()`. File paths outside the project directory are rejected. Commands with unresolvable placeholders are silently skipped.
 
+## CI Mode
+
+`agentlint ci` scans changed files and reports violations for CI pipelines:
+
+```bash
+agentlint ci                              # scan uncommitted changes
+agentlint ci --diff origin/main...HEAD    # scan PR diff
+agentlint ci --format json                # machine-readable output
+```
+
+**Options:**
+- `--diff <range>` — Git diff range (e.g., `origin/main...HEAD`). If omitted, scans staged + unstaged + untracked files.
+- `--project-dir <path>` — Project directory (default: current directory)
+- `--format text|json` — Output format (default: `text`)
+
+**Exit codes:**
+- `0` — Clean, or only WARNING/INFO violations
+- `1` — ERROR violations found
+
+**GitHub Actions example:**
+
+```yaml
+name: AgentLint
+on: [pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: pip install agentlint
+      - run: agentlint ci --diff origin/${{ github.base_ref }}...HEAD
+```
+
+Binary files are automatically skipped. The same `agentlint.yml` config (packs, rules, severity) applies.
+
 ## AGENTS.md Integration
 
 AgentLint can import conventions from your project's [AGENTS.md](https://agents.md/) file — the industry standard for AI agent instructions.

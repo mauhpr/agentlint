@@ -380,6 +380,9 @@ agentlint status
 
 # Diagnose common misconfigurations (including custom rules validation)
 agentlint doctor
+
+# Scan changed files for CI pipelines
+agentlint ci --diff origin/main...HEAD
 ```
 
 ## Custom rules
@@ -421,6 +424,26 @@ custom_rules_dir: .agentlint/rules/
 ```
 
 Rules whose `pack` is not in `packs:` are loaded but silently skipped. Use `agentlint doctor` to detect orphaned packs.
+
+## CI Mode
+
+Run agentlint in CI pipelines — same rules, same config, different trigger:
+
+```yaml
+# .github/workflows/agentlint.yml
+name: AgentLint
+on: [pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: pip install agentlint
+      - run: agentlint ci --diff origin/${{ github.base_ref }}...HEAD
+```
+
+Only ERROR violations fail the build. Warnings are reported but don't block. Use `--format json` for machine-readable output.
 
 ## File-Scope Governance
 

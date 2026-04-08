@@ -45,6 +45,30 @@ def get_changed_files(project_dir: str) -> list[str]:
     return sorted(files)
 
 
+def get_diff_files(project_dir: str, diff_range: str | None = None) -> list[str]:
+    """Get files from a git diff range. Falls back to get_changed_files if no range."""
+    if not diff_range:
+        return get_changed_files(project_dir)
+
+    root = Path(project_dir)
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", diff_range],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return sorted(
+                str(root / f) for f in result.stdout.strip().split("\n") if f
+            )
+        logger.warning("git diff failed (exit %d): %s", result.returncode, result.stderr.strip())
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return []
+
+
 def is_git_repo(project_dir: str) -> bool:
     """Check if the directory is inside a git repository."""
     try:
