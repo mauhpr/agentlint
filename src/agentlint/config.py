@@ -39,6 +39,9 @@ class AgentLintConfig:
 
     def is_rule_enabled(self, rule_id: str) -> bool:
         rule_cfg = self.rules.get(rule_id, {})
+        if not isinstance(rule_cfg, dict):
+            # Treat bare boolean/scalar as enabled shorthand: `no-secrets: false`
+            return bool(rule_cfg) if rule_cfg is not None else (rule_id not in _DISABLED_BY_DEFAULT)
         default = rule_id not in _DISABLED_BY_DEFAULT
         return rule_cfg.get("enabled", default)
 
@@ -86,6 +89,25 @@ class AgentLintConfig:
             recording=self.recording,
             projects=self.projects,
         )
+
+
+def get_rule_setting(rules_dict: dict, rule_id: str, key: str, default=None):
+    """Get config value with cascade: per-rule → global → default.
+
+    Allows users to set global defaults in the ``rules:`` block and
+    override them per-rule:
+
+        rules:
+          strict_mode: true          # global default
+          no-secrets:
+            strict_mode: false       # per-rule override
+    """
+    rule_cfg = rules_dict.get(rule_id, {})
+    if isinstance(rule_cfg, dict) and key in rule_cfg:
+        return rule_cfg[key]
+    if key in rules_dict:
+        return rules_dict[key]
+    return default
 
 
 def load_config(project_dir: str) -> AgentLintConfig:

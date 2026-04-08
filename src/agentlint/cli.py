@@ -513,6 +513,12 @@ def status(project_dir: str | None):
     click.echo(f"AgentLint v{ver} | Severity: {config.severity} | Packs: {packs_str}")
     click.echo(f"Rules: {len(rules)} active | Session: {total_calls} tool calls tracked")
 
+    if config.projects:
+        click.echo("Projects:")
+        for prefix, proj in sorted(config.projects.items()):
+            proj_packs = ", ".join(proj.get("packs", []))
+            click.echo(f"  {prefix} → {proj_packs}")
+
 
 @main.command()
 @click.option("--project-dir", default=None, help="Project directory")
@@ -601,10 +607,30 @@ def doctor(project_dir: str | None):
 
     # Suggest CLI integration recipes for detected tools
     if not cli_commands:
-        _TOOL_RECIPES = ["ruff", "mypy", "pytest", "black"]
-        for tool in _TOOL_RECIPES:
+        _TOOL_RECIPES = {
+            # Python
+            "ruff": [
+                "ruff check {file.path} --output-format=concise",
+                "ruff format {file.path} --check --diff",
+            ],
+            "mypy": ["mypy {file.path}"],
+            "black": ["black --check {file.path}"],
+            # JavaScript / TypeScript
+            "eslint": ["eslint {file.path}"],
+            "prettier": ["prettier --check {file.path}"],
+            "tsc": ["tsc --noEmit"],
+            "biome": ["biome check {file.path}"],
+            # Go
+            "golangci-lint": ["golangci-lint run {file.path}"],
+            # Rust
+            "clippy-driver": ["cargo clippy -- -D warnings"],
+            # Ruby
+            "rubocop": ["rubocop {file.path}"],
+        }
+        for tool, recipes in _TOOL_RECIPES.items():
             if shutil.which(tool):
-                checks_ok.append(f"CLI recipe: {tool} found — consider adding to cli-integration")
+                recipe_str = ", ".join(f"`{r}`" for r in recipes)
+                checks_ok.append(f"CLI recipe: {tool} found — consider adding to cli-integration ({recipe_str})")
 
     # Check recordings dir writable (when recording is enabled)
     from agentlint.recorder import is_recording_enabled
@@ -627,6 +653,49 @@ def doctor(project_dir: str | None):
         click.echo(f"\n{len(issues)} issue(s) found.")
     else:
         click.echo("\nAll checks passed.")
+
+
+@main.command()
+@click.argument("rule_id", required=False)
+@click.option("--list", "list_mode", is_flag=True, help="Show suppressed rules")
+@click.option("--clear", is_flag=True, help="Clear all suppressions")
+@click.option("--remove", "remove_id", default=None, help="Remove a single suppression")
+def suppress(rule_id: str | None, list_mode: bool, clear: bool, remove_id: str | None):
+    """Suppress a warning rule for the rest of the session."""
+    # Mutual exclusion check
+    actions = sum([bool(rule_id), list_mode, clear, bool(remove_id)])
+    if actions > 1:
+        raise click.UsageError("RULE_ID, --list, --clear, and --remove are mutually exclusive.")
+
+    session_state = load_session()
+    suppressed = session_state.setdefault("suppressed_rules", [])
+
+    if clear:
+        session_state["suppressed_rules"] = []
+        save_session(session_state)
+        click.echo("All suppressions cleared.")
+    elif list_mode:
+        if suppressed:
+            for rid in suppressed:
+                click.echo(f"  {rid}")
+        else:
+            click.echo("No rules suppressed.")
+    elif remove_id:
+        if remove_id in suppressed:
+            suppressed.remove(remove_id)
+            save_session(session_state)
+            click.echo(f"Removed suppression for '{remove_id}'.")
+        else:
+            click.echo(f"'{remove_id}' is not suppressed.")
+    elif rule_id:
+        if rule_id not in suppressed:
+            suppressed.append(rule_id)
+            save_session(session_state)
+            click.echo(f"Suppressed '{rule_id}' for this session.")
+        else:
+            click.echo(f"'{rule_id}' is already suppressed.")
+    else:
+        click.echo("Usage: agentlint suppress RULE_ID | --list | --clear | --remove RULE_ID")
 
 
 @main.command("import-agents-md")

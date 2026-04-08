@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 
+from agentlint.config import get_rule_setting
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _BASH_TOOLS = {"Bash"}
@@ -84,9 +85,8 @@ class NoNetworkExfil(Rule):
             return []
 
         # Load config.
-        rule_config = context.config.get(self.id, {})
-        allowed_hosts: list[str] = rule_config.get("allowed_hosts", [])
-        strict_mode: bool = rule_config.get("strict_mode", False)
+        allowed_hosts: list[str] = get_rule_setting(context.config, self.id, "allowed_hosts", [])
+        strict_mode: bool = get_rule_setting(context.config, self.id, "strict_mode", False)
         all_allowed = _DEFAULT_ALLOWED_HOSTS | frozenset(h.lower() for h in allowed_hosts)
 
         # Check if target host is allowed.

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 
+from agentlint.config import get_rule_setting
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _ALL_TOOLS = {"Write", "Edit", "MultiEdit", "Bash"}
@@ -80,8 +81,7 @@ class EnvCredentialReference(Rule):
 
         # Smart default: CI/CD files are expected to reference secret paths.
         # Downgrade to INFO unless strict_mode is enabled.
-        rule_config = context.config.get(self.id, {}) if context.config else {}
-        strict_mode: bool = rule_config.get("strict_mode", False)
+        strict_mode: bool = get_rule_setting(context.config, self.id, "strict_mode", False)
         is_cicd = _is_cicd_file(file_path)
 
         for pattern, label in _CRED_FILE_ENV_PATTERNS:

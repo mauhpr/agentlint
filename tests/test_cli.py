@@ -480,6 +480,25 @@ class TestStatusCommand:
         assert count_with == count_without + 1
 
 
+    def test_status_shows_project_packs(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n"
+            "projects:\n  frontend/:\n    packs: [universal, frontend]\n"
+            "  backend/:\n    packs: [universal, python]\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
+        assert "Projects:" in result.output
+        assert "frontend/" in result.output
+        assert "backend/" in result.output
+
+    def test_status_no_projects_no_section(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
+        assert "Projects:" not in result.output
+
+
 class TestDoctorCommand:
     def test_doctor_all_checks_pass(self, tmp_path) -> None:
         # Create config and hooks so checks pass
@@ -616,6 +635,17 @@ class TestDoctorCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
         assert "CLI recipe: ruff found" in result.output
+
+    def test_doctor_suggests_ruff_format_recipe(self, tmp_path, monkeypatch) -> None:
+        """doctor should suggest ruff format alongside ruff check."""
+        import shutil
+        original_which = shutil.which
+        monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/ruff" if cmd == "ruff" else original_which(cmd))
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert "ruff check" in result.output
+        assert "ruff format" in result.output
 
     def test_doctor_no_recipes_when_cli_configured(self, tmp_path, monkeypatch) -> None:
         """doctor should not suggest recipes when cli-integration is already configured."""
@@ -1124,3 +1154,58 @@ class TestRecordingIntegration:
         )
         assert result.exit_code == 0
         assert "AgentLint" in result.output
+
+
+class TestSuppressCommand:
+    def test_suppress_adds_to_session(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress")
+        runner = CliRunner()
+        result = runner.invoke(main, ["suppress", "drift-detector"])
+        assert result.exit_code == 0
+        assert "Suppressed 'drift-detector'" in result.output
+
+    def test_suppress_list(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-list")
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "drift-detector"])
+        result = runner.invoke(main, ["suppress", "--list"])
+        assert "drift-detector" in result.output
+
+    def test_suppress_clear(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-clear")
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "drift-detector"])
+        result = runner.invoke(main, ["suppress", "--clear"])
+        assert "cleared" in result.output.lower()
+        result2 = runner.invoke(main, ["suppress", "--list"])
+        assert "No rules suppressed" in result2.output
+
+    def test_suppress_remove_single(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-remove")
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "drift-detector"])
+        runner.invoke(main, ["suppress", "max-file-size"])
+        result = runner.invoke(main, ["suppress", "--remove", "drift-detector"])
+        assert "Removed suppression" in result.output
+        result2 = runner.invoke(main, ["suppress", "--list"])
+        assert "drift-detector" not in result2.output
+        assert "max-file-size" in result2.output
+
+    def test_suppress_mutual_exclusion(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-mutex")
+        runner = CliRunner()
+        result = runner.invoke(main, ["suppress", "drift-detector", "--list"])
+        assert result.exit_code != 0
+
+    def test_suppress_already_suppressed(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress-idem")
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "drift-detector"])
+        result = runner.invoke(main, ["suppress", "drift-detector"])
+        assert "already suppressed" in result.output

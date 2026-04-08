@@ -188,6 +188,24 @@ class TestMonorepoMCP:
             assert any(v["rule_id"] == "no-bare-except" for v in violations)
 
 
+class TestSuppressRule:
+    async def test_suppress_rule_tool(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-mcp-suppress")
+        result = await client.call_tool("suppress_rule", {"rule_id": "drift-detector"})
+        data = json.loads(result.data)
+        assert data["suppressed"] == "drift-detector"
+        assert data["total_suppressed"] == 1
+
+    async def test_suppress_rule_idempotent(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-mcp-suppress-idem")
+        await client.call_tool("suppress_rule", {"rule_id": "drift-detector"})
+        result = await client.call_tool("suppress_rule", {"rule_id": "drift-detector"})
+        data = json.loads(result.data)
+        assert data["total_suppressed"] == 1
+
+
 class TestResources:
     async def test_rules_resource(self, client):
         result = await client.read_resource("agentlint://rules")

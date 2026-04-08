@@ -115,6 +115,23 @@ def get_config() -> str:
     })
 
 
+@mcp.tool
+def suppress_rule(rule_id: str) -> str:
+    """Suppress a warning rule for the rest of the session.
+
+    ERRORs are accepted but silently ignored at evaluation time —
+    the engine never suppresses ERROR-severity violations regardless
+    of the suppressed_rules list.
+    """
+    from agentlint.session import load_session, save_session
+    session_state = load_session()
+    suppressed = session_state.setdefault("suppressed_rules", [])
+    if rule_id not in suppressed:
+        suppressed.append(rule_id)
+    save_session(session_state)
+    return json.dumps({"suppressed": rule_id, "total_suppressed": len(suppressed)})
+
+
 @mcp.resource("agentlint://rules")
 def rules_resource() -> str:
     """All agentlint rules with metadata."""

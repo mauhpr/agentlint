@@ -185,3 +185,74 @@ class TestDriftDetector:
         # 6 edits with threshold=5 should trigger warning
         assert len(violations) == 1
         assert "6" in violations[0].message
+
+    def test_config_file_not_counted(self):
+        """Editing agentlint.yml should not count toward drift threshold."""
+        rule = self._make_rule()
+        session_state: dict = {}
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "agentlint.yml"},
+            project_dir="/tmp/project",
+            session_state=session_state,
+        )
+        rule.evaluate(ctx)
+        assert len(session_state.get("edited_files", [])) == 0
+
+    def test_python_file_counted(self):
+        """Editing .py files should count toward drift threshold."""
+        rule = self._make_rule()
+        session_state: dict = {}
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "app.py"},
+            project_dir="/tmp/project",
+            session_state=session_state,
+        )
+        rule.evaluate(ctx)
+        assert len(session_state.get("edited_files", [])) == 1
+
+    def test_custom_extensions_config(self):
+        """Custom extensions list should override defaults."""
+        rule = self._make_rule()
+        session_state: dict = {}
+        # Only count .sql files
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "app.py"},
+            project_dir="/tmp/project",
+            config={"drift-detector": {"extensions": [".sql"]}},
+            session_state=session_state,
+        )
+        rule.evaluate(ctx)
+        assert len(session_state.get("edited_files", [])) == 0
+
+        ctx2 = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "schema.sql"},
+            project_dir="/tmp/project",
+            config={"drift-detector": {"extensions": [".sql"]}},
+            session_state=session_state,
+        )
+        rule.evaluate(ctx2)
+        assert len(session_state.get("edited_files", [])) == 1
+
+    def test_no_extensions_config_uses_default(self):
+        """When no extensions config set, use default code extensions."""
+        rule = self._make_rule()
+        session_state: dict = {}
+        for ext, should_count in [(".py", True), (".ts", True), (".md", False), (".yml", False)]:
+            ctx = RuleContext(
+                event=HookEvent.POST_TOOL_USE,
+                tool_name="Write",
+                tool_input={"file_path": f"file{ext}"},
+                project_dir="/tmp/project",
+                session_state=session_state,
+            )
+            rule.evaluate(ctx)
+        # Only .py and .ts should be counted
+        assert len(session_state.get("edited_files", [])) == 2

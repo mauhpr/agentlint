@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 
+from agentlint.config import get_rule_setting
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _BASH_TOOLS = {"Bash"}
@@ -88,10 +89,9 @@ class ProductionGuard(Rule):
         if not command:
             return []
 
-        rule_config = context.config.get(self.id, {})
-        allowed_projects: list[str] = [p.lower() for p in rule_config.get("allowed_projects", [])]
-        allowed_hosts: list[str] = [h.lower() for h in rule_config.get("allowed_hosts", [])]
-        strict_mode: bool = rule_config.get("strict_mode", False)
+        allowed_projects: list[str] = [p.lower() for p in get_rule_setting(context.config, self.id, "allowed_projects", [])]
+        allowed_hosts: list[str] = [h.lower() for h in get_rule_setting(context.config, self.id, "allowed_hosts", [])]
+        strict_mode: bool = get_rule_setting(context.config, self.id, "strict_mode", False)
 
         # Check allowlists before pattern matching.
         project = _extract_project(command)
