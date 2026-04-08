@@ -1,7 +1,7 @@
 {
   "name": "agentlint",
   "description": "Real-time quality guardrails for AI coding agents. 68 rules across 8 packs. File-scope governance, CLI integration, naming conventions, diff size limits, file sprawl detection.",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "author": {
     "name": "mauhpr"
   },

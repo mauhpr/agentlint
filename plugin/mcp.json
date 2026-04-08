@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "agentlint": {
+      "command": "agentlint-mcp",
+      "env": {}
+    }
+  }
+}
