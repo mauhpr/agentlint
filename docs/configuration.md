@@ -336,6 +336,35 @@ rules:
 
 **Security:** All placeholder values are shell-escaped via `shlex.quote()`. File paths outside the project directory are rejected. Commands with unresolvable placeholders are silently skipped.
 
+## Monorepo / Multi-Project Support
+
+The `projects` key enables per-subdirectory pack configuration for monorepos:
+
+```yaml
+packs:
+  - universal          # fallback for files outside any project
+
+projects:
+  frontend/:
+    packs: [universal, frontend, react]
+  backend/:
+    packs: [universal, python]
+  backend/api/:
+    packs: [universal, python, security]
+  infra/:
+    packs: [universal, security, autopilot]
+```
+
+**Behavior:**
+- Each project prefix maps to a `packs` list
+- Files are matched against the **longest matching prefix** (so `backend/api/views.py` matches `backend/api/` not `backend/`)
+- Files outside all project prefixes fall back to the global `packs:` list
+- Project resolution applies to `check`, `ci`, and MCP server `check_content`
+- `status`, `list-rules`, and `report` show the global configuration
+
+**Validation:**
+`agentlint doctor` checks that project directory prefixes exist and that listed packs are valid.
+
 ## MCP Server
 
 AgentLint exposes an MCP server so Claude (and any MCP client) can query rules, check content, and read configuration programmatically.

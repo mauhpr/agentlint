@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.5.0 (2026-04-08) — Monorepo Support
+
+### The change
+
+Different subdirectories can now use different rule packs:
+
+```yaml
+projects:
+  frontend/:
+    packs: [universal, frontend, react]
+  backend/:
+    packs: [universal, python]
+  infra/:
+    packs: [universal, security, autopilot]
+```
+
+Files outside any project prefix fall back to the global `packs:` list. Longest prefix wins for nested projects.
+
+### Design
+
+Zero changes to the engine. Project resolution happens in config — `resolve_packs_for_file()` finds the matching project, `with_packs()` creates a config copy with the right packs. The engine just sees packs, same as always.
+
+### Tests
+
+1511 tests, 96% coverage.
+
 ## v1.4.0 (2026-04-08) — MCP Server
 
 ### The change

@@ -1,6 +1,6 @@
 # AgentLint Roadmap
 
-> **Current state:** v1.4.0 — 68 rules across 8 packs, 1500 tests, 96% coverage. MCP server available.
+> **Current state:** v1.5.0 — 68 rules across 8 packs, 1511 tests, 96% coverage. Full backlog complete.
 
 ---
 
@@ -141,7 +141,7 @@ Expose agentlint as an MCP server. Resources: rules, config, session state. Tool
 
 ---
 
-### 6. Multi-Project / Monorepo Support (P3, Size: M)
+### 6. Multi-Project / Monorepo Support (P3, Size: M) — v1.5.0 ✅
 
 Per-subdirectory pack configuration via `projects:` config key. The engine already supports per-directory resolution. Main work is config parsing + `doctor` validation.
 

@@ -166,7 +166,13 @@ def check(event: str, project_dir: str | None):
                 agent_id=context.agent_id,
             )
 
-    engine = Engine(config=config, rules=rules)
+    # Resolve project-specific packs for monorepo
+    effective_config = config
+    if context.file_path and config.projects:
+        effective_packs = config.resolve_packs_for_file(context.file_path, project_dir)
+        effective_config = config.with_packs(effective_packs)
+
+    engine = Engine(config=effective_config, rules=rules)
     result = engine.evaluate(context)
 
     # Record event for product insights (opt-in)
@@ -232,7 +238,6 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
 
     all_violations: list = []
     total_evaluated = 0
-    engine = Engine(config=config, rules=rules)
 
     for file_path in changed_files:
         try:
@@ -245,6 +250,13 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
         except OSError:
             continue
 
+        # Resolve project-specific packs for monorepo
+        effective_config = config
+        if config.projects:
+            effective_packs = config.resolve_packs_for_file(file_path, project_dir)
+            effective_config = config.with_packs(effective_packs)
+        engine = Engine(config=effective_config, rules=rules)
+
         # Run PreToolUse (catches secrets, env, file-scope) and PostToolUse (file quality)
         for event in (HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE):
             context = RuleContext(
@@ -253,7 +265,7 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
                 tool_input={"file_path": file_path, "content": content},
                 project_dir=project_dir,
                 file_content=content,
-                config=config.rules,
+                config=effective_config.rules,
             )
             result = engine.evaluate(context)
             all_violations.extend(result.violations)

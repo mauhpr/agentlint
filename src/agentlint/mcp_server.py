@@ -57,6 +57,14 @@ def check_content(
 
     project_dir = _project_dir()
     engine, config = _load_engine()
+
+    # Resolve project-specific packs for monorepo
+    effective_config = config
+    if file_path and config.projects:
+        effective_packs = config.resolve_packs_for_file(file_path, project_dir)
+        effective_config = config.with_packs(effective_packs)
+        engine = Engine(config=effective_config, rules=load_rules(effective_config.packs))
+
     tool_input = {"file_path": file_path, "content": content}
     if tool_name == "Bash":
         tool_input = {"command": content}
@@ -66,7 +74,7 @@ def check_content(
         tool_input=tool_input,
         project_dir=project_dir,
         file_content=content if tool_name != "Bash" else None,
-        config=config.rules,
+        config=effective_config.rules,
     )
     result = engine.evaluate(context)
     return json.dumps([v.to_dict() for v in result.violations])
