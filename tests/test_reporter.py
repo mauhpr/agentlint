@@ -482,3 +482,202 @@ class TestSessionReportCircuitBreaker:
         reporter = Reporter(violations=[], rules_evaluated=5)
         report = reporter.format_session_report(files_changed=0, cb_state=None)
         assert "Circuit Breaker" not in report
+
+
+class TestSessionReportCumulativeViolations:
+    """v1.7.0 — Cumulative violation_log enrichment in session report."""
+
+    def test_report_includes_cumulative_totals(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        session_state = {
+            "violation_log": {
+                "total_evaluations": 10,
+                "total_blocked": 2,
+                "total_warnings": 5,
+                "total_info": 1,
+                "rule_violations": {"no-secrets": 2, "max-file-size": 3, "drift-detector": 3},
+            },
+        }
+        report = reporter.format_session_report(files_changed=0, session_state=session_state)
+        assert "Session totals: 8 violation(s) across 10 evaluations" in report
+
+    def test_report_includes_top_rules(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        session_state = {
+            "violation_log": {
+                "total_evaluations": 5,
+                "total_blocked": 1,
+                "total_warnings": 2,
+                "total_info": 0,
+                "rule_violations": {"no-secrets": 1, "max-file-size": 2},
+            },
+        }
+        report = reporter.format_session_report(files_changed=0, session_state=session_state)
+        assert "Top rules:" in report
+        assert "max-file-size" in report
+        assert "no-secrets" in report
+
+    def test_report_no_cumulative_section_without_violation_log(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        report = reporter.format_session_report(files_changed=0, session_state={})
+        assert "Session totals" not in report
+
+    def test_report_no_cumulative_section_when_no_violations(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        session_state = {
+            "violation_log": {
+                "total_evaluations": 5,
+                "total_blocked": 0,
+                "total_warnings": 0,
+                "total_info": 0,
+                "rule_violations": {},
+            },
+        }
+        report = reporter.format_session_report(files_changed=0, session_state=session_state)
+        assert "Session totals" not in report
+
+    def test_report_backward_compat_no_session_state(self) -> None:
+        """Old callers passing session_state=None should still work."""
+        violations = [_make_violation(severity=Severity.ERROR, message="Blocked")]
+        reporter = Reporter(violations=violations, rules_evaluated=5)
+        report = reporter.format_session_report(files_changed=1, session_state=None)
+        assert "AgentLint Session Report" in report
+        assert "Session totals" not in report
+
+    def test_top_rules_limited_to_5(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=5)
+        session_state = {
+            "violation_log": {
+                "total_evaluations": 20,
+                "total_blocked": 3,
+                "total_warnings": 7,
+                "total_info": 2,
+                "rule_violations": {
+                    f"rule-{i}": 10 - i for i in range(8)
+                },
+            },
+        }
+        report = reporter.format_session_report(files_changed=0, session_state=session_state)
+        # Should only show top 5 rules
+        rule_lines = [l for l in report.split("\n") if l.startswith("  rule-")]
+        assert len(rule_lines) == 5
+
+
+class TestFormatSessionSummary:
+    """v1.7.0 — format_session_summary() dashboard."""
+
+    def test_summary_with_violations(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "violation_log": {
+                "total_evaluations": 15,
+                "total_blocked": 3,
+                "total_warnings": 7,
+                "total_info": 2,
+                "rule_violations": {"no-secrets": 3, "drift-detector": 4, "max-file-size": 5},
+            },
+            "token_budget": {"total_calls": 47, "total_bytes_written": 12345},
+            "files_touched": ["a.py", "b.py", "c.py"],
+            "edited_files": ["a.py", "b.py"],
+        }
+        output = reporter.format_session_summary(session_state=session_state)
+        assert "AgentLint Session Summary" in output
+        assert "15 evaluations" in output
+        assert "47 tool calls" in output
+        assert "12,345 bytes written" in output
+        assert "3 touched" in output
+        assert "2 edited" in output
+        assert "Violations (12 total)" in output
+        assert "Blocked: 3" in output
+        assert "Top Rules" in output
+        assert "max-file-size" in output
+
+    def test_summary_empty_session(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        output = reporter.format_session_summary(session_state={})
+        assert "AgentLint Session Summary" in output
+        assert "Violations" not in output
+        assert "Top Rules" not in output
+
+    def test_summary_none_session(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        output = reporter.format_session_summary(session_state=None)
+        assert "AgentLint Session Summary" in output
+
+    def test_summary_suppressed_rules(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {"suppressed_rules": ["drift-detector", "max-file-size"]}
+        output = reporter.format_session_summary(session_state=session_state)
+        assert "Suppressed: drift-detector, max-file-size" in output
+
+    def test_summary_circuit_breaker(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "circuit_breaker": {
+                "no-destructive-commands": {"state": "degraded", "fire_count": 4},
+                "active-rule": {"state": "active", "fire_count": 1},
+            },
+        }
+        output = reporter.format_session_summary(session_state=session_state)
+        assert "Circuit Breaker" in output
+        assert "no-destructive-commands" in output
+        assert "degraded" in output
+        assert "active-rule" not in output
+
+    def test_summary_subagent_activity(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "subagents_spawned": [{"agent_type": "general-purpose", "agent_id": "abc"}],
+            "subagent_audits": [{"agent_type": "general-purpose", "agent_id": "abc"}],
+        }
+        output = reporter.format_session_summary(session_state=session_state)
+        assert "Subagents: 1 spawned, 1 audited" in output
+
+    def test_summary_json_format(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "violation_log": {
+                "total_evaluations": 5,
+                "total_blocked": 1,
+                "total_warnings": 2,
+                "total_info": 0,
+                "rule_violations": {"no-secrets": 1, "max-file-size": 2},
+            },
+            "suppressed_rules": ["drift-detector"],
+            "files_touched": ["a.py"],
+        }
+        output = reporter.format_session_summary(session_state=session_state, output_format="json")
+        data = json.loads(output)
+        assert data["evaluations"] == 5
+        assert data["violations"]["total"] == 3
+        assert data["violations"]["blocked"] == 1
+        assert len(data["top_rules"]) == 2
+        assert data["suppressed_rules"] == ["drift-detector"]
+        assert data["files_touched"] == 1
+
+    def test_summary_json_circuit_breaker(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "circuit_breaker": {
+                "rule-a": {"state": "degraded", "fire_count": 3},
+            },
+        }
+        output = reporter.format_session_summary(session_state=session_state, output_format="json")
+        data = json.loads(output)
+        assert "circuit_breaker" in data
+        assert data["circuit_breaker"][0]["rule_id"] == "rule-a"
+
+    def test_summary_json_no_circuit_breaker_when_all_active(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "circuit_breaker": {"rule-a": {"state": "active", "fire_count": 1}},
+        }
+        output = reporter.format_session_summary(session_state=session_state, output_format="json")
+        data = json.loads(output)
+        assert "circuit_breaker" not in data
+
+    def test_summary_git_changed_files(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {"changed_files": ["a.py", "b.py", "c.py"]}
+        output = reporter.format_session_summary(session_state=session_state)
+        assert "3 changed (git)" in output

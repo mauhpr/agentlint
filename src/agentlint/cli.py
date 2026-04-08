@@ -175,6 +175,25 @@ def check(event: str, project_dir: str | None):
     engine = Engine(config=effective_config, rules=rules)
     result = engine.evaluate(context)
 
+    # Track cumulative violation counts for session summary
+    vlog = session_state.setdefault("violation_log", {
+        "total_evaluations": 0,
+        "total_blocked": 0,
+        "total_warnings": 0,
+        "total_info": 0,
+        "rule_violations": {},
+    })
+    vlog["total_evaluations"] += 1
+    for v in result.violations:
+        if v.severity == Severity.ERROR:
+            vlog["total_blocked"] += 1
+        elif v.severity == Severity.WARNING:
+            vlog["total_warnings"] += 1
+        else:
+            vlog["total_info"] += 1
+        rv = vlog["rule_violations"]
+        rv[v.rule_id] = rv.get(v.rule_id, 0) + 1
+
     # Record event for product insights (opt-in)
     try:
         from agentlint.recorder import is_recording_enabled
@@ -346,14 +365,19 @@ rules: {{}}
 
 @main.command()
 @click.option("--project-dir", default=None, help="Project directory")
-def report(project_dir: str | None):
+@click.option("--summary", is_flag=True, help="Show cumulative session summary dashboard")
+@click.option("--format", "output_format", default="text", type=click.Choice(["text", "json"]),
+              help="Output format (only applies with --summary)")
+def report(project_dir: str | None, summary: bool, output_format: str):
     """Generate session summary report (for Stop event)."""
     project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 
-    try:
-        json.load(sys.stdin)
-    except (json.JSONDecodeError, EOFError):
-        pass
+    # Only consume stdin if not in --summary mode (Stop hook pipes JSON)
+    if not summary:
+        try:
+            json.load(sys.stdin)
+        except (json.JSONDecodeError, EOFError):
+            pass
 
     # Load session and populate changed_files
     # Combine: files tracked during the session + git diff (for any we missed)
@@ -362,6 +386,15 @@ def report(project_dir: str | None):
     session_files = set(session_state.get("files_touched", []))
     changed_files = sorted(git_files | session_files)
     session_state["changed_files"] = changed_files
+
+    # --summary: show cumulative dashboard and exit
+    if summary:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        click.echo(reporter.format_session_summary(
+            session_state=session_state,
+            output_format=output_format,
+        ))
+        return
 
     # Evaluate Stop rules to collect end-of-session violations
     config = load_config(project_dir)

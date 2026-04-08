@@ -1216,3 +1216,160 @@ class TestSuppressCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["suppress", "--remove", "nonexistent-rule"])
         assert "is not suppressed" in result.output
+
+
+class TestReportSummaryFlag:
+    """v1.7.0 — report --summary CLI tests."""
+
+    def test_summary_flag_text(self, tmp_path, monkeypatch) -> None:
+        from agentlint.session import save_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-summary-text")
+
+        save_session({
+            "violation_log": {
+                "total_evaluations": 10,
+                "total_blocked": 2,
+                "total_warnings": 3,
+                "total_info": 1,
+                "rule_violations": {"no-secrets": 2, "max-file-size": 4},
+            },
+            "files_touched": ["a.py", "b.py"],
+        })
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--summary", "--project-dir", str(tmp_path)],
+        )
+        assert result.exit_code == 0
+        assert "AgentLint Session Summary" in result.output
+        assert "10 evaluations" in result.output
+        assert "Violations (6 total)" in result.output
+
+    def test_summary_flag_json(self, tmp_path, monkeypatch) -> None:
+        from agentlint.session import save_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-summary-json")
+
+        save_session({
+            "violation_log": {
+                "total_evaluations": 5,
+                "total_blocked": 1,
+                "total_warnings": 2,
+                "total_info": 0,
+                "rule_violations": {"no-secrets": 1},
+            },
+        })
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--summary", "--format", "json", "--project-dir", str(tmp_path)],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["evaluations"] == 5
+        assert data["violations"]["blocked"] == 1
+
+    def test_summary_empty_session(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-summary-empty")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--summary", "--project-dir", str(tmp_path)],
+        )
+        assert result.exit_code == 0
+        assert "AgentLint Session Summary" in result.output
+
+    def test_summary_does_not_consume_stdin(self, tmp_path, monkeypatch) -> None:
+        """--summary should not block on stdin."""
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-summary-stdin")
+
+        runner = CliRunner()
+        # No input= means empty stdin; should not hang
+        result = runner.invoke(
+            main,
+            ["report", "--summary", "--project-dir", str(tmp_path)],
+        )
+        assert result.exit_code == 0
+
+    def test_report_without_summary_still_works(self, tmp_path, monkeypatch) -> None:
+        """Existing Stop hook path should be unchanged."""
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-no-summary")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert "systemMessage" in parsed
+        assert "continue" in parsed
+
+
+class TestViolationLogTracking:
+    """v1.7.0 — violation_log accumulation in check command."""
+
+    def test_violation_log_accumulates(self, tmp_path, monkeypatch) -> None:
+        from agentlint.session import load_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-vlog-accumulate")
+
+        runner = CliRunner()
+
+        # First check — triggers no-secrets
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "config.py",
+                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+            },
+        })
+        runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+
+        session = load_session()
+        vlog = session.get("violation_log", {})
+        assert vlog["total_evaluations"] == 1
+        assert vlog["total_blocked"] >= 1
+        assert "no-secrets" in vlog["rule_violations"]
+
+    def test_violation_log_clean_check(self, tmp_path, monkeypatch) -> None:
+        from agentlint.session import load_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-vlog-clean")
+
+        runner = CliRunner()
+
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "hello.py",
+                "content": "def hello():\n    return 'world'\n",
+            },
+        })
+        runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+
+        session = load_session()
+        vlog = session.get("violation_log", {})
+        assert vlog["total_evaluations"] == 1
+        assert vlog["total_blocked"] == 0
+        assert vlog["total_warnings"] == 0

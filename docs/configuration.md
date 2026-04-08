@@ -442,7 +442,7 @@ projects:
 
 ## MCP Server
 
-AgentLint exposes an MCP server so Claude (and any MCP client) can query rules, check content, and read configuration programmatically.
+AgentLint exposes an MCP server so Claude (and any MCP client) can query rules, check content, and read configuration programmatically. The MCP server lets agents **pre-validate code before writing**, avoiding the block-retry loop from PreToolUse hooks. See the [full MCP guide](mcp.md) for workflow recipes, integration patterns, and troubleshooting.
 
 ### Installation
 
