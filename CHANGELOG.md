@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.5.1 (2026-04-08) — Heredoc Commit Message Fix + Quality Docs
+
+### Fixes
+
+- **`commit-message-format` heredoc parsing** — Commits using heredoc format (`git commit -m "$(cat <<'EOF'...EOF)"`) were silently skipped. Now parsed and validated.
+- **Quality rules documentation** — All 7 quality rules now have full config reference in `docs/configuration.md`. Previously `max_subject_length` and `format` options were undocumented, causing users to guess wrong config keys.
+
+### Tests
+
+1519 tests, 96% coverage.
+
 ## v1.5.0 (2026-04-08) — Monorepo Support
 
 ### The change
