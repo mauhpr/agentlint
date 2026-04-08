@@ -110,6 +110,63 @@ class TestGetConfig:
         assert "universal" in config["packs"]
 
 
+class TestWithCustomRules:
+    async def test_check_content_with_custom_rules(self, tmp_path, monkeypatch):
+        """check_content should evaluate custom rules when custom_rules_dir is set."""
+        rules_dir = tmp_path / "rules"
+        rules_dir.mkdir()
+        (rules_dir / "my_rule.py").write_text(
+            "from agentlint.models import Rule, RuleContext, Violation, HookEvent, Severity\n"
+            "\n"
+            "class AlwaysWarn(Rule):\n"
+            "    id = 'custom-always-warn'\n"
+            "    description = 'Always warns'\n"
+            "    severity = Severity.WARNING\n"
+            "    events = [HookEvent.PRE_TOOL_USE]\n"
+            "    pack = 'universal'\n"
+            "\n"
+            "    def evaluate(self, context):\n"
+            "        return [Violation(rule_id=self.id, message='custom fired', severity=self.severity)]\n"
+        )
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\ncustom_rules_dir: rules/\n"
+        )
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        async with Client(mcp) as c:
+            result = await c.call_tool(
+                "check_content",
+                {"content": "x = 1", "file_path": "app.py"},
+            )
+            violations = json.loads(result.data)
+            assert any(v["rule_id"] == "custom-always-warn" for v in violations)
+
+    async def test_list_rules_includes_custom(self, tmp_path, monkeypatch):
+        """list_rules should include custom rules."""
+        rules_dir = tmp_path / "rules"
+        rules_dir.mkdir()
+        (rules_dir / "my_rule.py").write_text(
+            "from agentlint.models import Rule, RuleContext, Violation, HookEvent, Severity\n"
+            "\n"
+            "class MyRule(Rule):\n"
+            "    id = 'custom-test-rule'\n"
+            "    description = 'Test rule'\n"
+            "    severity = Severity.INFO\n"
+            "    events = [HookEvent.PRE_TOOL_USE]\n"
+            "    pack = 'mypack'\n"
+            "\n"
+            "    def evaluate(self, context):\n"
+            "        return []\n"
+        )
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n  - mypack\ncustom_rules_dir: rules/\n"
+        )
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        async with Client(mcp) as c:
+            result = await c.call_tool("list_rules", {})
+            rules = json.loads(result.data)
+            assert any(r["id"] == "custom-test-rule" for r in rules)
+
+
 class TestResources:
     async def test_rules_resource(self, client):
         result = await client.read_resource("agentlint://rules")
