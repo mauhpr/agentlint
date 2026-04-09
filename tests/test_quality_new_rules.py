@@ -119,6 +119,67 @@ class TestNoLargeDiff:
         )
         assert len(rule.evaluate(ctx)) == 1
 
+    def test_test_file_exempt_by_default(self):
+        """Test files should not trigger no-large-diff."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/tests/test_auth.py",
+            file_content="line\n" * 500,
+            file_content_before="",
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_test_file_patterns(self):
+        """Various test file naming conventions should all be exempt."""
+        rule = NoLargeDiff()
+        test_paths = [
+            "/project/tests/test_models.py",        # test_ prefix
+            "/project/src/auth_test.go",             # _test suffix
+            "/project/src/Button.spec.tsx",          # .spec.
+            "/project/src/api.test.ts",              # .test.
+            "/project/tests/conftest.py",            # conftest
+            "/project/spec/models_spec.rb",          # _spec suffix
+        ]
+        for path in test_paths:
+            ctx = _make_context(
+                file_path=path,
+                file_content="line\n" * 500,
+                file_content_before="",
+            )
+            assert rule.evaluate(ctx) == [], f"Should exempt: {path}"
+
+    def test_non_test_file_still_triggers(self):
+        """Regular source files should still trigger the rule."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/src/app.py",
+            file_content="line\n" * 300,
+            file_content_before="",
+        )
+        assert len(rule.evaluate(ctx)) == 1
+
+    def test_exempt_test_files_disabled(self):
+        """Config can disable test file exemption."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/tests/test_big.py",
+            file_content="line\n" * 500,
+            file_content_before="",
+            config={"no-large-diff": {"exempt_test_files": False}},
+        )
+        assert len(rule.evaluate(ctx)) == 1
+
+    def test_custom_test_patterns(self):
+        """Custom test_file_patterns should override defaults."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/checks/check_auth.py",
+            file_content="line\n" * 500,
+            file_content_before="",
+            config={"no-large-diff": {"test_file_patterns": ["check_*"]}},
+        )
+        assert rule.evaluate(ctx) == []
+
 
 # === no-file-creation-sprawl ===
 

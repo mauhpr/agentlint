@@ -2,13 +2,34 @@
 
 Forces the agent to work in smaller, reviewable chunks. Uses
 file_content_before (cached by PreToolUse) to compute diff size.
+
+Test files are exempt by default — comprehensive tests are inherently
+verbose and should not be penalized. Override via ``test_file_patterns``.
 """
 from __future__ import annotations
+
+import fnmatch
+import os
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _DEFAULT_MAX_ADDED = 200
 _DEFAULT_MAX_REMOVED = 100
+
+_DEFAULT_TEST_PATTERNS = [
+    "test_*",
+    "*_test.*",
+    "*.spec.*",
+    "*.test.*",
+    "*_spec.*",
+    "conftest.py",
+]
+
+
+def _is_test_file(file_path: str, patterns: list[str]) -> bool:
+    """Check if file_path basename matches any test file pattern."""
+    basename = os.path.basename(file_path)
+    return any(fnmatch.fnmatch(basename, p) for p in patterns)
 
 
 class NoLargeDiff(Rule):
@@ -29,6 +50,14 @@ class NoLargeDiff(Rule):
             return []
 
         rule_config = context.config.get(self.id, {})
+
+        # Exempt test files — comprehensive tests should not be penalized
+        exempt_tests = rule_config.get("exempt_test_files", True)
+        if exempt_tests and context.file_path:
+            patterns = rule_config.get("test_file_patterns", _DEFAULT_TEST_PATTERNS)
+            if _is_test_file(context.file_path, patterns):
+                return []
+
         max_added = rule_config.get("max_lines_added", _DEFAULT_MAX_ADDED)
         max_removed = rule_config.get("max_lines_removed", _DEFAULT_MAX_REMOVED)
 
