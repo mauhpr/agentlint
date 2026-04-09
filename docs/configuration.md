@@ -44,7 +44,7 @@ rules:
   no-large-diff:     { max_lines_added: 200, exempt_test_files: true }  # WARNING - large edit detection (tests exempt)
   no-file-creation-sprawl: { max_new_files: 10 }         # WARNING - file sprawl detection
   naming-conventions: { enabled: true }                   # INFO - file naming conventions
-  no-dead-imports:   { enabled: true }                   # INFO - detects unused imports
+  no-dead-imports:   { enabled: true, grace_period: true }  # INFO - unused imports (grace period)
   self-review-prompt: { enabled: true }                  # INFO - adversarial self-review at session end
   # === Security pack (opt-in) ===
   # no-bash-file-write: { enabled: true }                # ERROR - blocks Bash file writes (cat >, tee, etc.)
@@ -613,7 +613,11 @@ Checks file names against language-specific conventions (snake_case for Python, 
 
 ### `no-dead-imports` (PostToolUse, INFO)
 
-Detects unused imports in Python and JS/TS files after Write/Edit.
+Detects unused imports in Python and JS/TS files after Write/Edit. Uses a grace period by default to avoid false positives during multi-edit workflows — violations only fire if imports are still unused after a subsequent edit to the same file.
+
+**Config options:**
+- `grace_period` — Defer violations until 2nd consecutive edit to same file (default: `true`)
+- `ignore_files` — File basenames to skip, typically re-export files (default: `["__init__.py", "index.ts", "index.js", "index.tsx", "index.jsx"]`)
 
 ### `self-review-prompt` (Stop, INFO)
 

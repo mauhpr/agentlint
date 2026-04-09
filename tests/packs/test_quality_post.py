@@ -10,6 +10,7 @@ def _ctx(
     tool_input: dict | None = None,
     config: dict | None = None,
     file_content: str | None = None,
+    session_state: dict | None = None,
 ) -> RuleContext:
     return RuleContext(
         event=HookEvent.POST_TOOL_USE,
@@ -18,6 +19,7 @@ def _ctx(
         project_dir="/tmp/project",
         config=config or {},
         file_content=file_content,
+        session_state=session_state,
     )
 
 
@@ -190,3 +192,96 @@ class TestNoDeadImports:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
         assert "Bar" in violations[0].message
+
+
+class TestNoDeadImportsGracePeriod:
+    """v1.7.2 — Grace period avoids false positives during multi-edit workflows."""
+
+    rule = NoDeadImports()
+
+    def _ctx_with_session(
+        self,
+        file_path: str = "app.py",
+        content: str = "",
+        session_state: dict | None = None,
+    ) -> RuleContext:
+        return RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Edit",
+            tool_input={"file_path": file_path},
+            project_dir="/tmp/project",
+            config={},
+            file_content=content,
+            session_state=session_state if session_state is not None else {},
+        )
+
+    def test_first_unused_deferred(self):
+        """First edit with unused imports should NOT fire (grace period)."""
+        session = {}
+        content = "import os\nimport sys\n\nprint('hello')\n"
+        ctx = self._ctx_with_session(content=content, session_state=session)
+        violations = self.rule.evaluate(ctx)
+        assert violations == []
+        assert "app.py" in session.get("_dead_imports_pending", {})
+
+    def test_second_edit_still_unused_fires(self):
+        """Second edit with same unused imports should fire."""
+        session = {"_dead_imports_pending": {"app.py": ["os", "sys"]}}
+        content = "import os\nimport sys\n\nprint('hello')\n"
+        ctx = self._ctx_with_session(content=content, session_state=session)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert "os" in violations[0].message
+
+    def test_imports_used_on_second_edit_clears(self):
+        """If imports are used on second edit, no violation and pending cleared."""
+        session = {"_dead_imports_pending": {"app.py": ["os"]}}
+        content = "import os\n\npath = os.path.join('a', 'b')\n"
+        ctx = self._ctx_with_session(content=content, session_state=session)
+        violations = self.rule.evaluate(ctx)
+        assert violations == []
+        assert "app.py" not in session.get("_dead_imports_pending", {})
+
+    def test_grace_disabled_fires_immediately(self):
+        """With grace_period: false, fires on first detection."""
+        session = {}
+        content = "import os\n\nprint('hello')\n"
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "app.py"},
+            project_dir="/tmp/project",
+            config={"no-dead-imports": {"grace_period": False}},
+            file_content=content,
+            session_state=session,
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_different_files_independent(self):
+        """Grace period is per-file — different files don't affect each other."""
+        session = {"_dead_imports_pending": {"other.py": ["os"]}}
+        content = "import sys\n\nprint('hello')\n"
+        ctx = self._ctx_with_session(
+            file_path="app.py", content=content, session_state=session,
+        )
+        violations = self.rule.evaluate(ctx)
+        assert violations == []
+        # Both files should have pending entries
+        assert "app.py" in session["_dead_imports_pending"]
+        assert "other.py" in session["_dead_imports_pending"]
+
+    def test_no_session_state_falls_through(self):
+        """Without session state, grace period is skipped and fires immediately."""
+        content = "import os\n\nprint('hello')\n"
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "app.py"},
+            project_dir="/tmp/project",
+            config={},
+            file_content=content,
+            session_state=None,
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
