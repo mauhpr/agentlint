@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.7.1 (2026-04-09) — Test File Exemption for no-large-diff
+
+### Fix
+
+- **`no-large-diff` exempts test files by default** — Test files (`test_*`, `*_test.*`, `*.spec.*`, `*.test.*`, `*_spec.*`, `conftest.py`) are no longer penalized for large diffs. Comprehensive tests are inherently verbose and should not be discouraged by a quality tool. Configurable via `exempt_test_files` (default `true`) and `test_file_patterns`.
+
+### Tests
+
+5 new tests. Total: 1600 tests, 97% coverage.
+
 ## v1.7.0 (2026-04-08) — Session Summary + MCP Documentation
 
 Two features: session-wide violation tracking with a dashboard CLI, and comprehensive MCP server documentation.
