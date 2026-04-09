@@ -31,7 +31,7 @@ class TestMaxFileSize:
         assert len(violations) == 1
         assert violations[0].severity == Severity.WARNING
         assert "600" in violations[0].message
-        assert "big_module.py" in violations[0].message
+        assert "+100 over" in violations[0].message
 
     def test_passes_small_file(self):
         content = "\n".join(f"line {i}" for i in range(100))
@@ -68,6 +68,22 @@ class TestMaxFileSize:
         )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
+
+    def test_delta_shown_in_message(self):
+        """Message should show +N over and suggestion should say how many lines to remove."""
+        content = "\n".join(f"line {i}" for i in range(501))
+        ctx = _post_ctx("big.py", content)
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert "+1 over" in violations[0].message
+        assert "Remove 1 line" in violations[0].suggestion
+
+    def test_delta_plural(self):
+        content = "\n".join(f"line {i}" for i in range(550))
+        ctx = _post_ctx("big.py", content)
+        violations = self.rule.evaluate(ctx)
+        assert "+50 over" in violations[0].message
+        assert "Remove 50 lines" in violations[0].suggestion
 
 
 # ---------------------------------------------------------------------------

@@ -66,8 +66,41 @@ def _is_js_ts_file(path: str) -> bool:
     return any(path.endswith(ext) for ext in (".js", ".jsx", ".ts", ".tsx"))
 
 
+def _find_unused(file_path: str, content: str) -> list[str]:
+    """Find unused import names in file content. Returns list of unused names."""
+    if _is_python_file(file_path):
+        names = _extract_python_names(content)
+    elif _is_js_ts_file(file_path):
+        names = _extract_js_names(content)
+    else:
+        return []
+
+    # Strip import lines to get the "body" for reference checking
+    body_lines = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")) and "import" in stripped:
+            continue
+        body_lines.append(line)
+    body = "\n".join(body_lines)
+
+    unused = []
+    for name in names:
+        if not name or name.startswith("_"):
+            continue
+        if not re.search(rf"\b{re.escape(name)}\b", body):
+            unused.append(name)
+    return unused
+
+
 class NoDeadImports(Rule):
-    """Detect unused imports in written/edited files."""
+    """Detect unused imports in written/edited files.
+
+    Uses a grace period to avoid false positives during multi-edit workflows.
+    When imports are added first and used in a subsequent edit, the first edit
+    gets a free pass. The violation only fires if the imports are still unused
+    on the next edit to the same file.
+    """
 
     id = "no-dead-imports"
     description = "Detects unused imports in Python and JS/TS files"
@@ -86,6 +119,7 @@ class NoDeadImports(Rule):
 
         rule_config = context.config.get(self.id, {})
         ignore_files = set(rule_config.get("ignore_files", _IGNORE_BASENAMES))
+        grace = rule_config.get("grace_period", True)
 
         # Check if this file should be ignored
         import os
@@ -93,31 +127,25 @@ class NoDeadImports(Rule):
         if basename in ignore_files:
             return []
 
-        # Extract imported names based on language
-        if _is_python_file(file_path):
-            names = _extract_python_names(content)
-        elif _is_js_ts_file(file_path):
-            names = _extract_js_names(content)
-        else:
-            return []
+        unused = _find_unused(file_path, content)
 
-        # Strip import lines to get the "body" for reference checking
-        body_lines = []
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped.startswith(("import ", "from ")) and "import" in stripped:
-                continue
-            body_lines.append(line)
-        body = "\n".join(body_lines)
+        # Grace period: defer first detection, fire on second consecutive
+        if grace and context.session_state is not None:
+            pending = context.session_state.setdefault("_dead_imports_pending", {})
+            prev_unused = pending.get(file_path)
 
-        # Find unused names
-        unused = []
-        for name in names:
-            if not name or name.startswith("_"):
-                continue
-            # Use word boundary to avoid substring false positives
-            if not re.search(rf"\b{re.escape(name)}\b", body):
-                unused.append(name)
+            if not unused:
+                # Imports are now used — clear any pending
+                pending.pop(file_path, None)
+                return []
+
+            if prev_unused is None:
+                # First time seeing unused imports in this file — defer
+                pending[file_path] = unused
+                return []
+
+            # Second+ edit and still unused — fire and clear
+            pending.pop(file_path, None)
 
         if not unused:
             return []

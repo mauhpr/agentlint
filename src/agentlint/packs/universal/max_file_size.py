@@ -29,13 +29,14 @@ class MaxFileSize(Rule):
         line_count = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
 
         if line_count > limit:
+            over = line_count - limit
             return [
                 Violation(
                     rule_id=self.id,
-                    message=f"File {context.file_path} has {line_count} lines (limit: {limit})",
+                    message=f"File has {line_count} lines (limit: {limit}, +{over} over)",
                     severity=self.severity,
                     file_path=context.file_path,
-                    suggestion=f"Consider splitting the file into smaller modules (limit is {limit} lines).",
+                    suggestion=f"Remove {over} line{'s' if over != 1 else ''} or split into smaller modules.",
                 )
             ]
 

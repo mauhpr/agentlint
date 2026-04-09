@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.7.2 (2026-04-09) — Actionable Warnings
+
+### Fixes
+
+- **`max-file-size` shows delta** — Message now shows `+N over` and suggestion says exactly how many lines to remove. Before: `File has 401 lines (limit: 400)`. After: `File has 401 lines (limit: 400, +1 over)` with suggestion `Remove 1 line or split into smaller modules.`
+- **`no-dead-imports` grace period** — No longer fires prematurely when imports are added before the code that uses them. Violations are deferred until a subsequent edit to the same file confirms the imports are still unused. Disable with `grace_period: false` for immediate feedback.
+
+### Tests
+
+8 new tests. Total: 1608 tests, 97% coverage.
+
 ## v1.7.1 (2026-04-09) — Test File Exemption for no-large-diff
 
 ### Fix
