@@ -41,7 +41,7 @@ rules:
   # === Quality pack (always-active) ===
   commit-message-format: { enabled: true }               # WARNING - validates conventional commits
   no-error-handling-removal: { enabled: true }            # WARNING - warns when error handling removed
-  no-large-diff:     { max_lines_added: 200, max_lines_removed: 100 }  # WARNING - large edit detection
+  no-large-diff:     { max_lines_added: 200, exempt_test_files: true }  # WARNING - large edit detection (tests exempt)
   no-file-creation-sprawl: { max_new_files: 10 }         # WARNING - file sprawl detection
   naming-conventions: { enabled: true }                   # INFO - file naming conventions
   no-dead-imports:   { enabled: true }                   # INFO - detects unused imports
@@ -587,11 +587,13 @@ Warns when error handling patterns (`try/except`, `.catch()`, null checks) are r
 
 ### `no-large-diff` (PostToolUse, WARNING)
 
-Warns when a single Write/Edit adds or removes too many lines.
+Warns when a single Write/Edit adds or removes too many lines. Test files are exempt by default — comprehensive tests are inherently verbose and should not be penalized.
 
 **Config options:**
 - `max_lines_added` — Maximum lines added (default: `200`)
 - `max_lines_removed` — Maximum lines removed (default: `100`)
+- `exempt_test_files` — Skip test files (default: `true`)
+- `test_file_patterns` — Glob patterns matching test file basenames (default: `["test_*", "*_test.*", "*.spec.*", "*.test.*", "*_spec.*", "conftest.py"]`)
 
 ### `no-file-creation-sprawl` (PostToolUse, WARNING)
 
