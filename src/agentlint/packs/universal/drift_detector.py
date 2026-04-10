@@ -10,7 +10,7 @@ _BASH_TOOLS = {"Bash"}
 
 _TEST_RUNNERS = ("pytest", "vitest", "jest", "npm test", "make test")
 
-_DEFAULT_THRESHOLD = 10
+_DEFAULT_THRESHOLD = 15
 
 _DEFAULT_CODE_EXTENSIONS = {
     ".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".rb",
@@ -40,6 +40,7 @@ class DriftDetector(Rule):
             if any(runner in command for runner in _TEST_RUNNERS):
                 state["edited_files"] = []
                 state["last_test_run"] = True
+                state["_drift_warned"] = False
                 return []
 
         # Track unique file edits — only count code files.
@@ -55,6 +56,10 @@ class DriftDetector(Rule):
         last_test_run = state.get("last_test_run", True)
 
         if files_edited > threshold and not last_test_run:
+            # Fire once when threshold is crossed, not on every subsequent edit
+            if state.get("_drift_warned"):
+                return []
+            state["_drift_warned"] = True
             return [
                 Violation(
                     rule_id=self.id,
