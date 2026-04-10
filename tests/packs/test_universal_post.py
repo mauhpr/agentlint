@@ -98,7 +98,7 @@ class TestDriftDetector:
     def test_warns_after_threshold_edits(self):
         rule = self._make_rule()
         session_state: dict = {}
-        for i in range(11):
+        for i in range(16):
             ctx = RuleContext(
                 event=HookEvent.POST_TOOL_USE,
                 tool_name="Write",
@@ -108,10 +108,10 @@ class TestDriftDetector:
             )
             violations = rule.evaluate(ctx)
 
-        # After 11 edits without tests, should warn.
+        # After 16 edits without tests (default threshold=15), should warn.
         assert len(violations) == 1
         assert violations[0].severity == Severity.WARNING
-        assert "11" in violations[0].message
+        assert "16" in violations[0].message
 
     def test_resets_after_test_run(self):
         rule = self._make_rule()
@@ -166,7 +166,7 @@ class TestDriftDetector:
                 session_state=session_state,
             )
             violations = rule.evaluate(ctx)
-        # Only 1 unique file, well below threshold of 10.
+        # Only 1 unique file, well below threshold of 15.
         assert len(violations) == 0
         assert len(session_state["edited_files"]) == 1
 
@@ -272,3 +272,66 @@ class TestDriftDetector:
             rule.evaluate(ctx)
         # Only .py and .ts should be counted
         assert len(session_state.get("edited_files", [])) == 2
+
+    def test_fires_once_not_repeatedly(self):
+        """After threshold is crossed, drift-detector fires once then stays silent."""
+        rule = self._make_rule()
+        session_state: dict = {}
+        fire_count = 0
+        # Edit 20 files (well above threshold of 15)
+        for i in range(20):
+            ctx = RuleContext(
+                event=HookEvent.POST_TOOL_USE,
+                tool_name="Write",
+                tool_input={"file_path": f"file_{i}.py"},
+                project_dir="/tmp/project",
+                session_state=session_state,
+            )
+            violations = rule.evaluate(ctx)
+            if violations:
+                fire_count += 1
+        # Should fire exactly once (on edit 16), not 5 times
+        assert fire_count == 1
+
+    def test_fire_once_resets_after_test_run(self):
+        """After tests run, drift-detector can fire again on next threshold cross."""
+        rule = self._make_rule()
+        session_state: dict = {}
+
+        # Cross threshold — fires once
+        for i in range(16):
+            ctx = RuleContext(
+                event=HookEvent.POST_TOOL_USE,
+                tool_name="Write",
+                tool_input={"file_path": f"file_{i}.py"},
+                project_dir="/tmp/project",
+                session_state=session_state,
+            )
+            rule.evaluate(ctx)
+        assert session_state.get("_drift_warned") is True
+
+        # Run tests — resets
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Bash",
+            tool_input={"command": "pytest -v"},
+            project_dir="/tmp/project",
+            session_state=session_state,
+        )
+        rule.evaluate(ctx)
+        assert session_state.get("_drift_warned") is False
+
+        # Cross threshold again — fires again
+        fire_count = 0
+        for i in range(16):
+            ctx = RuleContext(
+                event=HookEvent.POST_TOOL_USE,
+                tool_name="Write",
+                tool_input={"file_path": f"round2_{i}.py"},
+                project_dir="/tmp/project",
+                session_state=session_state,
+            )
+            violations = rule.evaluate(ctx)
+            if violations:
+                fire_count += 1
+        assert fire_count == 1

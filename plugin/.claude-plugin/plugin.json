@@ -1,7 +1,7 @@
 {
   "name": "agentlint",
   "description": "Real-time quality guardrails for AI coding agents. 68 rules across 8 packs. Session summary dashboard, MCP server docs, warning suppression, diff_only CLI mode, global config defaults.",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "author": {
     "name": "mauhpr"
   },

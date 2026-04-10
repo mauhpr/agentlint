@@ -27,7 +27,7 @@ rules:
   no-destructive-commands: { enabled: true }             # WARNING - warns on rm -rf, DROP TABLE
   dependency-hygiene: { enabled: true }                  # WARNING - warns on ad-hoc pip/npm install
   max-file-size:     { enabled: true, limit: 500 }      # WARNING - warns on large files
-  drift-detector:    { enabled: true, threshold: 10 }    # WARNING - warns on many edits without tests
+  drift-detector:    { enabled: true, threshold: 15 }    # WARNING - warns on many edits without tests (fires once)
   no-debug-artifacts: { enabled: true }                  # WARNING - detects leftover debug statements
   test-with-changes: { enabled: true }                   # WARNING - warns if no tests updated
   no-todo-left:      { enabled: true }                   # INFO - reports TODO/FIXME in changed files
@@ -231,10 +231,10 @@ Warns when a written/edited file exceeds a line count threshold.
 
 ### `drift-detector` (PostToolUse, WARNING)
 
-Tracks file edits and test runs. Warns after N edits without running tests. Only counts code files — config files (`.yml`, `.md`, etc.) are excluded.
+Tracks file edits and test runs. Warns once after N unique file edits without running tests, then stays silent until tests are run. Only counts code files — config files (`.yml`, `.md`, etc.) are excluded.
 
 **Config options:**
-- `threshold` — Edit count before warning (default: `10`)
+- `threshold` — Unique file edit count before warning (default: `15`)
 - `extensions` — List of file extensions to count (default: `.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.rs`, `.go`, `.rb`, `.java`, `.kt`, `.swift`, `.c`, `.cpp`, `.h`, `.cs`, `.ex`, `.vue`, `.svelte`)
 
 ### `no-debug-artifacts` (Stop, WARNING)

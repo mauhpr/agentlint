@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.7.3 (2026-04-10) — drift-detector Fire Once
+
+### Fixes
+
+- **`drift-detector` fires once, not repeatedly** — Previously fired on every edit after the threshold was crossed (35 times for a 28-file feature). Now fires once when the threshold is crossed, then stays silent until tests are run. Resets after test run.
+- **`drift-detector` default threshold raised to 15** (was 10) — Modern layered architectures routinely require 12-20 files per feature. Configurable via `threshold: N`.
+
+### Tests
+
+2 new tests. Total: 1610 tests, 97% coverage.
+
 ## v1.7.2 (2026-04-09) — Actionable Warnings
 
 ### Fixes

@@ -337,7 +337,7 @@ rules:
   max-file-size:
     limit: 300          # Override default 500-line limit
   drift-detector:
-    threshold: 5        # Warn after 5 edits without tests (default: 10)
+    threshold: 5        # Warn after 5 edits without tests (default: 15)
   no-secrets:
     enabled: false      # Disable a rule entirely
   # Python pack examples:
