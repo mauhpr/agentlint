@@ -35,9 +35,14 @@ class DependencyHygiene(Rule):
         if not command:
             return []
 
+        # Strip quoted string arguments to avoid false positives on content
+        # like: gh pr create --body "... pip install ..."
+        from agentlint.utils.bash import strip_string_args
+        stripped = strip_string_args(command)
+
         violations: list[Violation] = []
 
-        if _PIP_INSTALL_RE.search(command) and not _PIP_LOCAL_DEV_RE.search(command) and not _PIP_REQUIREMENTS_RE.search(command):
+        if _PIP_INSTALL_RE.search(stripped) and not _PIP_LOCAL_DEV_RE.search(stripped) and not _PIP_REQUIREMENTS_RE.search(stripped):
             violations.append(
                 Violation(
                     rule_id=self.id,
@@ -47,7 +52,7 @@ class DependencyHygiene(Rule):
                 )
             )
 
-        if _NPM_INSTALL_PKG_RE.search(command):
+        if _NPM_INSTALL_PKG_RE.search(stripped):
             violations.append(
                 Violation(
                     rule_id=self.id,

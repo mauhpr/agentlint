@@ -120,6 +120,18 @@ class TestNoBashFileWrite:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
+    def test_no_false_positive_on_body_text(self):
+        """File write patterns inside --body string should NOT trigger."""
+        ctx = _ctx("Bash", {"command": 'gh pr create --body "verify cat > file works"'})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_no_false_positive_on_curl_data(self):
+        """File write patterns inside curl -d string should NOT trigger."""
+        ctx = _ctx("Bash", {"command": 'curl -X POST -d "echo hello > output.txt" https://example.com'})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
     # --- Allowlist ---
 
     def test_allows_log_path(self):

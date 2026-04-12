@@ -351,6 +351,24 @@ class TestDependencyHygiene:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
+    def test_no_false_positive_on_body_text(self):
+        """pip install inside --body string should NOT trigger."""
+        ctx = _ctx("Bash", {"command": 'gh pr create --body "verify pip install works"'})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_no_false_positive_on_message_text(self):
+        """pip install inside -m string should NOT trigger."""
+        ctx = _ctx("Bash", {"command": 'git commit -m "update pip install docs"'})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 0
+
+    def test_real_pip_install_still_caught(self):
+        """Actual pip install command (not in quotes) should still fire."""
+        ctx = _ctx("Bash", {"command": "pip install requests && echo done"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
 
 # ---------------------------------------------------------------------------
 # NoEnvCommit — Bash extension

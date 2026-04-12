@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.8.0 (2026-04-10) — Monorepo Polish
+
+User feedback from real monorepo migrations. Consistency fixes, false positive elimination, and UX improvements.
+
+### Fixes
+
+- **`CLAUDE_PROJECT_DIR` consistency** — All 10 CLI commands now respect `$CLAUDE_PROJECT_DIR`. Previously 6 commands (`ci`, `init`, `setup`, `doctor`, `uninstall`, `import-agents-md`) only used `os.getcwd()`, causing config-not-found errors when running from subdirectories.
+- **False positive on quoted string arguments** — `dependency-hygiene` and `no-bash-file-write` no longer match patterns inside double-quoted strings. `gh pr create --body "verify pip install works"` no longer triggers. Content inside `$(...)` command substitutions is preserved.
+- **`list-rules` event display** — Now shows all events per rule (was only showing the first). Multi-event rules display correctly (e.g., `PreToolUse, PostToolUse`).
+
+### Features
+
+- **`setup --dry-run`** — Preview what `agentlint setup` would write to settings.json without modifying files.
+
+### Tests
+
+19 new tests. Total: 1629 tests, 97% coverage.
+
 ## v1.7.3 (2026-04-10) — drift-detector Fire Once
 
 ### Fixes

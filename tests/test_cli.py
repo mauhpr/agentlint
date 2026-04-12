@@ -1373,3 +1373,80 @@ class TestViolationLogTracking:
         assert vlog["total_evaluations"] == 1
         assert vlog["total_blocked"] == 0
         assert vlog["total_warnings"] == 0
+
+
+class TestClaudeProjectDirFallback:
+    """v1.8.0 — All CLI commands respect CLAUDE_PROJECT_DIR."""
+
+    def test_doctor_uses_claude_project_dir(self, tmp_path, monkeypatch) -> None:
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".claude" / "settings.json").write_text('{"hooks":{}}')
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        monkeypatch.chdir(tmp_path / ".claude")  # CWD is NOT project root
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor"])
+        assert result.exit_code == 0
+        assert "Config file: agentlint.yml found" in result.output
+
+    def test_ci_uses_claude_project_dir(self, tmp_path, monkeypatch) -> None:
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        monkeypatch.chdir(tmp_path / "..")  # CWD is NOT project root
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["ci"])
+        # Should find config and not crash
+        assert result.exit_code == 0
+
+    def test_init_uses_claude_project_dir(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        monkeypatch.chdir(subdir)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["init"])
+        assert result.exit_code == 0
+        # Config should be created at CLAUDE_PROJECT_DIR, not CWD
+        assert (tmp_path / "agentlint.yml").exists()
+
+
+class TestListRulesMultiEvent:
+    """v1.8.0 — list-rules shows all events per rule."""
+
+    def test_list_rules_shows_all_events(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["list-rules"])
+        assert result.exit_code == 0
+        # Rules with PostToolUse should show PostToolUse
+        assert "PostToolUse" in result.output
+        # Rules with PreToolUse should show PreToolUse
+        assert "PreToolUse" in result.output
+
+
+class TestSetupDryRun:
+    """v1.8.0 — setup --dry-run shows preview without writing."""
+
+    def test_dry_run_shows_preview(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["setup", "--project-dir", str(tmp_path), "--dry-run"],
+        )
+        assert result.exit_code == 0
+        assert "Dry run" in result.output
+        assert "hooks" in result.output
+        # Should NOT have created settings.json
+        settings_file = tmp_path / ".claude" / "settings.json"
+        assert not settings_file.exists()
+
+    def test_setup_without_dry_run_still_writes(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["setup", "--project-dir", str(tmp_path)],
+        )
+        assert result.exit_code == 0
+        assert "Installed" in result.output

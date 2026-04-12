@@ -240,7 +240,7 @@ def check(event: str, project_dir: str | None):
 @click.option("--format", "output_format", default="text", type=click.Choice(["text", "json"]))
 def ci(diff: str | None, project_dir: str | None, output_format: str):
     """Scan changed files and report violations for CI pipelines."""
-    project_dir = project_dir or os.getcwd()
+    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 
     config = load_config(project_dir)
     rules = load_rules(config.packs)
@@ -325,7 +325,7 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
 @click.option("--project-dir", default=None, help="Project directory")
 def init(project_dir: str | None):
     """Initialize AgentLint config in the project."""
-    project_dir = project_dir or os.getcwd()
+    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
     packs = detect_stack(project_dir)
 
     pack_lines = "\n".join(f"  - {p}" for p in packs)
@@ -457,9 +457,10 @@ def report(project_dir: str | None, summary: bool, output_format: str):
     "--project", "scope", flag_value="project", default=True, help="Install to .claude/settings.json (default)"
 )
 @click.option("--project-dir", default=None, help="Project directory")
-def setup(scope: str, project_dir: str | None):
+@click.option("--dry-run", is_flag=True, help="Show what would be written without modifying files")
+def setup(scope: str, project_dir: str | None, dry_run: bool):
     """Install AgentLint hooks into Claude Code settings."""
-    project_dir = project_dir or os.getcwd()
+    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 
     agentlint_cmd = _resolve_command()
     click.echo(f"Resolved agentlint: {agentlint_cmd}")
@@ -467,6 +468,12 @@ def setup(scope: str, project_dir: str | None):
     path = settings_path(scope, project_dir)
     existing = read_settings(path)
     updated = merge_hooks(existing, agentlint_cmd=agentlint_cmd)
+
+    if dry_run:
+        click.echo(f"\nDry run — would write to {path}:")
+        click.echo(json.dumps(updated, indent=2))
+        return
+
     write_settings(path, updated)
 
     click.echo(f"Installed AgentLint hooks in {path}")
@@ -507,13 +514,13 @@ def list_rules(pack: str | None, project_dir: str | None):
     rules.sort(key=lambda r: (r.pack, r.events[0].value if r.events else "", r.id))
 
     # Table header.
-    click.echo(f"{'Rule ID':<30} {'Pack':<12} {'Event':<14} {'Severity':<10} Description")
-    click.echo("-" * 100)
+    click.echo(f"{'Rule ID':<30} {'Pack':<12} {'Event':<20} {'Severity':<10} Description")
+    click.echo("-" * 106)
 
     for rule in rules:
-        event_str = rule.events[0].value if rule.events else "—"
+        event_str = ", ".join(e.value for e in rule.events) if rule.events else "—"
         click.echo(
-            f"{rule.id:<30} {rule.pack:<12} {event_str:<14} {rule.severity.value:<10} {rule.description}"
+            f"{rule.id:<30} {rule.pack:<12} {event_str:<20} {rule.severity.value:<10} {rule.description}"
         )
 
     click.echo(f"\n{len(rules)} rules total.")
@@ -557,7 +564,7 @@ def status(project_dir: str | None):
 @click.option("--project-dir", default=None, help="Project directory")
 def doctor(project_dir: str | None):
     """Diagnose common AgentLint misconfigurations."""
-    project_dir = project_dir or os.getcwd()
+    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
     issues: list[str] = []
     checks_ok: list[str] = []
 
@@ -737,7 +744,7 @@ def suppress(rule_id: str | None, list_mode: bool, clear: bool, remove_id: str |
 @click.option("--merge", "merge_mode", is_flag=True, help="Merge with existing agentlint.yml")
 def import_agents_md(project_dir: str | None, dry_run: bool, merge_mode: bool):
     """Import conventions from AGENTS.md into AgentLint config."""
-    project_dir = project_dir or os.getcwd()
+    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 
     agents_path = find_agents_md(project_dir)
     if agents_path is None:
@@ -782,7 +789,7 @@ def import_agents_md(project_dir: str | None, dry_run: bool, merge_mode: bool):
 @click.option("--project-dir", default=None, help="Project directory")
 def uninstall(scope: str, project_dir: str | None):
     """Remove AgentLint hooks from Claude Code settings."""
-    project_dir = project_dir or os.getcwd()
+    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 
     path = settings_path(scope, project_dir)
     existing = read_settings(path)
