@@ -118,7 +118,7 @@ rules:
   max-file-size:
     limit: 300            # Override default (500)
   drift-detector:
-    threshold: 5          # Override default (10)
+    threshold: 5          # Override default (15)
 ```
 
 ### Global config defaults
@@ -939,7 +939,7 @@ rules:
   max-file-size:
     limit: 500
   drift-detector:
-    threshold: 10
+    threshold: 15
   no-debug-artifacts:
     enabled: true
   test-with-changes:
