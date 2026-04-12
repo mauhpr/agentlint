@@ -107,6 +107,11 @@ class NoBashFileWrite(Rule):
         if not command:
             return []
 
+        # Strip quoted string arguments to avoid false positives on content
+        # like: gh pr create --body "... cat > file ..."
+        from agentlint.utils.bash import strip_string_args
+        stripped = strip_string_args(command)
+
         # Load config.
         allow_patterns: list[str] = get_rule_setting(context.config, self.id, "allow_patterns", [])
         allow_paths: list[str] = get_rule_setting(context.config, self.id, "allow_paths", [])
@@ -122,7 +127,9 @@ class NoBashFileWrite(Rule):
         violations: list[Violation] = []
 
         for pattern, label in _WRITE_PATTERNS:
-            if pattern.search(command):
+            # python -c needs the full command (quotes contain code, not data)
+            match_cmd = command if label == "python -c write" else stripped
+            if pattern.search(match_cmd):
                 # Heredocs inside $(cat <<'EOF' ...) are command substitution
                 # (e.g. git commit -m, gh pr create --body), not file writes.
                 if label == "heredoc" and _HEREDOC_CMD_SUB.search(command):

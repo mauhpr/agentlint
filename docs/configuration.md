@@ -437,6 +437,15 @@ projects:
 - Project resolution applies to `check`, `ci`, and MCP server `check_content`
 - `status`, `list-rules`, and `report` show the global configuration
 
+**Config discovery:**
+Place `agentlint.yml` at the project root. During Claude Code hook execution, `$CLAUDE_PROJECT_DIR` is always set to the project root, so config is always found.
+
+When running agentlint CLI manually from a subdirectory (e.g., `cd backend/ && agentlint doctor`), agentlint searches relative to that directory. To use the config at the project root, either:
+- Set `CLAUDE_PROJECT_DIR=/path/to/project` before running the command
+- Use the `--project-dir /path/to/project` flag
+
+> Prior to v1.8.0, six commands (`ci`, `init`, `setup`, `doctor`, `uninstall`, `import-agents-md`) did not respect `$CLAUDE_PROJECT_DIR` — this is fixed.
+
 **Validation:**
 `agentlint doctor` checks that project directory prefixes exist and that listed packs are valid.
 
