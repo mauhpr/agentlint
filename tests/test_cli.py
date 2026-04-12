@@ -1438,9 +1438,10 @@ class TestSetupDryRun:
         assert result.exit_code == 0
         assert "Dry run" in result.output
         assert "hooks" in result.output
-        # Should NOT have created settings.json
+        # Should NOT have created settings.json or agentlint.yml
         settings_file = tmp_path / ".claude" / "settings.json"
         assert not settings_file.exists()
+        assert not (tmp_path / "agentlint.yml").exists()
 
     def test_setup_without_dry_run_still_writes(self, tmp_path) -> None:
         runner = CliRunner()

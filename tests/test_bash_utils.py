@@ -30,3 +30,7 @@ class TestStripStringArgs:
     def test_nested_command_sub_preserved(self):
         result = strip_string_args('echo "$(pip install requests)"')
         assert "pip install requests" in result
+
+    def test_preserves_single_quotes(self):
+        """Single quotes are intentionally not stripped."""
+        assert strip_string_args("echo 'pip install malware'") == "echo 'pip install malware'"

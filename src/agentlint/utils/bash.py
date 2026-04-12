@@ -12,6 +12,10 @@ def strip_string_args(command: str) -> str:
 
     Handles nested command substitutions: content inside $(...) within
     quotes is preserved because it contains actual commands.
+
+    Only handles double-quoted strings. Single quotes, backticks, and $'...'
+    ANSI-C quoting are NOT processed — these rarely contain false positive
+    patterns in practice.
     """
     result: list[str] = []
     i = 0

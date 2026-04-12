@@ -1,8 +1,8 @@
 # Changelog
 
-## v1.8.0 (2026-04-10) — Monorepo Polish
+## v1.8.0 (2026-04-12) — Monorepo Fix + False Positive Elimination
 
-User feedback from real monorepo migrations. Consistency fixes, false positive elimination, and UX improvements.
+User feedback from real monorepo migrations. Fixes config discovery from subdirectories, eliminates false positives on quoted string arguments, and adds setup preview.
 
 ### Fixes
 
