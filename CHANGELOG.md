@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.8.1 (2026-04-13) — Alembic Migration Exemption
+
+### Fixes
+
+- **`naming-conventions` exempts migration files** — Alembic revision filenames like `92cd48a3c5f4_change_merged_from_.py` no longer trigger false positives. Files in paths containing `alembic`, `migrations`, or `versions` are exempt by default. Configurable via `migration_paths`.
+
+### Documentation
+
+- **`auto_suppress_after` safety guarantee documented** — ERROR-severity rules are NEVER auto-suppressed, regardless of config. Per-rule pattern documented as recommended best practice.
+
+### Tests
+
+4 new tests. Total: 1634 tests, 97% coverage.
+
 ## v1.8.0 (2026-04-12) — Monorepo Fix + False Positive Elimination
 
 User feedback from real monorepo migrations. Fixes config discovery from subdirectories, eliminates false positives on quoted string arguments, and adds setup preview.
