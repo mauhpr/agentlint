@@ -47,6 +47,9 @@ _EXEMPT_NAMES = {
     "Makefile", "Dockerfile", "Procfile", "Gemfile", "Rakefile", "Vagrantfile",
 }
 
+# Path markers for migration files (Alembic, Django, etc.)
+_DEFAULT_MIGRATION_MARKERS = {"migration", "alembic", "versions"}
+
 
 class NamingConventions(Rule):
     id = "naming-conventions"
@@ -80,6 +83,11 @@ class NamingConventions(Rule):
 
         # Determine expected convention
         rule_config = context.config.get(self.id, {})
+
+        # Skip migration files (Alembic generates non-standard filenames like 92cd48a3c5f4_msg.py)
+        migration_markers = rule_config.get("migration_paths", list(_DEFAULT_MIGRATION_MARKERS))
+        if any(marker in file_path.lower() for marker in migration_markers):
+            return []
 
         # User can override per extension: { python: "snake_case", typescript: "camelCase" }
         convention_name = None

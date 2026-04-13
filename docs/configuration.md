@@ -154,16 +154,34 @@ agentlint suppress --clear           # clear all suppressions
 
 The MCP server also exposes a `suppress_rule` tool. ERROR-severity violations are never suppressed at evaluation time — the engine always emits ERRORs regardless of the suppressed list (safety invariant). The suppress command accepts any rule ID but the suppression has no effect on ERROR rules.
 
-**Auto-suppress:** Set `auto_suppress_after: N` to automatically suppress a rule after N consecutive fires:
+**Auto-suppress:** Automatically suppress a warning or informational rule after N consecutive fires within a session. Helps the agent focus when a known issue repeats.
 
 ```yaml
 rules:
-  auto_suppress_after: 5          # global default
+  auto_suppress_after: 5          # global default: suppress any WARNING/INFO rule after 5 fires
   drift-detector:
     auto_suppress_after: 3        # per-rule override
+  no-dead-imports:
+    auto_suppress_after: 2        # recommended for noisy lint rules
 ```
 
-Counters reset when a rule stops firing (clean evaluation). ERRORs are never auto-suppressed.
+**Safety guarantee:** ERROR-severity rules (`no-secrets`, `no-env-commit`, `no-force-push`, etc.) are **never** auto-suppressed, regardless of config. This is a hard safety invariant — security rules always fire, even with a global `auto_suppress_after` setting.
+
+**How it works:**
+- Counter increments each time a rule fires (reports a violation)
+- Counter resets to 0 when the rule does NOT fire (clean evaluation)
+- When counter exceeds threshold, the rule is auto-suppressed for the rest of the session
+- Only WARNING and INFO rules are tracked; ERROR violations always pass through
+
+**Recommended pattern:** Set `auto_suppress_after` per-rule on noisy rules, not globally:
+
+```yaml
+rules:
+  no-dead-imports:
+    auto_suppress_after: 2
+  drift-detector:
+    auto_suppress_after: 2
+```
 
 ## Universal rules reference
 
@@ -613,12 +631,13 @@ Warns when too many new files are created in a single session.
 
 ### `naming-conventions` (PreToolUse, INFO)
 
-Checks file names against language-specific conventions (snake_case for Python, camelCase for TS/JS, PascalCase for TSX/JSX). Accepts kebab-case as alternative for TSX/JSX. Exempts test files, `index`, `__init__`, and common config files.
+Checks file names against language-specific conventions (snake_case for Python, camelCase for TS/JS, PascalCase for TSX/JSX). Accepts kebab-case as alternative for TSX/JSX. Exempts test files, migration files, `index`, `__init__`, and common config files.
 
 **Config options:**
 - `python` — Convention for .py files (default: `"snake_case"`)
 - `typescript` — Convention for .ts/.js files (default: `"camelCase"`)
 - `react_components` — Convention for .tsx/.jsx files (default: `"PascalCase"`)
+- `migration_paths` — Path markers for migration file exemption (default: `["migration", "alembic", "versions"]`)
 
 ### `no-dead-imports` (PostToolUse, INFO)
 

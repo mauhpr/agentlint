@@ -413,3 +413,32 @@ class TestNamingConventions:
         rule = NamingConventions()
         result = rule._suggest_name("myFile", "unknown_convention", "py")
         assert result == "myFile.py"
+
+    def test_alembic_migration_exempt(self):
+        """Alembic revision files should be exempt."""
+        rule = NamingConventions()
+        assert rule.evaluate(self._pre_context(
+            "/project/alembic/versions/92cd48a3c5f4_change_merged_from_.py",
+        )) == []
+
+    def test_migrations_versions_exempt(self):
+        """Django/generic migrations should be exempt."""
+        rule = NamingConventions()
+        assert rule.evaluate(self._pre_context(
+            "/project/migrations/versions/abc123def456_init.py",
+        )) == []
+
+    def test_regular_file_still_checked(self):
+        """Non-migration files should still be checked."""
+        rule = NamingConventions()
+        violations = rule.evaluate(self._pre_context("/project/src/MyModule.py"))
+        assert len(violations) == 1
+
+    def test_custom_migration_paths(self):
+        """Custom migration_paths config should exempt matching files."""
+        rule = NamingConventions()
+        ctx = self._pre_context(
+            "/project/db/revisions/abc123_add_users.py",
+            config={"naming-conventions": {"migration_paths": ["db/revisions"]}},
+        )
+        assert rule.evaluate(ctx) == []
