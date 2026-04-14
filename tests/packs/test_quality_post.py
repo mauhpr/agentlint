@@ -194,6 +194,61 @@ class TestNoDeadImports:
         assert "Bar" in violations[0].message
 
 
+    # --- v1.9.0: __future__ import exemption tests ---
+
+    def test_future_annotations_not_flagged(self):
+        """from __future__ import annotations should never be flagged."""
+        content = "from __future__ import annotations\ndef foo(): pass\n"
+        ctx = _ctx(
+            tool_input={"file_path": "app.py"},
+            file_content=content,
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_future_multiple_imports_not_flagged(self):
+        """Multiple __future__ imports should not be flagged."""
+        content = "from __future__ import annotations, division\ndef foo(): pass\n"
+        ctx = _ctx(
+            tool_input={"file_path": "app.py"},
+            file_content=content,
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_regular_import_still_flagged(self):
+        """Regular unused imports should still be flagged."""
+        content = "from os import path\nprint('hi')\n"
+        ctx = _ctx(
+            tool_input={"file_path": "app.py"},
+            file_content=content,
+            config={"no-dead-imports": {"grace_period": False}},
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert "path" in violations[0].message
+
+    def test_future_alongside_unused(self):
+        """Only non-__future__ unused imports should be flagged."""
+        content = "from __future__ import annotations\nimport os\nprint('hi')\n"
+        ctx = _ctx(
+            tool_input={"file_path": "app.py"},
+            file_content=content,
+            config={"no-dead-imports": {"grace_period": False}},
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert "os" in violations[0].message
+        assert "annotations" not in violations[0].message
+
+    def test_only_future_imports_no_violation(self):
+        """File with only __future__ imports and nothing else should not violate."""
+        content = "from __future__ import annotations\n"
+        ctx = _ctx(
+            tool_input={"file_path": "app.py"},
+            file_content=content,
+        )
+        assert self.rule.evaluate(ctx) == []
+
+
 class TestNoDeadImportsGracePeriod:
     """v1.7.2 — Grace period avoids false positives during multi-edit workflows."""
 

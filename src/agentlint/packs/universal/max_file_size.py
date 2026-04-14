@@ -29,6 +29,13 @@ class MaxFileSize(Rule):
         line_count = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
 
         if line_count > limit:
+            # Don't fire on pre-existing large files — only when crossing the threshold
+            before = context.file_content_before
+            if before is not None:
+                before_count = before.count("\n") + (1 if before and not before.endswith("\n") else 0)
+                if before_count > limit:
+                    return []  # file was already over the limit before this edit
+
             over = line_count - limit
             return [
                 Violation(

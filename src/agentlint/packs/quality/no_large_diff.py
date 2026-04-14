@@ -3,8 +3,9 @@
 Forces the agent to work in smaller, reviewable chunks. Uses
 file_content_before (cached by PreToolUse) to compute diff size.
 
-Test files are exempt by default — comprehensive tests are inherently
-verbose and should not be penalized. Override via ``test_file_patterns``.
+Test files and non-code files (.md, .yml, etc.) are exempt by default —
+tests are inherently verbose, and config/prompt files are often large
+single-write documents.
 """
 from __future__ import annotations
 
@@ -24,6 +25,12 @@ _DEFAULT_TEST_PATTERNS = [
     "*_spec.*",
     "conftest.py",
 ]
+
+_DEFAULT_CODE_EXTENSIONS = {
+    ".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".rb",
+    ".java", ".kt", ".swift", ".c", ".cpp", ".h", ".cs", ".ex",
+    ".vue", ".svelte",
+}
 
 
 def _is_test_file(file_path: str, patterns: list[str]) -> bool:
@@ -50,6 +57,13 @@ class NoLargeDiff(Rule):
             return []
 
         rule_config = context.config.get(self.id, {})
+
+        # Exempt non-code files — .md, .yml, .json, etc. are often large single-write documents
+        if context.file_path:
+            extensions = set(rule_config.get("extensions", list(_DEFAULT_CODE_EXTENSIONS)))
+            ext = os.path.splitext(context.file_path)[1]
+            if ext and ext not in extensions:
+                return []
 
         # Exempt test files — comprehensive tests should not be penalized
         exempt_tests = rule_config.get("exempt_test_files", True)

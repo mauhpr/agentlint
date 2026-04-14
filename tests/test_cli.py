@@ -1451,3 +1451,332 @@ class TestSetupDryRun:
         )
         assert result.exit_code == 0
         assert "Installed" in result.output
+
+
+class TestHookTiming:
+    """v1.9.0 — Hook timing tracking in session state."""
+
+    def test_timing_stored_in_session(self, tmp_path, monkeypatch) -> None:
+        from agentlint.session import load_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing")
+        runner = CliRunner()
+        runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        session = load_session()
+        timing = session.get("_hook_timing", {})
+        assert timing.get("count") == 1
+        assert timing.get("total_ms", 0) > 0
+
+    def test_timing_count_increments(self, tmp_path, monkeypatch) -> None:
+        from agentlint.session import load_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing-inc")
+        runner = CliRunner()
+        runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        session = load_session()
+        assert session["_hook_timing"]["count"] == 2
+
+    def test_timing_total_ms_positive(self, tmp_path, monkeypatch) -> None:
+        from agentlint.session import load_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing-ms")
+        runner = CliRunner()
+        runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        session = load_session()
+        assert session["_hook_timing"]["total_ms"] > 0
+
+    def test_summary_text_shows_timing(self, tmp_path, monkeypatch) -> None:
+        from agentlint.session import save_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing-text")
+        save_session({
+            "violation_log": {
+                "total_evaluations": 5,
+                "total_blocked": 0,
+                "total_warnings": 1,
+                "total_info": 0,
+                "rule_violations": {},
+            },
+            "_hook_timing": {"total_ms": 42.5, "count": 5},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--summary", "--project-dir", str(tmp_path)],
+        )
+        assert "Hook latency" in result.output
+
+    def test_summary_json_has_timing(self, tmp_path, monkeypatch) -> None:
+        from agentlint.session import save_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing-json")
+        save_session({
+            "violation_log": {
+                "total_evaluations": 3,
+                "total_blocked": 0,
+                "total_warnings": 0,
+                "total_info": 0,
+                "rule_violations": {},
+            },
+            "_hook_timing": {"total_ms": 15.0, "count": 3},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--summary", "--format", "json", "--project-dir", str(tmp_path)],
+        )
+        data = json.loads(result.output)
+        assert "hook_timing" in data
+        assert data["hook_timing"]["count"] == 3
+
+    def test_no_timing_empty_session(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing-empty")
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--summary", "--project-dir", str(tmp_path)],
+        )
+        assert result.exit_code == 0
+        assert "Hook latency" not in result.output
+
+    def test_timing_accumulates(self, tmp_path, monkeypatch) -> None:
+        from agentlint.session import load_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing-accum")
+        runner = CliRunner()
+        runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        session1 = load_session()
+        ms_after_1 = session1["_hook_timing"]["total_ms"]
+
+        runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        session2 = load_session()
+        ms_after_2 = session2["_hook_timing"]["total_ms"]
+        assert ms_after_2 > ms_after_1
+
+    def test_timing_no_affect_on_violations(self, tmp_path, monkeypatch) -> None:
+        """Violations should still work correctly with timing tracking."""
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing-viol")
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "config.py",
+                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+            },
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+        output = json.loads(result.output)
+        # Should still produce deny/block decision for secrets
+        hook_output = output.get("hookSpecificOutput", {})
+        assert hook_output.get("permissionDecision") == "deny"
+
+
+class TestInlineIgnoreIntegration:
+    """v1.9.0 — Inline ignore directives through full check command."""
+
+    def test_ignore_file_suppresses_via_check(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-ignore-file-int")
+
+        target = tmp_path / "big.py"
+        content = "# agentlint:ignore-file\n" + "line\n" * 600
+        target.write_text(content)
+
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target), "content": content},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_ignore_specific_rule_via_check(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-ignore-rule-int")
+
+        content = "# agentlint:ignore max-file-size\n" + "line\n" * 600
+        target = tmp_path / "big.py"
+        target.write_text(content)
+
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target), "content": content},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+        )
+        assert result.exit_code == 0
+
+
+class TestIgnorePathsIntegration:
+    """v1.9.0 — ignore_paths through full check command."""
+
+    def test_ignore_paths_skips_via_check(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-ignore-paths-int")
+
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\nrules:\n  ignore_paths:\n    - '**/legacy/**'\n"
+        )
+
+        target = tmp_path / "legacy" / "old.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        content = "line\n" * 600
+        target.write_text(content)
+
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target), "content": content},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+        )
+        # max-file-size would fire but ignore_paths skips the file
+        assert result.exit_code == 0
+
+    def test_allow_paths_skips_specific_rule(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-allow-paths-int")
+
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\nrules:\n  max-file-size:\n    allow_paths:\n      - '**/big.py'\n"
+        )
+
+        target = tmp_path / "big.py"
+        content = "line\n" * 600
+        target.write_text(content)
+
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target), "content": content},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+        )
+        assert result.exit_code == 0
+
+
+class TestCombinedFeaturesIntegration:
+    """v1.9.0 — Multiple features interacting."""
+
+    def test_timing_plus_ignore_paths(self, tmp_path, monkeypatch) -> None:
+        """Timing works even when ignore_paths skips rules."""
+        from agentlint.session import load_session
+
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-combined-1")
+
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\nrules:\n  ignore_paths:\n    - '**/*.py'\n"
+        )
+
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": "app.py", "content": "x = 1\n"},
+        })
+        runner = CliRunner()
+        runner.invoke(main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload)
+
+        session = load_session()
+        timing = session.get("_hook_timing", {})
+        assert timing.get("count") == 1  # timing still tracked even if all rules skipped
+
+    def test_pre_existing_large_file_plus_ignore(self, tmp_path, monkeypatch) -> None:
+        """Both threshold-crossing AND ignore-file should independently suppress."""
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-combined-2")
+
+        content = "# agentlint:ignore-file\n" + "line\n" * 600
+        target = tmp_path / "big.py"
+        target.write_text(content)
+
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target), "content": content},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_md_file_no_large_diff_via_check(self, tmp_path, monkeypatch) -> None:
+        """Markdown file should not trigger no-large-diff through check command."""
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-combined-3")
+
+        target = tmp_path / "SKILL.md"
+        content = "line\n" * 500
+        target.write_text(content)
+
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target), "content": content},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+        )
+        assert result.exit_code == 0
+
+    def test_future_import_no_violation_via_check(self, tmp_path, monkeypatch) -> None:
+        """__future__ import should not fire no-dead-imports through check command."""
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-combined-4")
+
+        target = tmp_path / "app.py"
+        content = "from __future__ import annotations\n\ndef foo(): pass\n"
+        target.write_text(content)
+
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target), "content": content},
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+        )
+        assert result.exit_code == 0

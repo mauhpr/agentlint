@@ -176,6 +176,7 @@ class Reporter:
         cb_state = state.get("circuit_breaker", {})
         spawned = state.get("subagents_spawned", [])
         audits = state.get("subagent_audits", [])
+        hook_timing = state.get("_hook_timing", {})
 
         if output_format == "json":
             data = {
@@ -196,6 +197,12 @@ class Reporter:
                 "subagents_spawned": len(spawned),
                 "subagents_audited": len(audits),
             }
+            if hook_timing:
+                data["hook_timing"] = {
+                    "total_ms": round(hook_timing.get("total_ms", 0), 1),
+                    "count": hook_timing.get("count", 0),
+                    "avg_ms": round(hook_timing.get("total_ms", 0) / max(hook_timing.get("count", 1), 1), 1),
+                }
             # Add circuit breaker degraded rules
             degraded = {
                 rid: data_cb for rid, data_cb in cb_state.items()
@@ -221,6 +228,16 @@ class Reporter:
             parts.append(f"{total_bytes:,} bytes written")
         if parts:
             lines.append(" | ".join(parts))
+
+        # Hook timing
+        if hook_timing and hook_timing.get("count", 0) > 0:
+            total_ms = hook_timing["total_ms"]
+            count = hook_timing["count"]
+            avg_ms = total_ms / count
+            if total_ms >= 1000:
+                lines.append(f"Hook latency: {count} evaluations, avg {avg_ms:.0f}ms, total {total_ms / 1000:.1f}s")
+            else:
+                lines.append(f"Hook latency: {count} evaluations, avg {avg_ms:.0f}ms, total {total_ms:.0f}ms")
 
         # Files
         file_parts = []

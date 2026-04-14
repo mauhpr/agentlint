@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 
 from agentlint.circuit_breaker import apply_circuit_breaker
 from agentlint.config import AgentLintConfig, get_rule_setting
@@ -40,6 +42,22 @@ class Engine:
                 continue
             if not rule.matches_event(context.event):
                 continue
+
+            # Global ignore_paths — skip all rules for matching files
+            if context.file_path and context.config:
+                ignore_paths = context.config.get("ignore_paths", [])
+                if isinstance(ignore_paths, list) and ignore_paths:
+                    basename = os.path.basename(context.file_path)
+                    if any(fnmatch(context.file_path, p) or fnmatch(basename, p) for p in ignore_paths):
+                        continue
+
+            # Per-rule allow_paths — skip this specific rule for matching files
+            if context.file_path and context.config:
+                rule_allow = get_rule_setting(context.config, rule.id, "allow_paths", [])
+                if isinstance(rule_allow, list) and rule_allow:
+                    basename = os.path.basename(context.file_path)
+                    if any(fnmatch(context.file_path, p) or fnmatch(basename, p) for p in rule_allow):
+                        continue
 
             result.rules_evaluated += 1
 

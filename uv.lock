@@ -4,7 +4,7 @@ requires-python = ">=3.11"
 
 [[package]]
 name = "agentlint"
-version = "1.7.3"
+version = "1.8.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
