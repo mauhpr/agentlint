@@ -85,6 +85,161 @@ class TestMaxFileSize:
         assert "+50 over" in violations[0].message
         assert "Remove 50 lines" in violations[0].suggestion
 
+    # --- v1.9.0: threshold-crossing tests (file_content_before) ---
+
+    def test_pre_existing_large_file_no_fire(self):
+        """Editing a pre-existing large file should NOT fire."""
+        content_before = "line\n" * 1600
+        content_after = "line\n" * 1603
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "big.py"},
+            project_dir="/tmp/project",
+            file_content=content_after,
+            file_content_before=content_before,
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_new_file_over_limit_fires(self):
+        """New file (no file_content_before) over limit should fire."""
+        content = "line\n" * 600
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "new.py"},
+            project_dir="/tmp/project",
+            file_content=content,
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_file_crosses_threshold(self):
+        """File going from 490 to 510 lines should fire (crosses 500 limit)."""
+        content_before = "line\n" * 490
+        content_after = "line\n" * 510
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "growing.py"},
+            project_dir="/tmp/project",
+            file_content=content_after,
+            file_content_before=content_before,
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_file_shrinks_still_over(self):
+        """File shrinking from 600 to 550 (still over limit) should NOT fire."""
+        content_before = "line\n" * 600
+        content_after = "line\n" * 550
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "big.py"},
+            project_dir="/tmp/project",
+            file_content=content_after,
+            file_content_before=content_before,
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_file_shrinks_below_limit(self):
+        """File shrinking from 550 to 490 (below limit) should NOT fire."""
+        content_before = "line\n" * 550
+        content_after = "line\n" * 490
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "shrinking.py"},
+            project_dir="/tmp/project",
+            file_content=content_after,
+            file_content_before=content_before,
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_file_content_before_none_fires(self):
+        """None before (new file) with 600 lines after should fire."""
+        content = "line\n" * 600
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "new.py"},
+            project_dir="/tmp/project",
+            file_content=content,
+            file_content_before=None,
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_file_content_before_empty_fires(self):
+        """Empty string before with 600 lines after should fire."""
+        content = "line\n" * 600
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "new.py"},
+            project_dir="/tmp/project",
+            file_content=content,
+            file_content_before="",
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_custom_limit_pre_existing_exempt(self):
+        """Custom limit=200, file 300 before, 303 after → no fire (pre-existing)."""
+        content_before = "line\n" * 300
+        content_after = "line\n" * 303
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "big.py"},
+            project_dir="/tmp/project",
+            file_content=content_after,
+            file_content_before=content_before,
+        )
+        ctx.config = {"max-file-size": {"limit": 200}}
+        violations = self.rule.evaluate(ctx)
+        assert violations == []
+
+    def test_zero_line_change_large_file(self):
+        """No change (600 before, 600 after) should NOT fire."""
+        content = "line\n" * 600
+        ctx = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "stable.py"},
+            project_dir="/tmp/project",
+            file_content=content,
+            file_content_before=content,
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_exactly_at_limit_no_fire_and_crossing(self):
+        """500 before, 500 after → no fire; 499 before, 501 after → fires."""
+        content_at = "line\n" * 500
+        ctx_at = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "exact.py"},
+            project_dir="/tmp/project",
+            file_content=content_at,
+            file_content_before=content_at,
+        )
+        assert self.rule.evaluate(ctx_at) == []
+
+        content_before = "line\n" * 499
+        content_after = "line\n" * 501
+        ctx_cross = RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "crossing.py"},
+            project_dir="/tmp/project",
+            file_content=content_after,
+            file_content_before=content_before,
+        )
+        violations = self.rule.evaluate(ctx_cross)
+        assert len(violations) == 1
+
 
 # ---------------------------------------------------------------------------
 # DriftDetector

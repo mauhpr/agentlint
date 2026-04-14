@@ -173,7 +173,18 @@ def check(event: str, project_dir: str | None):
         effective_config = config.with_packs(effective_packs)
 
     engine = Engine(config=effective_config, rules=rules)
+    start_time = time.time()
     result = engine.evaluate(context)
+    elapsed_ms = (time.time() - start_time) * 1000
+
+    # Track hook timing in session state
+    timing = session_state.setdefault("_hook_timing", {"total_ms": 0.0, "count": 0})
+    timing["total_ms"] += elapsed_ms
+    timing["count"] += 1
+
+    # Apply inline ignore directives (# agentlint:ignore-file, etc.)
+    from agentlint.filters import filter_inline_ignores
+    result.violations = filter_inline_ignores(result.violations, context.file_content)
 
     # Track cumulative violation counts for session summary
     vlog = session_state.setdefault("violation_log", {

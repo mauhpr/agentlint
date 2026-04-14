@@ -183,6 +183,49 @@ rules:
     auto_suppress_after: 2
 ```
 
+## Ignoring paths
+
+Skip rules for specific files or directories using `ignore_paths` (global) or per-rule `allow_paths`.
+
+### Global `ignore_paths`
+
+Skip ALL rules for files matching any pattern:
+
+```yaml
+rules:
+  ignore_paths:
+    - "**/legacy/**"
+    - "**/generated/**"
+    - "**/hybrid_parser.py"
+```
+
+Patterns use `fnmatch` glob syntax. Matches against both the full file path and the basename.
+
+### Per-rule `allow_paths`
+
+Skip a specific rule for matching files:
+
+```yaml
+rules:
+  max-file-size:
+    allow_paths: ["**/hybrid_parser.py", "**/legacy_*.py"]
+  naming-conventions:
+    allow_paths: ["**/generated/**"]
+```
+
+### Inline ignore directives
+
+Add comments directly in source files:
+
+```python
+# agentlint:ignore-file           — skip all rules for this file
+# agentlint:ignore max-file-size  — skip a specific rule for this file
+# agentlint:ignore-next-line      — skip violations on the next line
+x = very_long_expression(...)
+```
+
+All three forms suppress both WARNING and ERROR violations (explicit user intent).
+
 ## Universal rules reference
 
 ### `no-secrets` (PreToolUse, ERROR)
@@ -242,10 +285,11 @@ Warns on ad-hoc package installation:
 
 ### `max-file-size` (PostToolUse, WARNING)
 
-Warns when a written/edited file exceeds a line count threshold.
+Warns when a file crosses the line-count threshold. Only fires when a file **grows past** the limit — editing a pre-existing large file does not trigger. Shows `+N over` in the message with an actionable suggestion.
 
 **Config options:**
 - `limit` — Maximum lines (default: `500`)
+- `allow_paths` — Skip this rule for matching files (e.g., `["**/hybrid_parser.py"]`)
 
 ### `drift-detector` (PostToolUse, WARNING)
 
@@ -614,7 +658,7 @@ Warns when error handling patterns (`try/except`, `.catch()`, null checks) are r
 
 ### `no-large-diff` (PostToolUse, WARNING)
 
-Warns when a single Write/Edit adds or removes too many lines. Test files are exempt by default — comprehensive tests are inherently verbose and should not be penalized.
+Warns when a single Write/Edit adds or removes too many lines. Test files and non-code files (`.md`, `.yml`, `.json`, etc.) are exempt by default.
 
 **Config options:**
 - `max_lines_added` — Maximum lines added (default: `200`)

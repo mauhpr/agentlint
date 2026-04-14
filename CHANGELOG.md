@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.9.0 (2026-04-14) — Brownfield Noise Reduction
+
+Major release addressing the #1 user complaint: noise on established codebases with large pre-existing files.
+
+### Features
+
+- **Global `ignore_paths`** — Skip all rules for matching files: `rules: { ignore_paths: ["**/legacy/**"] }`. Uses fnmatch glob patterns.
+- **Per-rule `allow_paths`** — Skip specific rules for matching files: `rules: { max-file-size: { allow_paths: ["**/big.py"] } }`. Works with `get_rule_setting` cascade.
+- **Inline ignore directives** — `# agentlint:ignore-file`, `# agentlint:ignore <rule-id>`, `# agentlint:ignore-next-line`. Suppresses both WARNING and ERROR violations (explicit user intent).
+- **Hook timing info** — `agentlint report --summary` shows total evaluation time and average per hook call. Helps diagnose slow sessions.
+
+### Fixes
+
+- **`max-file-size` only fires when crossing threshold** — Editing a pre-existing 1600-line file no longer triggers. Only fires when a file grows past the limit (new file or existing file that crosses).
+- **`no-large-diff` exempts non-code files** — `.md`, `.yml`, `.json`, `.txt` files are exempt by default. Skill/prompt files no longer trigger.
+- **`no-dead-imports` `__future__` fix** — `from __future__ import annotations` no longer flagged as unused.
+
+### Tests
+
+121 new tests. Total: 1755 tests, 97% coverage.
+
 ## v1.8.1 (2026-04-13) — Alembic Migration Exemption
 
 ### Fixes

@@ -24,6 +24,10 @@ def _extract_python_names(content: str) -> list[str]:
     """Extract imported names from Python import statements."""
     names: list[str] = []
     for match in _PY_IMPORT_RE.finditer(content):
+        # Skip __future__ imports — they are side-effect imports, never referenced in code
+        line = match.group(0).strip()
+        if line.startswith("from __future__"):
+            continue
         imported = match.group(1)
         # Handle "from x import a, b as c" → extract "a", "c"
         for item in imported.split(","):

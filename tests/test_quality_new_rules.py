@@ -180,6 +180,99 @@ class TestNoLargeDiff:
         )
         assert rule.evaluate(ctx) == []
 
+    # --- v1.9.0: non-code file exemption tests ---
+
+    def test_md_file_exempt(self):
+        """Markdown files should be exempt from no-large-diff."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/docs/README.md",
+            file_content="line\n" * 500,
+            file_content_before="",
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_yml_file_exempt(self):
+        """YAML files should be exempt from no-large-diff."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/config/deploy.yml",
+            file_content="line\n" * 500,
+            file_content_before="",
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_json_file_exempt(self):
+        """JSON files should be exempt from no-large-diff."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/data/fixtures.json",
+            file_content="line\n" * 500,
+            file_content_before="",
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_txt_file_exempt(self):
+        """Text files should be exempt from no-large-diff."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/notes/todo.txt",
+            file_content="line\n" * 500,
+            file_content_before="",
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_py_file_still_checked(self):
+        """Python files should still trigger no-large-diff."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/src/app.py",
+            file_content="line\n" * 500,
+            file_content_before="",
+        )
+        assert len(rule.evaluate(ctx)) == 1
+
+    def test_ts_file_still_checked(self):
+        """TypeScript files should still trigger no-large-diff."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/src/app.ts",
+            file_content="line\n" * 500,
+            file_content_before="",
+        )
+        assert len(rule.evaluate(ctx)) == 1
+
+    def test_tsx_file_still_checked(self):
+        """TSX files should still trigger no-large-diff."""
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/src/Component.tsx",
+            file_content="line\n" * 500,
+            file_content_before="",
+        )
+        assert len(rule.evaluate(ctx)) == 1
+
+    def test_custom_extensions(self):
+        """Config extensions: ['.py'] should only check .py, exempt .ts."""
+        rule = NoLargeDiff()
+        # .ts should be exempt when only .py is in extensions
+        ctx_ts = _make_context(
+            file_path="/project/src/app.ts",
+            file_content="line\n" * 500,
+            file_content_before="",
+            config={"no-large-diff": {"extensions": [".py"]}},
+        )
+        assert rule.evaluate(ctx_ts) == []
+
+        # .py should still be checked
+        ctx_py = _make_context(
+            file_path="/project/src/app.py",
+            file_content="line\n" * 500,
+            file_content_before="",
+            config={"no-large-diff": {"extensions": [".py"]}},
+        )
+        assert len(rule.evaluate(ctx_py)) == 1
+
 
 # === no-file-creation-sprawl ===
 
@@ -442,3 +535,25 @@ class TestNamingConventions:
             config={"naming-conventions": {"migration_paths": ["db/revisions"]}},
         )
         assert rule.evaluate(ctx) == []
+
+    # --- v1.9.0: Django migration naming tests ---
+
+    def test_django_migration_exempt(self):
+        """Django migration files should be exempt (path contains 'migration')."""
+        rule = NamingConventions()
+        ctx = self._pre_context("/project/app/migrations/0001_initial.py")
+        assert rule.evaluate(ctx) == []
+
+    def test_django_migration_numbered_exempt(self):
+        """Numbered Django migration files should be exempt."""
+        rule = NamingConventions()
+        ctx = self._pre_context("/project/myapp/migrations/0002_add_users.py")
+        assert rule.evaluate(ctx) == []
+
+    def test_non_migration_numeric_prefix_not_exempt(self):
+        """Numeric-prefix files outside migrations should NOT be exempt."""
+        rule = NamingConventions()
+        violations = rule.evaluate(
+            self._pre_context("/project/src/0001_config.py"),
+        )
+        assert len(violations) == 1
