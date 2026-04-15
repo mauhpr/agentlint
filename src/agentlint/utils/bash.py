@@ -1,6 +1,38 @@
 """Bash command parsing utilities."""
 from __future__ import annotations
 
+# Cloud/infra CLI tools whose subcommands (cp, mv, rm, etc.) are NOT
+# shell file operations. When argv[0] is one of these, file-write and
+# some destructive-command patterns should be skipped.
+KNOWN_CLI_TOOLS = {
+    "bq", "gcloud", "gsutil", "aws", "az", "kubectl", "helm",
+    "terraform", "pulumi", "docker", "podman", "heroku", "flyctl",
+    "scp", "rsync", "rclone",
+}
+
+
+def get_command_binary(command: str) -> str:
+    """Extract the first token (binary name) from a shell command string.
+
+    Handles common prefixes: ``sudo cmd``, ``env VAR=val cmd``,
+    ``nohup cmd``. Returns the actual binary, not the wrapper.
+    """
+    parts = command.strip().split()
+    if not parts:
+        return ""
+    # Skip common wrappers
+    i = 0
+    while i < len(parts):
+        token = parts[i]
+        if token in ("sudo", "nohup", "nice", "time", "strace"):
+            i += 1
+        elif token == "env" or "=" in token:
+            i += 1
+        else:
+            break
+    return parts[i] if i < len(parts) else parts[0]
+
+
 def strip_string_args(command: str) -> str:
     """Strip content inside double-quoted string arguments.
 

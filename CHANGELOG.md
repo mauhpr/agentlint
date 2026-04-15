@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.9.1 (2026-04-14) — CLI Tool Awareness
+
+### Fixes
+
+- **Cloud CLI tool awareness** — `bq cp`, `aws s3 cp`, `kubectl cp`, `gsutil cp` and other cloud CLI subcommands no longer trigger `no-bash-file-write`. Known CLI tools recognized by binary name. Configurable via `safe_binaries`.
+- **`no-destructive-commands` strip + CLI skip** — `bq query "DROP TABLE foo"` no longer fires. Quoted SQL is stripped, and known CLI tools skip SQL patterns. Shell-destructive patterns (rm -rf) still always fire.
+- **`--force-with-lease` differentiated** — `--force` to main = ERROR, `--force-with-lease` to main = WARNING, `--force-with-lease` to feature = INFO.
+- **`commit-message-format` skips `--no-edit`** — `git commit --amend --no-edit` no longer lints the preserved message.
+- **`dependency-hygiene` message improved** — Suggestion now mentions global dev tools can be ignored.
+
+### Tests
+
+27 new tests. Total: 1782 tests, 97% coverage.
+
 ## v1.9.0 (2026-04-14) — Brownfield Noise Reduction
 
 Major release addressing the #1 user complaint: noise on established codebases with large pre-existing files.

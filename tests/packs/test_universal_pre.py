@@ -12,6 +12,7 @@ from agentlint.packs.universal.no_push_to_main import NoPushToMain
 from agentlint.packs.universal.no_secrets import NoSecrets
 from agentlint.packs.universal.no_skip_hooks import NoSkipHooks
 from agentlint.packs.universal.no_test_weakening import NoTestWeakening
+from agentlint.packs.quality.commit_message_format import CommitMessageFormat
 
 
 def _ctx(tool_name: str, tool_input: dict, config: dict | None = None) -> RuleContext:
@@ -204,14 +205,29 @@ class TestNoForcePush:
         assert len(violations) == 1
         assert violations[0].severity == Severity.WARNING
 
-    def test_blocks_force_with_lease_to_main(self):
+    def test_force_with_lease_to_main_is_warning(self):
+        """--force-with-lease to main is WARNING (safer than --force)."""
         ctx = _ctx("Bash", {"command": "git push --force-with-lease origin main"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
-        assert violations[0].severity == Severity.ERROR
+        assert violations[0].severity == Severity.WARNING
 
     def test_warns_force_push_no_branch(self):
         ctx = _ctx("Bash", {"command": "git push -f"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.WARNING
+
+    def test_force_with_lease_no_branch_is_info(self):
+        """--force-with-lease to non-protected branch is INFO (low risk)."""
+        ctx = _ctx("Bash", {"command": "git push --force-with-lease origin feature"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.INFO
+
+    def test_force_push_feature_branch_is_warning(self):
+        """--force to non-protected branch is WARNING."""
+        ctx = _ctx("Bash", {"command": "git push --force origin feature"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
         assert violations[0].severity == Severity.WARNING
@@ -1126,6 +1142,71 @@ class TestNoDestructiveCommandsConfig:
         })
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
+
+
+class TestNoDestructiveCommandsCLITools:
+    """v1.9.1: CLI tool awareness for SQL patterns."""
+
+    rule = NoDestructiveCommands()
+
+    def test_bq_query_drop_table_not_blocked(self):
+        """bq query 'DROP TABLE' is a controlled BQ operation."""
+        ctx = _ctx("Bash", {"command": 'bq query "DROP TABLE dataset.table"'})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_bq_query_drop_database_not_blocked(self):
+        ctx = _ctx("Bash", {"command": 'bq query "DROP DATABASE mydb"'})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_regular_drop_table_still_blocked(self):
+        """DROP TABLE outside cloud CLI context should still fire."""
+        ctx = _ctx("Bash", {"command": "psql -c 'DROP TABLE users'"})
+        # psql is not in KNOWN_CLI_TOOLS, and DROP TABLE is unquoted in the stripped version
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) >= 1
+
+    def test_rm_rf_still_blocked_with_bq(self):
+        """rm -rf should always be caught, even if piped after bq."""
+        ctx = _ctx("Bash", {"command": "rm -rf /tmp/export && bq query 'SELECT 1'"})
+        violations = self.rule.evaluate(ctx)
+        assert any("rm -rf" in v.message for v in violations)
+
+    def test_unquoted_drop_table_still_blocked(self):
+        """DROP TABLE not inside quotes should still fire."""
+        ctx = _ctx("Bash", {"command": "DROP TABLE users"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) >= 1
+
+
+class TestCommitMessageNoEdit:
+    """v1.9.1: --no-edit skips commit message linting."""
+
+    rule = CommitMessageFormat()
+
+    def test_amend_no_edit_skipped(self):
+        ctx = _ctx("Bash", {"command": "git commit --amend --no-edit"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_amend_with_message_still_linted(self):
+        ctx = _ctx("Bash", {"command": 'git commit --amend -m "bad message no type"'})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) >= 1
+
+    def test_no_edit_without_amend(self):
+        ctx = _ctx("Bash", {"command": "git commit --no-edit"})
+        assert self.rule.evaluate(ctx) == []
+
+
+class TestDependencyHygieneMessage:
+    """v1.9.1: Warning message mentions global dev tools."""
+
+    rule = DependencyHygiene()
+
+    def test_pip_message_mentions_global_tools(self):
+        ctx = _ctx("Bash", {"command": "pip install agentlint"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert "global" in violations[0].suggestion.lower()
 
 
 # ---------------------------------------------------------------------------

@@ -109,8 +109,16 @@ class NoBashFileWrite(Rule):
 
         # Strip quoted string arguments to avoid false positives on content
         # like: gh pr create --body "... cat > file ..."
-        from agentlint.utils.bash import strip_string_args
+        from agentlint.utils.bash import KNOWN_CLI_TOOLS, get_command_binary, strip_string_args
         stripped = strip_string_args(command)
+
+        # Skip known cloud/infra CLI tools — their subcommands (cp, mv)
+        # are not shell file operations
+        rule_config = context.config.get(self.id, {}) if context.config else {}
+        safe_binaries = set(rule_config.get("safe_binaries", []))
+        binary = get_command_binary(command)
+        if binary in KNOWN_CLI_TOOLS or binary in safe_binaries:
+            return []
 
         # Load config.
         allow_patterns: list[str] = get_rule_setting(context.config, self.id, "allow_patterns", [])
