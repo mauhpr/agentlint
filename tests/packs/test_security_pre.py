@@ -132,6 +132,45 @@ class TestNoBashFileWrite:
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
+    # --- CLI tool awareness (v1.9.1) ---
+
+    def test_bq_cp_not_blocked(self):
+        """bq cp is a BigQuery table copy, not a file copy."""
+        ctx = _ctx("Bash", {"command": "bq cp dataset.table1 dataset.table2"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_aws_s3_cp_not_blocked(self):
+        """aws s3 cp is an S3 object copy, not a file copy."""
+        ctx = _ctx("Bash", {"command": "aws s3 cp s3://bucket/key /tmp/file"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_kubectl_cp_not_blocked(self):
+        """kubectl cp copies files to/from pods, not local file ops."""
+        ctx = _ctx("Bash", {"command": "kubectl cp pod:/path /local/path"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_gsutil_cp_not_blocked(self):
+        ctx = _ctx("Bash", {"command": "gsutil cp gs://bucket/file /tmp/"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_regular_cp_still_blocked(self):
+        """Regular shell cp should still be caught."""
+        ctx = _ctx("Bash", {"command": "cp /etc/passwd /tmp/stolen"})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_sudo_bq_not_blocked(self):
+        """sudo bq cp should also be recognized as a CLI tool."""
+        ctx = _ctx("Bash", {"command": "sudo bq cp dataset.t1 dataset.t2"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_custom_safe_binaries(self):
+        """User-configured safe_binaries should also be skipped."""
+        ctx = _ctx("Bash", {"command": "mycli cp source dest"}, config={
+            "no-bash-file-write": {"safe_binaries": ["mycli"]},
+        })
+        assert self.rule.evaluate(ctx) == []
+
     # --- Allowlist ---
 
     def test_allows_log_path(self):

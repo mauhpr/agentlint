@@ -86,6 +86,12 @@ class NoDestructiveCommands(Rule):
         if not command:
             return []
 
+        # Strip quoted string arguments to avoid false positives on SQL
+        # inside cloud CLI commands: bq query "DROP TABLE foo"
+        from agentlint.utils.bash import KNOWN_CLI_TOOLS, get_command_binary, strip_string_args
+        stripped = strip_string_args(command)
+        binary = get_command_binary(command)
+
         # Load config.
         rule_config = context.config.get(self.id, {})
         extra_safe_targets: list[str] = rule_config.get("safe_rm_targets", [])
@@ -99,7 +105,7 @@ class NoDestructiveCommands(Rule):
 
         violations: list[Violation] = []
 
-        # Catastrophic rm -rf targets (ERROR severity).
+        # Catastrophic rm -rf targets (ERROR severity) — always check, even for CLI tools.
         if _RM_RF_RE.search(command) and _is_catastrophic_rm(command):
             violations.append(
                 Violation(
@@ -119,7 +125,9 @@ class NoDestructiveCommands(Rule):
                 )
             )
 
-        if _DROP_TABLE_RE.search(command):
+        # SQL patterns use stripped command (removes quoted content) and
+        # skip known CLI tools whose SQL is a controlled operation
+        if _DROP_TABLE_RE.search(stripped) and binary not in KNOWN_CLI_TOOLS:
             violations.append(
                 Violation(
                     rule_id=self.id,
@@ -129,7 +137,7 @@ class NoDestructiveCommands(Rule):
                 )
             )
 
-        if _DROP_DB_RE.search(command):
+        if _DROP_DB_RE.search(stripped) and binary not in KNOWN_CLI_TOOLS:
             violations.append(
                 Violation(
                     rule_id=self.id,

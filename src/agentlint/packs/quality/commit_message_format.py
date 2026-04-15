@@ -41,6 +41,10 @@ class CommitMessageFormat(Rule):
         if not command:
             return []
 
+        # --no-edit preserves the existing message, nothing to lint
+        if "--no-edit" in command:
+            return []
+
         # Try heredoc format first (git commit -m "$(cat <<'EOF'\n...\nEOF\n)")
         heredoc_match = _HEREDOC_MSG_RE.search(command)
         if heredoc_match:

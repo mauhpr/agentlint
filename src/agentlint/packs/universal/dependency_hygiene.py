@@ -48,7 +48,7 @@ class DependencyHygiene(Rule):
                     rule_id=self.id,
                     message="Ad-hoc pip install detected",
                     severity=self.severity,
-                    suggestion="Use poetry/uv add to keep dependencies in a lockfile.",
+                    suggestion="Use poetry/uv add to keep dependencies in a lockfile. If installing a global dev tool (e.g., ruff, pre-commit), this warning can be ignored.",
                 )
             )
 
