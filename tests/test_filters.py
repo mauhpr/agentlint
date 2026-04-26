@@ -254,3 +254,97 @@ class TestFilterInlineIgnores:
         v1 = _v(rule_id="specific-rule")
         v2 = _v(rule_id="other-rule")
         assert filter_inline_ignores([v1, v2], content) == []  # ignore-file wins
+
+
+class TestFilterInlineIgnoresReason:
+    """v1.10.0: optional reason="..." annotation on per-rule ignores."""
+
+    def test_ignore_with_double_quoted_reason_suppresses(self):
+        content = '# agentlint:ignore my-rule reason="see issue #42"\n'
+        violations = [_v("my-rule")]
+        assert filter_inline_ignores(violations, content) == []
+
+    def test_ignore_with_single_quoted_reason_suppresses(self):
+        content = "# agentlint:ignore my-rule reason='temp scratch dir'\n"
+        violations = [_v("my-rule")]
+        assert filter_inline_ignores(violations, content) == []
+
+    def test_reason_recorded_in_session_state(self):
+        content = '# agentlint:ignore my-rule reason="see #42"\n'
+        state: dict = {}
+        filter_inline_ignores(
+            [_v("my-rule")],
+            content,
+            file_path="src/foo.py",
+            session_state=state,
+        )
+        assert state["inline_ignores"] == [
+            {"file": "src/foo.py", "rule_id": "my-rule", "reason": "see #42"}
+        ]
+
+    def test_bare_ignore_records_none_reason(self):
+        content = "# agentlint:ignore my-rule\n"
+        state: dict = {}
+        filter_inline_ignores(
+            [_v("my-rule")],
+            content,
+            file_path="src/bar.py",
+            session_state=state,
+        )
+        assert state["inline_ignores"] == [
+            {"file": "src/bar.py", "rule_id": "my-rule", "reason": None}
+        ]
+
+    def test_ignore_file_records_per_violation(self):
+        content = "# agentlint:ignore-file\n"
+        state: dict = {}
+        violations = [_v("rule-a"), _v("rule-b")]
+        filter_inline_ignores(
+            violations,
+            content,
+            file_path="src/baz.py",
+            session_state=state,
+        )
+        # Both rules logged (no reason — ignore-file is anonymous).
+        assert {e["rule_id"] for e in state["inline_ignores"]} == {"rule-a", "rule-b"}
+
+    def test_no_session_state_does_not_crash(self):
+        content = '# agentlint:ignore my-rule reason="x"\n'
+        # Omitting session_state must not raise — recording is optional.
+        assert filter_inline_ignores([_v("my-rule")], content) == []
+
+    def test_unrelated_rule_not_recorded(self):
+        content = "# agentlint:ignore my-rule\n"
+        state: dict = {}
+        filter_inline_ignores(
+            [_v("other-rule")],
+            content,
+            file_path="src/x.py",
+            session_state=state,
+        )
+        assert state.get("inline_ignores", []) == []
+
+    def test_multiple_ignores_use_last_reason_when_repeated(self):
+        content = (
+            '# agentlint:ignore my-rule reason="first"\n'
+            '# agentlint:ignore my-rule reason="second"\n'
+        )
+        state: dict = {}
+        filter_inline_ignores(
+            [_v("my-rule")],
+            content,
+            file_path="x.py",
+            session_state=state,
+        )
+        assert state["inline_ignores"][0]["reason"] == "second"
+
+    def test_reason_with_angle_brackets(self):
+        content = '# agentlint:ignore my-rule reason="needs <script> support"\n'
+        state: dict = {}
+        filter_inline_ignores(
+            [_v("my-rule")],
+            content,
+            file_path="x.py",
+            session_state=state,
+        )
+        assert state["inline_ignores"][0]["reason"] == "needs <script> support"

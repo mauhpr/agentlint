@@ -19,8 +19,24 @@ from agentlint.models import Severity, Violation
 
 logger = logging.getLogger("agentlint")
 
-# Security-critical rules that must never be degraded or suppressed.
+# Security-critical rules that must never be degraded or suppressed by default.
+# Users may extend this via the ``circuit_breaker.never_degrade`` config key —
+# values are merged with the defaults so security rules cannot be removed.
 _CB_NEVER_DEGRADE: set[str] = {"no-secrets", "no-env-commit"}
+
+
+def _resolve_never_degrade(rules_config: dict) -> set[str]:
+    """Merge built-in ``_CB_NEVER_DEGRADE`` with user config.
+
+    The config key lives at ``rules_config["_circuit_breaker_global"]
+    ["never_degrade"]`` and accepts a list of rule ids the user wants
+    treated as real signals (never silently de-escalated). Built-in
+    security rules are always included so they can't be opted out.
+    """
+    extras = (
+        rules_config.get("_circuit_breaker_global", {}).get("never_degrade", [])
+    )
+    return _CB_NEVER_DEGRADE | set(extras)
 
 
 class CircuitBreakerState(Enum):
@@ -160,6 +176,9 @@ def apply_circuit_breaker(
     cb_store = session_state["circuit_breaker"]
     now = time.time()
 
+    # Resolve user-configured "never degrade" rules + built-in security set.
+    never_degrade = _resolve_never_degrade(rules_config)
+
     # Collect which rules fired in this evaluation
     fired_rule_ids: set[str] = set()
     for v in violations:
@@ -181,7 +200,7 @@ def apply_circuit_breaker(
     result: list[Violation] = []
     for v in violations:
         # Security-critical rules are ALWAYS protected — check before anything else
-        is_protected = v.rule_id in _CB_NEVER_DEGRADE
+        is_protected = v.rule_id in never_degrade
 
         config = _get_cb_config(v.rule_id, rules_config)
 
@@ -248,19 +267,39 @@ def apply_circuit_breaker(
         new_severity = _downgrade_severity(v.severity, effective_state)
 
         if new_severity is None:
-            # OPEN state — suppress the violation
+            # OPEN state — suppress the violation. Once per session, push
+            # an agent-visible notice into session_state so the UI/reporter
+            # surfaces it via the next event's additionalContext, rather
+            # than silently dropping the violation.
             logger.info(
                 "Circuit breaker: suppressing %s (fire_count=%d, state=open)",
                 v.rule_id, cb_data["fire_count"],
             )
+            if not cb_data.get("_open_notice_emitted"):
+                cb_data["_open_notice_emitted"] = True
+                pending = session_state.setdefault(
+                    "circuit_breaker_pending_notices", []
+                )
+                pending.append({
+                    "rule_id": v.rule_id,
+                    "fire_count": cb_data["fire_count"],
+                    "message": (
+                        f"Rule '{v.rule_id}' opened (fired {cb_data['fire_count']}x "
+                        "this session, suppressed). To re-enable: add "
+                        f"'# agentlint:ignore {v.rule_id} reason=\"...\"' near "
+                        "recurring violations, edit your .agentlint.toml, "
+                        "or restart your session."
+                    ),
+                })
             continue
 
-        # Build message with degradation context if severity changed
+        # Build message with compact degradation context if severity changed.
+        # Long-form per-rule transition history lives in the session summary
+        # so we don't train users to ignore violation text.
         msg = v.message
         if new_severity != v.severity:
             msg = (
-                f"[Circuit breaker: fired {cb_data['fire_count']}x, "
-                f"degraded from {v.severity.value} to {new_severity.value}] "
+                f"[degraded after {cb_data['fire_count']} fires — see summary] "
                 f"{v.message}"
             )
 

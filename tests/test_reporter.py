@@ -681,3 +681,128 @@ class TestFormatSessionSummary:
         session_state = {"changed_files": ["a.py", "b.py", "c.py"]}
         output = reporter.format_session_summary(session_state=session_state)
         assert "3 changed (git)" in output
+
+
+class TestSessionSummaryV1_10_0:
+    """v1.10.0: inline_ignores, circuit_breaker_per_rule, rule_fire_rates."""
+
+    def test_text_inline_ignores_with_reason(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "inline_ignores": [
+                {"file": "src/foo.py", "rule_id": "my-rule", "reason": "see #42"},
+            ],
+        }
+        output = reporter.format_session_summary(session_state=session_state)
+        assert "Inline Ignores" in output
+        assert "src/foo.py" in output
+        assert "my-rule" in output
+        assert "see #42" in output
+
+    def test_text_inline_ignores_without_reason(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "inline_ignores": [
+                {"file": "src/foo.py", "rule_id": "my-rule", "reason": None},
+            ],
+        }
+        output = reporter.format_session_summary(session_state=session_state)
+        assert "src/foo.py" in output
+        assert "my-rule" in output
+
+    def test_text_inline_ignores_truncated_to_ten(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        ignores = [
+            {"file": f"f{i}.py", "rule_id": "r", "reason": None}
+            for i in range(15)
+        ]
+        session_state = {"inline_ignores": ignores}
+        output = reporter.format_session_summary(session_state=session_state)
+        assert "and 5 more" in output
+
+    def test_json_inline_ignores_present(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "inline_ignores": [
+                {"file": "x.py", "rule_id": "r", "reason": "y"},
+            ],
+        }
+        output = reporter.format_session_summary(
+            session_state=session_state,
+            output_format="json",
+        )
+        data = json.loads(output)
+        assert data["inline_ignores"] == [
+            {"file": "x.py", "rule_id": "r", "reason": "y"}
+        ]
+
+    def test_json_circuit_breaker_per_rule_includes_transitions(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "circuit_breaker": {
+                "rule-a": {
+                    "fire_count": 4,
+                    "state": "degraded",
+                    "transitions": [
+                        {"from": "active", "to": "degraded", "ts": 0, "reason": "fire_count"},
+                    ],
+                },
+            },
+        }
+        output = reporter.format_session_summary(
+            session_state=session_state,
+            output_format="json",
+        )
+        data = json.loads(output)
+        assert "circuit_breaker_per_rule" in data
+        per_rule = data["circuit_breaker_per_rule"][0]
+        assert per_rule["rule_id"] == "rule-a"
+        assert per_rule["fire_count"] == 4
+        assert per_rule["state"] == "degraded"
+        assert len(per_rule["transitions"]) == 1
+
+    def test_json_rule_fire_rates_present(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        session_state = {
+            "violation_log": {
+                "total_evaluations": 100,
+                "total_blocked": 0,
+                "total_warnings": 0,
+                "total_info": 0,
+                "rule_violations": {"r-a": 12, "r-b": 3},
+            },
+        }
+        output = reporter.format_session_summary(
+            session_state=session_state,
+            output_format="json",
+        )
+        data = json.loads(output)
+        assert "rule_fire_rates" in data
+        # Sorted by fires descending
+        assert data["rule_fire_rates"][0]["rule_id"] == "r-a"
+        assert data["rule_fire_rates"][0]["fires"] == 12
+        assert data["rule_fire_rates"][0]["evaluations"] == 100
+        assert data["rule_fire_rates"][0]["rate"] == 0.12
+
+    def test_rule_fire_rates_omitted_when_no_evaluations(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        output = reporter.format_session_summary(
+            session_state={},
+            output_format="json",
+        )
+        data = json.loads(output)
+        assert "rule_fire_rates" not in data
+
+    def test_json_omits_inline_ignores_when_empty(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        output = reporter.format_session_summary(
+            session_state={},
+            output_format="json",
+        )
+        data = json.loads(output)
+        assert "inline_ignores" not in data
+
+    def test_text_no_inline_ignores_section_when_empty(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=0)
+        output = reporter.format_session_summary(session_state={})
+        assert "Inline Ignores" not in output

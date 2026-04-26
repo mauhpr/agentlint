@@ -182,9 +182,15 @@ def check(event: str, project_dir: str | None):
     timing["total_ms"] += elapsed_ms
     timing["count"] += 1
 
-    # Apply inline ignore directives (# agentlint:ignore-file, etc.)
+    # Apply inline ignore directives (# agentlint:ignore-file, etc.).
+    # Pass file_path + session_state so reasons surface in the summary.
     from agentlint.filters import filter_inline_ignores
-    result.violations = filter_inline_ignores(result.violations, context.file_content)
+    result.violations = filter_inline_ignores(
+        result.violations,
+        context.file_content,
+        file_path=context.file_path,
+        session_state=session_state,
+    )
 
     # Track cumulative violation counts for session summary
     vlog = session_state.setdefault("violation_log", {

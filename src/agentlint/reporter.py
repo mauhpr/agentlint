@@ -178,6 +178,28 @@ class Reporter:
         audits = state.get("subagent_audits", [])
         hook_timing = state.get("_hook_timing", {})
 
+        # v1.10.0 visibility additions: inline ignores (with reasons), per-rule
+        # circuit-breaker history, and per-rule fire rates so users can tune
+        # noisy rules from the summary alone.
+        inline_ignores = state.get("inline_ignores", [])
+        rule_fire_rates: list[dict] = []
+        if total_evals > 0:
+            for rid, count in sorted(rule_violations.items(), key=lambda x: x[1], reverse=True):
+                rule_fire_rates.append({
+                    "rule_id": rid,
+                    "fires": count,
+                    "evaluations": total_evals,
+                    "rate": round(count / total_evals, 4),
+                })
+        circuit_breaker_per_rule: list[dict] = []
+        for rid, cb_data in sorted(cb_state.items()):
+            circuit_breaker_per_rule.append({
+                "rule_id": rid,
+                "fire_count": cb_data.get("fire_count", 0),
+                "state": cb_data.get("state", "active"),
+                "transitions": cb_data.get("transitions", []),
+            })
+
         if output_format == "json":
             data = {
                 "evaluations": total_evals,
@@ -213,6 +235,15 @@ class Reporter:
                     {"rule_id": rid, "state": d.get("state"), "fire_count": d.get("fire_count", 0)}
                     for rid, d in sorted(degraded.items())
                 ]
+
+            # v1.10.0: surface visibility data so summaries are auditable
+            # without needing to read raw session state.
+            if inline_ignores:
+                data["inline_ignores"] = inline_ignores
+            if circuit_breaker_per_rule:
+                data["circuit_breaker_per_rule"] = circuit_breaker_per_rule
+            if rule_fire_rates:
+                data["rule_fire_rates"] = rule_fire_rates
             return json.dumps(data)
 
         # Text format
@@ -280,6 +311,22 @@ class Reporter:
                 s = data_cb.get("state", "unknown")
                 c = data_cb.get("fire_count", 0)
                 lines.append(f"  {rid} {s} ({c}x)")
+
+        # Inline ignores (v1.10.0): list overrides with their reasons so
+        # suppressions are auditable rather than anonymous.
+        if inline_ignores:
+            lines.append("")
+            lines.append(f"Inline Ignores ({len(inline_ignores)} total)")
+            for entry in inline_ignores[:10]:  # cap at 10 for readability
+                file_label = entry.get("file") or "<unknown>"
+                rule_id = entry.get("rule_id", "?")
+                reason = entry.get("reason")
+                if reason:
+                    lines.append(f"  {file_label} — {rule_id} — \"{reason}\"")
+                else:
+                    lines.append(f"  {file_label} — {rule_id}")
+            if len(inline_ignores) > 10:
+                lines.append(f"  ... and {len(inline_ignores) - 10} more")
 
         # Subagent activity
         if spawned or audits:
