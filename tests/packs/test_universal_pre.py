@@ -1166,8 +1166,15 @@ class TestNoDestructiveCommandsCLITools:
         assert len(violations) >= 1
 
     def test_rm_rf_still_blocked_with_bq(self):
-        """rm -rf should always be caught, even if piped after bq."""
-        ctx = _ctx("Bash", {"command": "rm -rf /tmp/export && bq query 'SELECT 1'"})
+        """rm -rf on a project path should always be caught, even if piped after bq.
+
+        Note: /tmp/* is now an ephemeral-safe path (v1.10.0); use a project path
+        to verify the rule still fires on shell rm regardless of CLI context.
+        """
+        ctx = _ctx(
+            "Bash",
+            {"command": "rm -rf /Users/me/projects/data && bq query 'SELECT 1'"},
+        )
         violations = self.rule.evaluate(ctx)
         assert any("rm -rf" in v.message for v in violations)
 
@@ -1176,6 +1183,80 @@ class TestNoDestructiveCommandsCLITools:
         ctx = _ctx("Bash", {"command": "DROP TABLE users"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) >= 1
+
+
+class TestNoDestructiveCommandsSafePaths:
+    """v1.10.0: rm -rf on ephemeral/scratch paths is exempt by default."""
+
+    rule = NoDestructiveCommands()
+
+    def test_rm_tmp_path_is_safe(self):
+        ctx = _ctx("Bash", {"command": "rm -rf /tmp/agentlint-xyz"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_rm_tmp_subdir_is_safe(self):
+        ctx = _ctx("Bash", {"command": "rm -rf /tmp/dar3_pptx_$$/build"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_rm_var_folders_is_safe(self):
+        ctx = _ctx(
+            "Bash",
+            {"command": "rm -rf /var/folders/abc/T/agentlint-cache"},
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_rm_private_tmp_is_safe(self):
+        ctx = _ctx("Bash", {"command": "rm -rf /private/tmp/scratch"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_rm_project_path_still_blocked(self):
+        ctx = _ctx("Bash", {"command": "rm -rf /Users/me/projects/dar3/data"})
+        violations = self.rule.evaluate(ctx)
+        assert any("rm -rf" in v.message for v in violations)
+
+    def test_rm_root_still_catastrophic(self):
+        ctx = _ctx("Bash", {"command": "rm -rf /"})
+        violations = self.rule.evaluate(ctx)
+        assert any(v.severity.value == "error" for v in violations)
+
+    def test_mixed_targets_one_unsafe_blocks(self):
+        # When one target is /tmp (safe) and another is project (unsafe),
+        # the rule should still fire because not ALL targets are safe.
+        ctx = _ctx(
+            "Bash",
+            {"command": "rm -rf /tmp/scratch /Users/me/projects/dar3/data"},
+        )
+        violations = self.rule.evaluate(ctx)
+        assert any("rm -rf" in v.message for v in violations)
+
+    def test_safe_path_prefixes_config_extends_defaults(self):
+        ctx = _ctx(
+            "Bash",
+            {"command": "rm -rf /custom/scratch/foo"},
+            config={
+                "no-destructive-commands": {
+                    "safe_path_prefixes": ["/custom/scratch/"]
+                }
+            },
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_safe_path_prefixes_does_not_disable_defaults(self):
+        # Adding a custom prefix should NOT disable the built-in /tmp
+        ctx = _ctx(
+            "Bash",
+            {"command": "rm -rf /tmp/foo"},
+            config={
+                "no-destructive-commands": {
+                    "safe_path_prefixes": ["/custom/scratch/"]
+                }
+            },
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_quoted_tmp_path_still_safe(self):
+        ctx = _ctx("Bash", {"command": "rm -rf '/tmp/path with spaces'"})
+        assert self.rule.evaluate(ctx) == []
 
 
 class TestCommitMessageNoEdit:

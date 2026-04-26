@@ -306,8 +306,8 @@ class TestApplyCircuitBreaker:
         warning_results = [v for v in result if v.message == "warn one"]
         # ERROR should be downgraded to WARNING (3rd fire = degraded)
         assert error_results[0].severity == Severity.WARNING
-        # Degraded message should include circuit breaker context
-        assert "Circuit breaker" in error_results[0].message
+        # Degraded message should include the v1.10.0 compact CB context.
+        assert "degraded after" in error_results[0].message
         # WARNING should remain WARNING
         assert warning_results[0].severity == Severity.WARNING
 
@@ -507,9 +507,131 @@ class TestCircuitBreakerEdgeCases:
         assert len(result) == 1
         # Should be degraded (3rd fire)
         assert result[0].severity == Severity.WARNING
-        # Message should contain circuit breaker context
-        assert "[Circuit breaker:" in result[0].message
-        assert "fired 3x" in result[0].message
-        assert "degraded from error to warning" in result[0].message
+        # v1.10.0 compact format: "[degraded after N fires — see summary]".
+        # Long-form per-rule transition history lives in the session summary
+        # so users aren't trained to skim past verbose violation prefixes.
+        assert "[degraded after" in result[0].message
+        assert "3 fires" in result[0].message
+        assert "see summary" in result[0].message
         # Original message should still be present
         assert "original msg" in result[0].message
+
+
+class TestCircuitBreakerNeverDegradeConfig:
+    """v1.10.0: ``circuit_breaker.never_degrade`` config extends defaults."""
+
+    def _make_violation(
+        self,
+        rule_id: str,
+        severity: Severity = Severity.ERROR,
+    ) -> Violation:
+        return Violation(rule_id=rule_id, message="msg", severity=severity)
+
+    def test_user_rule_added_to_never_degrade(self) -> None:
+        # Rule has fired 12 times — would normally be OPEN. With config,
+        # it should pass through as ERROR untouched.
+        session: dict = {"circuit_breaker": {
+            "my-rule": {
+                "fire_count": 12,
+                "clean_count": 0,
+                "first_fire_ts": time.time(),
+                "last_fire_ts": time.time(),
+                "state": "active",
+                "transitions": [],
+            },
+        }}
+        config = {
+            "_circuit_breaker_global": {"never_degrade": ["my-rule"]},
+        }
+        violations = [self._make_violation("my-rule")]
+        result = apply_circuit_breaker(violations, session, config)
+        assert len(result) == 1
+        assert result[0].severity == Severity.ERROR
+
+    def test_default_security_rules_still_protected(self) -> None:
+        session: dict = {"circuit_breaker": {
+            "no-secrets": {
+                "fire_count": 12,
+                "clean_count": 0,
+                "first_fire_ts": time.time(),
+                "last_fire_ts": time.time(),
+                "state": "active",
+                "transitions": [],
+            },
+        }}
+        # Even when user supplies an unrelated never_degrade list, the
+        # built-in security set must still apply.
+        config = {
+            "_circuit_breaker_global": {"never_degrade": ["my-rule"]},
+        }
+        violations = [self._make_violation("no-secrets")]
+        result = apply_circuit_breaker(violations, session, config)
+        assert result[0].severity == Severity.ERROR
+
+    def test_unprotected_rule_still_degrades(self) -> None:
+        session: dict = {"circuit_breaker": {
+            "noisy-rule": {
+                "fire_count": 2,
+                "clean_count": 0,
+                "first_fire_ts": time.time() - 60,
+                "last_fire_ts": time.time() - 30,
+                "state": "active",
+                "transitions": [],
+            },
+        }}
+        config = {"_circuit_breaker_global": {"never_degrade": ["my-rule"]}}
+        violations = [self._make_violation("noisy-rule")]
+        result = apply_circuit_breaker(violations, session, config)
+        # 3rd fire = degraded ERROR -> WARNING
+        assert result[0].severity == Severity.WARNING
+
+
+class TestCircuitBreakerOpenNotice:
+    """v1.10.0: when a rule transitions to OPEN, push an agent-visible notice."""
+
+    def _make_violation(self) -> Violation:
+        return Violation(
+            rule_id="noisy-rule",
+            message="msg",
+            severity=Severity.ERROR,
+        )
+
+    def test_open_state_pushes_notice(self) -> None:
+        # Pre-seed at fire_count=9 so the next fire crosses into OPEN (>=10).
+        session: dict = {"circuit_breaker": {
+            "noisy-rule": {
+                "fire_count": 9,
+                "clean_count": 0,
+                "first_fire_ts": time.time() - 600,
+                "last_fire_ts": time.time() - 60,
+                "state": "passive",
+                "transitions": [],
+            },
+        }}
+        violations = [self._make_violation()]
+        result = apply_circuit_breaker(violations, session, {})
+        # OPEN suppresses the violation entirely.
+        assert result == []
+        # And queues a notice for the reporter / next event.
+        notices = session.get("circuit_breaker_pending_notices", [])
+        assert len(notices) == 1
+        assert notices[0]["rule_id"] == "noisy-rule"
+        assert "noisy-rule" in notices[0]["message"]
+        assert "agentlint:ignore" in notices[0]["message"]
+
+    def test_open_notice_only_emitted_once_per_rule(self) -> None:
+        session: dict = {"circuit_breaker": {
+            "noisy-rule": {
+                "fire_count": 9,
+                "clean_count": 0,
+                "first_fire_ts": time.time() - 600,
+                "last_fire_ts": time.time() - 60,
+                "state": "passive",
+                "transitions": [],
+            },
+        }}
+        # First call crosses into OPEN, second is already-open.
+        apply_circuit_breaker([self._make_violation()], session, {})
+        apply_circuit_breaker([self._make_violation()], session, {})
+        notices = session.get("circuit_breaker_pending_notices", [])
+        assert len(notices) == 1

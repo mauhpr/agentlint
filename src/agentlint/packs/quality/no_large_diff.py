@@ -32,11 +32,26 @@ _DEFAULT_CODE_EXTENSIONS = {
     ".vue", ".svelte",
 }
 
+# Default migration directory fragments. A migration is a single
+# conceptual unit even when it generates a 200+ line file; splitting
+# it into smaller files reduces reviewability rather than improving it.
+_DEFAULT_MIGRATION_PATHS: tuple[str, ...] = (
+    "alembic/versions/",
+    "migrations/versions/",
+    "db/migrate/",
+)
+
 
 def _is_test_file(file_path: str, patterns: list[str]) -> bool:
     """Check if file_path basename matches any test file pattern."""
     basename = os.path.basename(file_path)
     return any(fnmatch.fnmatch(basename, p) for p in patterns)
+
+
+def _is_migration_file(file_path: str, migration_paths: list[str]) -> bool:
+    """Return True if ``file_path`` falls under any migration path fragment."""
+    normalised = file_path.replace("\\", "/")
+    return any(fragment and fragment in normalised for fragment in migration_paths)
 
 
 class NoLargeDiff(Rule):
@@ -70,6 +85,16 @@ class NoLargeDiff(Rule):
         if exempt_tests and context.file_path:
             patterns = rule_config.get("test_file_patterns", _DEFAULT_TEST_PATTERNS)
             if _is_test_file(context.file_path, patterns):
+                return []
+
+        # Exempt migrations — a 220-line Alembic migration is a single
+        # conceptual unit. The same ``migration_paths`` key is honoured
+        # by ``no_dangerous_migration`` (top-level + per-rule overrides).
+        if context.file_path:
+            migration_paths_global = context.config.get("migration_paths", []) if context.config else []
+            migration_paths_rule = rule_config.get("migration_paths", [])
+            migration_paths = list(_DEFAULT_MIGRATION_PATHS) + list(migration_paths_global) + list(migration_paths_rule)
+            if _is_migration_file(context.file_path, migration_paths):
                 return []
 
         max_added = rule_config.get("max_lines_added", _DEFAULT_MAX_ADDED)

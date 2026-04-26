@@ -183,6 +183,34 @@ rules:
     auto_suppress_after: 2
 ```
 
+### Circuit breaker (visibility & escape hatch)
+
+When an ERROR-severity rule fires repeatedly, the circuit breaker
+progressively de-escalates it (`ERROR → WARNING → INFO → suppressed`)
+so a noisy rule doesn't block the agent. Since v1.10.0 this is visible
+rather than silent:
+
+- **Compact violation prefix.** Degraded violations are tagged with
+  `[degraded after N fires — see summary]`.
+- **OPEN notice.** The first time a rule transitions to fully
+  suppressed state, an agent-visible notice queues into the next
+  event's `additionalContext` explaining how to re-enable.
+- **Per-rule history in summary.** `agentlint report --summary` shows
+  fire count, current state, and the full transition list per rule.
+
+The default "never degrade" set is `{"no-secrets", "no-env-commit"}`
+(security-critical). Extend it with project-specific rules you want
+treated as real signals:
+
+```yaml
+rules:
+  _circuit_breaker_global:
+    never_degrade: ["my-payment-validator", "no-pii-leak"]
+```
+
+The user-supplied list extends the built-in set; security defaults
+cannot be removed.
+
 ## Ignoring paths
 
 Skip rules for specific files or directories using `ignore_paths` (global) or per-rule `allow_paths`.
@@ -226,6 +254,44 @@ x = very_long_expression(...)
 
 All three forms suppress both WARNING and ERROR violations (explicit user intent).
 
+#### Optional `reason="..."` (v1.10.0+)
+
+Per-rule ignores accept an optional reason annotation:
+
+```python
+# agentlint:ignore no-bash-file-write reason="temp scratch dir, cleaned up below"
+echo "temp" > scratch.txt
+
+# agentlint:ignore no-large-diff reason='auto-generated alembic migration'
+```
+
+Reasons (single or double quoted) surface in the session summary
+(`agentlint report --summary`) so suppressions become auditable rather
+than anonymous. Bare ignores without a reason continue to work as
+before — the annotation is purely additive. Quoted strings cannot
+contain the matching quote character; reasons are intended to be short.
+
+### Ephemeral path exemptions (v1.10.0+)
+
+`no-destructive-commands` and `no-bash-file-write` recognize a default
+list of ephemeral / scratch path prefixes — `/tmp/`, `/var/folders/`,
+`/private/tmp/`. Operations targeting these paths (`rm -rf /tmp/foo`,
+`echo > /tmp/x.txt`, `tee /tmp/y.log`, ...) are exempt by default.
+
+Both rules accept a `safe_path_prefixes` list in their per-rule config
+to extend the defaults:
+
+```yaml
+rules:
+  no-destructive-commands:
+    safe_path_prefixes: ["/scratch/", "$TMPDIR/"]
+  no-bash-file-write:
+    safe_path_prefixes: ["/scratch/"]
+```
+
+Custom prefixes extend (not replace) the built-in safe set. Prefixes
+containing `$TMPDIR` are resolved against the environment at call time.
+
 ## Universal rules reference
 
 ### `no-secrets` (PreToolUse, ERROR)
@@ -263,7 +329,9 @@ Blocks `git push --force` or `git push -f` to `main` or `master` branches.
 Warns on destructive shell commands. Some patterns escalate to ERROR severity:
 
 **WARNING:**
-- `rm -rf` (except safe targets like `node_modules`, `dist`, `__pycache__`)
+- `rm -rf` (except safe build-artifact targets like `node_modules`, `dist`,
+  `__pycache__`, **and ephemeral paths under `/tmp/`, `/var/folders/`,
+  `/private/tmp/` since v1.10.0**)
 - `DROP TABLE`, `DROP DATABASE`
 - `git reset --hard`, `git clean -fd`
 - `chmod 777` (overly permissive)
@@ -271,11 +339,19 @@ Warns on destructive shell commands. Some patterns escalate to ERROR severity:
 - `kubectl delete namespace`
 
 **ERROR (catastrophic):**
-- `rm -rf /` or `rm -rf ~` (root/home deletion)
+- `rm -rf /` or `rm -rf ~` (root/home deletion) — fires even when the
+  ephemeral path exemption would otherwise apply.
 - `mkfs` (filesystem format)
 - `dd if=/dev/zero` (disk wipe)
 - Fork bombs
 - `git branch -D main/master` (protected branch deletion)
+
+**Config options:**
+- `safe_rm_targets: list[str]` — extend the safe-basename set.
+- `safe_path_prefixes: list[str]` — extend the safe-prefix set
+  (defaults: `/tmp/`, `/var/folders/`, `/private/tmp/`).
+- `allow_patterns: list[str]` — regex allowlist that short-circuits the
+  whole rule when matched.
 
 ### `dependency-hygiene` (PreToolUse, WARNING)
 
@@ -291,9 +367,18 @@ Warns when a file crosses the line-count threshold. Only fires when a file **gro
 - `limit` — Maximum lines (default: `500`)
 - `allow_paths` — Skip this rule for matching files (e.g., `["**/hybrid_parser.py"]`)
 
-### `drift-detector` (PostToolUse, WARNING)
+### `drift-detector` (PreToolUse + PostToolUse, WARNING)
 
-Tracks file edits and test runs. Warns once after N unique file edits without running tests, then stays silent until tests are run. Only counts code files — config files (`.yml`, `.md`, etc.) are excluded.
+Tracks file edits and test runs. Fires through two channels:
+
+1. **Mid-session** (PostToolUse): warns once after N unique file edits
+   without running tests, then stays silent until tests are run.
+2. **Commit boundary** (PreToolUse, **v1.10.0+**): fires once per
+   `git commit` attempt when the agent has crossed the threshold without
+   running tests. `git commit --amend --no-edit` is skipped (no new
+   content). Resets after a successful test run.
+
+Only counts code files — config files (`.yml`, `.md`, etc.) are excluded.
 
 **Config options:**
 - `threshold` — Unique file edit count before warning (default: `15`)
@@ -658,20 +743,35 @@ Warns when error handling patterns (`try/except`, `.catch()`, null checks) are r
 
 ### `no-large-diff` (PostToolUse, WARNING)
 
-Warns when a single Write/Edit adds or removes too many lines. Test files and non-code files (`.md`, `.yml`, `.json`, etc.) are exempt by default.
+Warns when a single Write/Edit adds or removes too many lines. Test
+files, non-code files (`.md`, `.yml`, `.json`, etc.), and migration
+files (`alembic/versions/`, `migrations/versions/`, `db/migrate/`) are
+exempt by default — a single migration is one conceptual unit even at
+200+ lines.
 
 **Config options:**
 - `max_lines_added` — Maximum lines added (default: `200`)
 - `max_lines_removed` — Maximum lines removed (default: `100`)
 - `exempt_test_files` — Skip test files (default: `true`)
 - `test_file_patterns` — Glob patterns matching test file basenames (default: `["test_*", "*_test.*", "*.spec.*", "*.test.*", "*_spec.*", "conftest.py"]`)
+- `migration_paths` — Path fragments for migration exemption
+  (default: `["alembic/versions/", "migrations/versions/", "db/migrate/"]`).
+  Honors a top-level `migration_paths` global config too — same key as
+  `no-dangerous-migration` so you only configure it once.
 
 ### `no-file-creation-sprawl` (PostToolUse, WARNING)
 
-Warns when too many new files are created in a single session.
+Warns when too many new files are created in a single session. Files
+under common categories that legitimately proliferate (tests, docs,
+migrations) are exempt by default so the counter reflects real source-
+file sprawl rather than routine additions.
 
 **Config options:**
 - `max_new_files` — Maximum new files before warning (default: `10`)
+- `exempt_paths` — Path fragments that bypass the counter
+  (default: `["tests/", "test/", "docs/", "alembic/versions/",
+  "migrations/versions/", "spec/", "__tests__/"]`). Custom values
+  extend (don't replace) the defaults.
 
 ### `naming-conventions` (PreToolUse, INFO)
 
@@ -701,11 +801,23 @@ The security pack is **opt-in** — add `security` to your `packs` list to enabl
 
 ### `no-bash-file-write` (PreToolUse, ERROR)
 
-Blocks file writes via Bash commands, enforcing use of the Write/Edit tools instead. Detects: `cat >`, `echo >`, `tee`, `sed -i`, `cp`, `mv`, `perl -pi`, `awk >`, `dd of=`, `python -c ... open(...).write()`, and heredocs.
+Blocks file writes via Bash commands, enforcing use of the Write/Edit
+tools instead. Detects: `cat >`, `echo >`, `tee`, `sed -i`, `cp`, `mv`,
+`perl -pi`, `awk >`, `dd of=`, `python -c ... open(...).write()`, and
+heredocs.
+
+Writes targeting **ephemeral/scratch paths** (`/tmp/`, `/var/folders/`,
+`/private/tmp/`) are exempt by default since v1.10.0 — these are not
+project source files. Cloud CLI binaries (`bq`, `aws`, `kubectl`, ...)
+are also recognized so their `cp`/`mv` subcommands don't fire (v1.9.1).
 
 **Config options:**
-- `allow_paths` — Glob patterns for allowed write targets (e.g. `["*.log", "/tmp/*"]`)
+- `allow_paths` — Glob patterns for allowed write targets (e.g. `["*.log"]`)
 - `allow_patterns` — Regex patterns for allowed commands (e.g. `["echo.*>>.*\\.log"]`)
+- `safe_path_prefixes` — Extra ephemeral prefixes (extends, doesn't
+  replace, the built-in safe set)
+- `safe_binaries` — Extra CLI tool names whose subcommands are not
+  shell file ops (extends `KNOWN_CLI_TOOLS`)
 
 ### `no-network-exfil` (PreToolUse, ERROR)
 
@@ -738,7 +850,17 @@ Blocks unsafe shell execution via `subprocess` with `shell=True` and `os` module
 
 ### `no-dangerous-migration` (PreToolUse, WARNING)
 
-Warns about dangerous database migration operations in Alembic migration files (dropping columns, renaming tables, etc.).
+Warns about dangerous database migration operations in Alembic migration
+files (dropping columns, renaming tables, etc.).
+
+**v1.10.0+ scope-aware:** operations are evaluated within their
+enclosing function. An `op.drop_column()` or `op.drop_table()` inside
+`def downgrade()` is the expected inverse of an upgrade and does not
+fire — tests and rollback workflows depend on it. The rule still warns
+when an `upgrade()` performs an irreversible operation without a
+corresponding `create_table()` *in `downgrade()`*. Falls back to whole-
+file scanning on `SyntaxError` so malformed migrations still get
+best-effort checks rather than crashing.
 
 **Config options:**
 - `migration_paths` — Custom path markers for migration files (default: detects `migration`, `alembic`, `versions` in path)

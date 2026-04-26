@@ -1,5 +1,78 @@
 # Changelog
 
+## v1.10.0 (2026-04-26) — FP Tuning, Visibility & a Real Bug Fix
+
+User feedback after v1.9.x heavy sessions said "keep all the rules, fix the
+over-firing." This release does that: ephemeral-path exemptions for noisy
+file-write/destructive rules, migration-aware diff and sprawl checks, and a
+real bug fix in `no-dangerous-migration`. It also makes the circuit breaker
+visible — degradation is no longer silent — and adds `reason="..."`
+auditability to inline ignore directives.
+
+### Features
+
+- **Shared `is_safe_path` utility** (`agentlint.utils.paths`) — central
+  `/tmp/`, `/var/folders/`, `/private/tmp/` recognition with `$TMPDIR`
+  resolution. Single source of truth across rules.
+- **Ephemeral path exemptions** — `rm -rf /tmp/foo`, `echo > /tmp/x.txt`,
+  `tee /tmp/y.log` and similar redirects/copies to scratch directories no
+  longer fire `no-destructive-commands` or `no-bash-file-write`. Both
+  rules accept a per-rule `safe_path_prefixes` list to add custom paths.
+- **`no-file-creation-sprawl` exempt_paths** — `tests/`, `docs/`,
+  `alembic/versions/`, `migrations/versions/`, `spec/`, `__tests__/` are
+  exempt by default so test/doc proliferation no longer pushes agents to
+  cram unrelated logic into one file to dodge the cap. Configurable via
+  `exempt_paths`.
+- **`no-large-diff` migration exemption** — Alembic, Rails `db/migrate/`,
+  and `migrations/versions/` files are recognized as single conceptual
+  units; the diff cap no longer fires on a 220-line migration. Honors
+  the shared `migration_paths` config used by `no-dangerous-migration`.
+- **`drift-detector` commit-boundary firing** — additive PRE_TOOL_USE
+  warning fires once when an agent attempts `git commit` after editing
+  more files than the threshold without running tests. Mid-session
+  warning unchanged. `--no-edit` and `--amend --no-edit` are skipped.
+- **Circuit breaker visibility** — degraded violations now show a
+  compact `[degraded after N fires — see summary]` prefix. When a rule
+  transitions to OPEN, a one-time agent-visible notice is queued via
+  `session_state["circuit_breaker_pending_notices"]`. Per-rule
+  transition history surfaces in the session summary.
+- **`circuit_breaker.never_degrade` config** — extend the built-in
+  security set (`no-secrets`, `no-env-commit`) with project-specific
+  rules you want treated as real signals that must not be silently
+  de-escalated.
+- **Inline ignore reasons** — `# agentlint:ignore <rule-id> reason="..."`
+  is now supported (single or double quotes). Reasons surface in the
+  session summary so suppressions are auditable rather than anonymous.
+- **Session summary** — three new fields: `inline_ignores`,
+  `circuit_breaker_per_rule` (with full transitions), and
+  `rule_fire_rates`. All additive — old downstream parsers unaffected.
+
+### Fixes
+
+- **`no-dangerous-migration` AST-scoped detection** (TRUE BUG FIX) —
+  Operations are now evaluated within their enclosing function. An
+  `op.drop_column()` or `op.drop_table()` inside `def downgrade()` is
+  the expected inverse of an upgrade and no longer fires. The rule
+  also now correctly requires `op.create_table()` *in downgrade()* to
+  declare a `drop_table` reversible (was: anywhere in the file — a real
+  false-negative). Falls back to whole-file scanning on `SyntaxError`
+  so malformed migrations still get best-effort checks.
+- **`no-destructive-commands` shell quoting** — paths with spaces
+  (`rm -rf '/tmp/path with spaces'`) are now correctly tokenized via
+  `shlex` for safe-path detection, instead of split on whitespace.
+
+### Internal
+
+- New `agentlint.utils.paths` module with `is_safe_path()` and
+  `SAFE_PATH_PREFIXES` constant.
+- `filter_inline_ignores()` gained `file_path` and `session_state`
+  kwargs to record overrides for reporting. Existing call site in
+  `cli.py` updated.
+
+### Tests
+
++95 net new tests. Total: 1877 tests, 97% coverage.
+
 ## v1.9.1 (2026-04-14) — CLI Tool Awareness
 
 ### Fixes

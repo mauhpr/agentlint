@@ -74,8 +74,21 @@ def _extract_target_paths(command: str) -> list[str]:
     return paths
 
 
-def _path_allowed(path: str, allow_paths: list[str]) -> bool:
-    """Return True if path matches any allow_paths glob pattern."""
+def _path_allowed(
+    path: str,
+    allow_paths: list[str],
+    safe_path_prefixes: list[str] | None = None,
+) -> bool:
+    """Return True if path is safe-by-default or matches any allow_paths glob.
+
+    Paths under known ephemeral/scratch prefixes (``/tmp/``, ``/var/folders/``
+    by default; extended via ``safe_path_prefixes``) are always considered
+    allowed since they are scratch space, not project source files.
+    """
+    from agentlint.utils.paths import is_safe_path
+
+    if is_safe_path(path, extra_prefixes=safe_path_prefixes):
+        return True
     for pattern in allow_paths:
         if fnmatch(path, pattern):
             return True
@@ -123,6 +136,9 @@ class NoBashFileWrite(Rule):
         # Load config.
         allow_patterns: list[str] = get_rule_setting(context.config, self.id, "allow_patterns", [])
         allow_paths: list[str] = get_rule_setting(context.config, self.id, "allow_paths", [])
+        safe_path_prefixes: list[str] = get_rule_setting(
+            context.config, self.id, "safe_path_prefixes", []
+        )
         strict_mode: bool = get_rule_setting(context.config, self.id, "strict_mode", False)
 
         # Merge default safe patterns unless strict mode is on.
@@ -151,8 +167,14 @@ class NoBashFileWrite(Rule):
                 if not target_paths and label == "redirect (>/>>)":
                     continue
 
-                if allow_paths and target_paths and all(
-                    _path_allowed(p, allow_paths) for p in target_paths
+                # Targets may be allowed by either:
+                # - an explicit allow_paths glob, OR
+                # - sitting under a default/extra ephemeral safe path
+                #   prefix (/tmp/, /var/folders/, ...).
+                # Skip the violation if every target satisfies one of these.
+                if target_paths and all(
+                    _path_allowed(p, allow_paths, safe_path_prefixes)
+                    for p in target_paths
                 ):
                     continue
 

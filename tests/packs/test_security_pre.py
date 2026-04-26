@@ -154,8 +154,15 @@ class TestNoBashFileWrite:
         assert self.rule.evaluate(ctx) == []
 
     def test_regular_cp_still_blocked(self):
-        """Regular shell cp should still be caught."""
-        ctx = _ctx("Bash", {"command": "cp /etc/passwd /tmp/stolen"})
+        """Regular shell cp to a project path should still be caught.
+
+        Note: as of v1.10.0 /tmp/* is exempt by default; use a project
+        destination here to verify the rule still fires on shell cp.
+        """
+        ctx = _ctx(
+            "Bash",
+            {"command": "cp /etc/passwd /Users/me/projects/dar3/stolen"},
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
@@ -519,6 +526,76 @@ class TestNoBashFileWriteSmartDefaults:
         ctx = _ctx("Bash", {"command": "echo data > output.txt 2>/dev/null"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
+
+
+# ---------------------------------------------------------------------------
+# NoBashFileWrite — v1.10.0 ephemeral path exemption
+# ---------------------------------------------------------------------------
+
+
+class TestNoBashFileWriteSafePaths:
+    """v1.10.0: writes to /tmp, /var/folders, /private/tmp are exempt."""
+
+    rule = NoBashFileWrite()
+
+    def test_redirect_to_tmp_is_safe(self):
+        ctx = _ctx("Bash", {"command": "echo config > /tmp/dar3_dir.txt"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_redirect_append_to_tmp_is_safe(self):
+        ctx = _ctx("Bash", {"command": "echo line >> /tmp/scratch.log"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_tee_to_tmp_is_safe(self):
+        ctx = _ctx("Bash", {"command": "echo hi | tee /tmp/out.log"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_redirect_to_var_folders_is_safe(self):
+        ctx = _ctx(
+            "Bash",
+            {"command": "echo data > /var/folders/abc/T/agentlint-cache/x"},
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_redirect_to_private_tmp_is_safe(self):
+        ctx = _ctx("Bash", {"command": "echo data > /private/tmp/x.txt"})
+        assert self.rule.evaluate(ctx) == []
+
+    def test_redirect_to_project_path_still_blocks(self):
+        ctx = _ctx(
+            "Bash",
+            {"command": "echo secret > /Users/me/projects/dar3/secrets.json"},
+        )
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_safe_path_prefixes_config_extends_defaults(self):
+        ctx = _ctx(
+            "Bash",
+            {"command": "echo data > /scratch/foo.txt"},
+            config={
+                "no-bash-file-write": {
+                    "safe_path_prefixes": ["/scratch/"]
+                }
+            },
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_safe_path_prefixes_does_not_disable_defaults(self):
+        ctx = _ctx(
+            "Bash",
+            {"command": "echo data > /tmp/x.txt"},
+            config={
+                "no-bash-file-write": {
+                    "safe_path_prefixes": ["/scratch/"]
+                }
+            },
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_cp_to_tmp_is_safe(self):
+        ctx = _ctx("Bash", {"command": "cp source.txt /tmp/target.txt"})
+        assert self.rule.evaluate(ctx) == []
 
 
 # ---------------------------------------------------------------------------

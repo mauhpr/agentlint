@@ -382,6 +382,173 @@ class TestNoDangerousMigration:
         assert not any("DateTime" in v.message for v in violations)
 
 
+class TestNoDangerousMigrationScope:
+    """v1.10.0: drop_* in downgrade() is the expected inverse, not destructive."""
+
+    rule = NoDangerousMigration()
+
+    def test_drop_column_in_downgrade_only_does_not_fire(self):
+        # Symmetric migration: add_column in upgrade, drop_column in downgrade.
+        # The drop_column lives in downgrade() and should NOT fire — that's
+        # the user's reported false positive in v1.9.x.
+        content = (
+            "def upgrade():\n"
+            '    op.add_column("users", sa.Column("nickname", sa.String()))\n'
+            "\n"
+            "def downgrade():\n"
+            '    op.drop_column("users", "nickname")\n'
+        )
+        ctx = _ctx("Write", {
+            "file_path": "alembic/versions/005_add_nickname.py",
+            "content": content,
+        })
+        violations = self.rule.evaluate(ctx)
+        assert not any("drop_column" in v.message for v in violations)
+
+    def test_drop_column_in_upgrade_still_fires(self):
+        content = (
+            "def upgrade():\n"
+            '    op.drop_column("users", "email")\n'
+            "\n"
+            "def downgrade():\n"
+            "    pass\n"
+        )
+        ctx = _ctx("Write", {
+            "file_path": "alembic/versions/006_drop_email.py",
+            "content": content,
+        })
+        violations = self.rule.evaluate(ctx)
+        assert any("drop_column" in v.message for v in violations)
+
+    def test_drop_table_in_downgrade_only_does_not_fire(self):
+        # Symmetric: create_table in upgrade, drop_table in downgrade.
+        content = (
+            "def upgrade():\n"
+            '    op.create_table("audits", sa.Column("id", sa.Integer))\n'
+            "\n"
+            "def downgrade():\n"
+            '    op.drop_table("audits")\n'
+        )
+        ctx = _ctx("Write", {
+            "file_path": "alembic/versions/007_audits.py",
+            "content": content,
+        })
+        violations = self.rule.evaluate(ctx)
+        assert not any("drop_table" in v.message for v in violations)
+
+    def test_drop_table_in_upgrade_with_create_in_downgrade_passes(self):
+        # Symmetric inverse — drop in upgrade, create in downgrade. Still
+        # destructive in the forward direction but reversible.
+        content = (
+            "def upgrade():\n"
+            '    op.drop_table("legacy")\n'
+            "\n"
+            "def downgrade():\n"
+            '    op.create_table("legacy", sa.Column("id", sa.Integer))\n'
+        )
+        ctx = _ctx("Write", {
+            "file_path": "alembic/versions/008_drop_legacy.py",
+            "content": content,
+        })
+        violations = self.rule.evaluate(ctx)
+        # Reversible: drop in upgrade, create in downgrade — should not fire.
+        assert not any("drop_table" in v.message for v in violations)
+
+    def test_drop_table_in_upgrade_without_downgrade_create_fires(self):
+        content = (
+            "def upgrade():\n"
+            '    op.drop_table("legacy")\n'
+            "\n"
+            "def downgrade():\n"
+            "    pass\n"
+        )
+        ctx = _ctx("Write", {
+            "file_path": "alembic/versions/009_drop_legacy.py",
+            "content": content,
+        })
+        violations = self.rule.evaluate(ctx)
+        assert any("drop_table" in v.message for v in violations)
+
+    def test_alter_nullable_false_in_downgrade_does_not_fire(self):
+        content = (
+            "def upgrade():\n"
+            '    op.alter_column("users", "name", nullable=True)\n'
+            "\n"
+            "def downgrade():\n"
+            '    op.alter_column("users", "name", nullable=False)\n'
+        )
+        ctx = _ctx("Write", {
+            "file_path": "alembic/versions/010_relax.py",
+            "content": content,
+        })
+        violations = self.rule.evaluate(ctx)
+        assert not any("nullable=False" in v.message for v in violations)
+
+    def test_alter_nullable_false_in_upgrade_fires(self):
+        content = (
+            "def upgrade():\n"
+            '    op.alter_column("users", "name", nullable=False)\n'
+            "\n"
+            "def downgrade():\n"
+            "    pass\n"
+        )
+        ctx = _ctx("Write", {
+            "file_path": "alembic/versions/011_strict.py",
+            "content": content,
+        })
+        violations = self.rule.evaluate(ctx)
+        assert any("nullable=False" in v.message for v in violations)
+
+    def test_docstring_mention_of_drop_column_does_not_fire(self):
+        # A docstring referring to op.drop_column without an actual call
+        # (no parentheses) must not fire — the regex requires `(` after
+        # the function name, so prose mentions are ignored even when they
+        # appear inside the upgrade() body.
+        content = (
+            "def upgrade():\n"
+            '    """Renames the user table. Avoid op.drop_column on email here."""\n'
+            "    op.rename_table('user', 'users')\n"
+            "\n"
+            "def downgrade():\n"
+            "    pass\n"
+        )
+        ctx = _ctx("Write", {
+            "file_path": "alembic/versions/012_rename.py",
+            "content": content,
+        })
+        violations = self.rule.evaluate(ctx)
+        assert not any("drop_column" in v.message for v in violations)
+
+    def test_malformed_migration_falls_back_to_whole_file(self):
+        # Syntactically invalid Python — AST extraction returns None for
+        # both upgrade and downgrade, and the rule falls back to whole-file
+        # scanning so a real bug in a malformed file still gets surfaced.
+        content = (
+            "def upgrade(\n"  # syntax error
+            '    op.drop_column("users", "email")\n'
+        )
+        ctx = _ctx("Write", {
+            "file_path": "alembic/versions/013_broken.py",
+            "content": content,
+        })
+        # Should not crash and should still fire.
+        violations = self.rule.evaluate(ctx)
+        assert any("drop_column" in v.message for v in violations)
+
+    def test_top_level_drop_column_outside_function_falls_back(self):
+        # Calls at module scope — neither upgrade() nor downgrade() defined.
+        # The fallback path treats the whole file as upgrade and fires.
+        content = (
+            'op.drop_column("users", "email")\n'
+        )
+        ctx = _ctx("Write", {
+            "file_path": "alembic/versions/014_module_scope.py",
+            "content": content,
+        })
+        violations = self.rule.evaluate(ctx)
+        assert any("drop_column" in v.message for v in violations)
+
+
 # ---------------------------------------------------------------------------
 # NoWildcardImport
 # ---------------------------------------------------------------------------

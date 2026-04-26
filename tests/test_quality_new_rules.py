@@ -274,6 +274,68 @@ class TestNoLargeDiff:
         assert len(rule.evaluate(ctx_py)) == 1
 
 
+class TestNoLargeDiffMigrationExempt:
+    """v1.10.0: Alembic / Rails / migrations/versions/ are single-unit migrations."""
+
+    def test_alembic_migration_exempt(self):
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/alembic/versions/abc_add_columns.py",
+            file_content="line\n" * 250,
+            file_content_before=None,
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_migrations_versions_exempt(self):
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/migrations/versions/001_init.py",
+            file_content="line\n" * 250,
+            file_content_before=None,
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_rails_db_migrate_exempt(self):
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/db/migrate/20260101_add_users.rb",
+            file_content="line\n" * 250,
+            file_content_before=None,
+        )
+        # .rb is a code extension; the migration path exemption should kick in.
+        assert rule.evaluate(ctx) == []
+
+    def test_non_migration_path_still_checked(self):
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/src/migrate.py",  # the word "migrate" but not in versions/
+            file_content="line\n" * 300,
+            file_content_before=None,
+        )
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_global_migration_paths_config_extends(self):
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/custom_db_changes/004_alter.py",
+            file_content="line\n" * 250,
+            file_content_before=None,
+            config={"migration_paths": ["custom_db_changes/"]},
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_per_rule_migration_paths_config_extends(self):
+        rule = NoLargeDiff()
+        ctx = _make_context(
+            file_path="/project/schema_changes/v005.py",
+            file_content="line\n" * 250,
+            file_content_before=None,
+            config={"no-large-diff": {"migration_paths": ["schema_changes/"]}},
+        )
+        assert rule.evaluate(ctx) == []
+
+
 # === no-file-creation-sprawl ===
 
 class TestNoFileCreationSprawl:
@@ -350,6 +412,106 @@ class TestNoFileCreationSprawl:
     def test_no_file_path_passes(self):
         rule = NoFileCreationSprawl()
         ctx = _make_context(file_path=None, file_content_before=None)
+        assert rule.evaluate(ctx) == []
+
+
+class TestNoFileCreationSprawlExemptPaths:
+    """v1.10.0: tests/, docs/, migrations/ are exempt from sprawl counter."""
+
+    def test_tests_directory_exempt(self):
+        rule = NoFileCreationSprawl()
+        state: dict = {"files_created": [f"/project/f{i}.py" for i in range(15)]}
+        ctx = _make_context(
+            file_path="/project/tests/test_new.py",
+            file_content_before=None,
+            session_state=state,
+        )
+        assert rule.evaluate(ctx) == []
+        # Exempt files don't enter the counter at all.
+        assert "/project/tests/test_new.py" not in state["files_created"]
+
+    def test_docs_directory_exempt(self):
+        rule = NoFileCreationSprawl()
+        state: dict = {"files_created": [f"/project/f{i}.py" for i in range(15)]}
+        ctx = _make_context(
+            file_path="/project/docs/guide.md",
+            file_content_before=None,
+            session_state=state,
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_alembic_migration_exempt(self):
+        rule = NoFileCreationSprawl()
+        state: dict = {"files_created": [f"/project/f{i}.py" for i in range(15)]}
+        ctx = _make_context(
+            file_path="/project/alembic/versions/abc_add_column.py",
+            file_content_before=None,
+            session_state=state,
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_migrations_versions_exempt(self):
+        rule = NoFileCreationSprawl()
+        state: dict = {"files_created": [f"/project/f{i}.py" for i in range(15)]}
+        ctx = _make_context(
+            file_path="/project/migrations/versions/001_init.py",
+            file_content_before=None,
+            session_state=state,
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_nested_tests_directory_exempt(self):
+        rule = NoFileCreationSprawl()
+        state: dict = {"files_created": [f"/project/f{i}.py" for i in range(15)]}
+        ctx = _make_context(
+            file_path="/project/backend/tests/foo_test.py",
+            file_content_before=None,
+            session_state=state,
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_jest_tests_directory_exempt(self):
+        rule = NoFileCreationSprawl()
+        state: dict = {"files_created": [f"/project/f{i}.py" for i in range(15)]}
+        ctx = _make_context(
+            file_path="/project/src/__tests__/Foo.test.tsx",
+            file_content_before=None,
+            session_state=state,
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_source_files_still_counted(self):
+        rule = NoFileCreationSprawl()
+        state: dict = {"files_created": [f"/project/src/f{i}.py" for i in range(10)]}
+        ctx = _make_context(
+            file_path="/project/src/eleventh.py",
+            file_content_before=None,
+            session_state=state,
+        )
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 1
+
+    def test_user_extra_exempt_path(self):
+        rule = NoFileCreationSprawl()
+        state: dict = {"files_created": [f"/project/f{i}.py" for i in range(15)]}
+        ctx = _make_context(
+            file_path="/project/fixtures/seed.json",
+            file_content_before=None,
+            config={"no-file-creation-sprawl": {"exempt_paths": ["fixtures/"]}},
+            session_state=state,
+        )
+        assert rule.evaluate(ctx) == []
+
+    def test_user_extra_does_not_disable_defaults(self):
+        rule = NoFileCreationSprawl()
+        state: dict = {"files_created": [f"/project/f{i}.py" for i in range(15)]}
+        ctx = _make_context(
+            file_path="/project/tests/test_x.py",
+            file_content_before=None,
+            config={"no-file-creation-sprawl": {"exempt_paths": ["fixtures/"]}},
+            session_state=state,
+        )
+        # tests/ default exempt should still apply alongside user-provided fixtures/
         assert rule.evaluate(ctx) == []
 
 
