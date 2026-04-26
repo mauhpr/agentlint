@@ -476,6 +476,138 @@ class TestDriftDetector:
         rule.evaluate(ctx)
         assert session_state.get("_drift_warned") is False
 
+
+class TestDriftDetectorCommitBoundary:
+    """v1.10.0: drift-detector also fires at git commit boundary."""
+
+    def _make_rule(self) -> DriftDetector:
+        return DriftDetector()
+
+    def _post_edit(self, session_state: dict, count: int) -> None:
+        rule = self._make_rule()
+        for i in range(count):
+            ctx = RuleContext(
+                event=HookEvent.POST_TOOL_USE,
+                tool_name="Write",
+                tool_input={"file_path": f"file_{i}.py"},
+                project_dir="/tmp/project",
+                session_state=session_state,
+            )
+            rule.evaluate(ctx)
+
+    def _commit_ctx(self, command: str, session_state: dict) -> RuleContext:
+        return RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Bash",
+            tool_input={"command": command},
+            project_dir="/tmp/project",
+            session_state=session_state,
+        )
+
+    def test_commit_after_drift_fires(self):
+        rule = self._make_rule()
+        session_state: dict = {}
+        self._post_edit(session_state, 16)
+        # Reset the mid-session warned flag so commit warning is the only
+        # active channel for this test (otherwise mid-session already warned).
+        session_state["_drift_warned"] = False
+
+        ctx = self._commit_ctx('git commit -m "feat: ship things"', session_state)
+        violations = rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert "Committing 16" in violations[0].message
+
+    def test_commit_after_tests_does_not_fire(self):
+        rule = self._make_rule()
+        session_state: dict = {}
+        self._post_edit(session_state, 16)
+        # Tests run — resets last_test_run flag.
+        rule.evaluate(RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Bash",
+            tool_input={"command": "pytest -v"},
+            project_dir="/tmp/project",
+            session_state=session_state,
+        ))
+
+        ctx = self._commit_ctx('git commit -m "feat: ship"', session_state)
+        violations = rule.evaluate(ctx)
+        assert violations == []
+
+    def test_commit_below_threshold_does_not_fire(self):
+        rule = self._make_rule()
+        session_state: dict = {}
+        self._post_edit(session_state, 5)
+
+        ctx = self._commit_ctx('git commit -m "small change"', session_state)
+        assert rule.evaluate(ctx) == []
+
+    def test_commit_amend_no_edit_does_not_fire(self):
+        rule = self._make_rule()
+        session_state: dict = {}
+        self._post_edit(session_state, 16)
+        session_state["_drift_warned"] = False
+
+        ctx = self._commit_ctx("git commit --amend --no-edit", session_state)
+        assert rule.evaluate(ctx) == []
+
+    def test_commit_fires_once_per_commit_attempt(self):
+        rule = self._make_rule()
+        session_state: dict = {}
+        self._post_edit(session_state, 16)
+        session_state["_drift_warned"] = False
+
+        cmd = 'git commit -m "feat: x"'
+        first = rule.evaluate(self._commit_ctx(cmd, session_state))
+        second = rule.evaluate(self._commit_ctx(cmd, session_state))
+        assert len(first) == 1
+        assert second == []
+
+    def test_commit_warning_resets_after_test_run(self):
+        rule = self._make_rule()
+        session_state: dict = {}
+        self._post_edit(session_state, 16)
+        session_state["_drift_warned"] = False
+
+        # First commit attempt fires
+        rule.evaluate(self._commit_ctx('git commit -m "x"', session_state))
+        # Tests run, edits cleared, then drift again
+        rule.evaluate(RuleContext(
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Bash",
+            tool_input={"command": "pytest"},
+            project_dir="/tmp/project",
+            session_state=session_state,
+        ))
+        # Re-edit and try again — commit warning should re-fire
+        self._post_edit(session_state, 16)
+        session_state["_drift_warned"] = False
+        violations = rule.evaluate(self._commit_ctx('git commit -m "y"', session_state))
+        assert len(violations) == 1
+
+    def test_non_commit_bash_command_does_not_fire(self):
+        rule = self._make_rule()
+        session_state: dict = {}
+        self._post_edit(session_state, 16)
+
+        ctx = self._commit_ctx("ls -la", session_state)
+        assert rule.evaluate(ctx) == []
+
+    def test_commit_pre_event_does_not_track_edits(self):
+        # PRE_TOOL_USE on a Write must not double-count — only POST_TOOL_USE
+        # tracks edits.
+        rule = self._make_rule()
+        session_state: dict = {}
+        ctx = RuleContext(
+            event=HookEvent.PRE_TOOL_USE,
+            tool_name="Write",
+            tool_input={"file_path": "foo.py"},
+            project_dir="/tmp/project",
+            session_state=session_state,
+        )
+        rule.evaluate(ctx)
+        assert session_state.get("edited_files", []) == []
+
         # Cross threshold again — fires again
         fire_count = 0
         for i in range(16):

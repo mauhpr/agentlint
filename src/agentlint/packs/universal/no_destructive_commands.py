@@ -44,8 +44,21 @@ _KUBECTL_DELETE_NS_RE = re.compile(r"\bkubectl\s+delete\s+namespace\b", re.IGNOR
 _GIT_BRANCH_DELETE_RE = re.compile(r"\bgit\s+branch\s+-D\s+(\S+)", re.IGNORECASE)
 
 
-def _rm_targets_safe(command: str, safe_targets: set[str] | None = None) -> bool:
-    """Return True if all rm -rf targets are known safe directories."""
+def _rm_targets_safe(
+    command: str,
+    safe_targets: set[str] | None = None,
+    safe_path_prefixes: list[str] | None = None,
+) -> bool:
+    """Return True if all rm -rf targets are known safe directories.
+
+    A target counts as safe if either:
+    - it lives under an ephemeral/scratch prefix (``/tmp/``, ``/var/folders/``,
+      a configured ``safe_path_prefixes`` entry), OR
+    - its basename matches a known safe build-artifact directory
+      (``node_modules``, ``__pycache__``, ...) per ``_SAFE_RM_TARGETS``.
+    """
+    from agentlint.utils.paths import is_safe_path
+
     effective_safe = safe_targets if safe_targets is not None else _SAFE_RM_TARGETS
     # Extract everything after rm -rf / rm -fr flags.
     parts = re.split(r"\brm\s+-\S+\s+", command)
@@ -61,7 +74,25 @@ def _rm_targets_safe(command: str, safe_targets: set[str] | None = None) -> bool
 
     import os
 
-    return all(os.path.basename(t.strip("'\"").rstrip("/")) in effective_safe for t in targets)
+    def _target_is_safe(raw: str) -> bool:
+        target = raw.strip("'\"")
+        if is_safe_path(target, extra_prefixes=safe_path_prefixes):
+            return True
+        return os.path.basename(target.rstrip("/")) in effective_safe
+
+    # Re-tokenise the target string with shell-aware splitting so quoted
+    # paths with spaces stay together. Fall back to whitespace split on
+    # parse error (preserves the prior behaviour for malformed input).
+    try:
+        import shlex
+
+        shell_targets = shlex.split(target_str)
+    except ValueError:
+        shell_targets = targets
+    if not shell_targets:
+        return False
+
+    return all(_target_is_safe(t) for t in shell_targets)
 
 
 def _is_catastrophic_rm(command: str) -> bool:
@@ -96,6 +127,7 @@ class NoDestructiveCommands(Rule):
         rule_config = context.config.get(self.id, {})
         extra_safe_targets: list[str] = rule_config.get("safe_rm_targets", [])
         allow_patterns: list[str] = rule_config.get("allow_patterns", [])
+        safe_path_prefixes: list[str] = rule_config.get("safe_path_prefixes", [])
 
         # Early return if command matches an allow pattern.
         if allow_patterns and any(re.search(p, command) for p in allow_patterns):
@@ -115,7 +147,9 @@ class NoDestructiveCommands(Rule):
                     suggestion="This would destroy critical system or user files. Never run rm -rf on / or ~.",
                 )
             )
-        elif _RM_RF_RE.search(command) and not _rm_targets_safe(command, effective_safe):
+        elif _RM_RF_RE.search(command) and not _rm_targets_safe(
+            command, effective_safe, safe_path_prefixes
+        ):
             violations.append(
                 Violation(
                     rule_id=self.id,
