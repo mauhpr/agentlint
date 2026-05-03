@@ -48,10 +48,10 @@ class TestReadSettings:
         f = tmp_path / "nonexistent.json"
         assert read_settings(f) == {}
 
-    def test_returns_empty_dict_for_invalid_json(self, tmp_path) -> None:
+    def test_returns_none_for_invalid_json(self, tmp_path) -> None:
         f = tmp_path / "bad.json"
         f.write_text("{not valid json")
-        assert read_settings(f) == {}
+        assert read_settings(f) is None
 
 
 class TestWriteSettings:
@@ -97,11 +97,11 @@ class TestResolveCommand:
 
     def _no_which(self):
         """Patch shutil.which to return None (not on PATH)."""
-        return patch("agentlint.setup.shutil.which", return_value=None)
+        return patch("agentlint.adapters._utils.shutil.which", return_value=None)
 
     def test_step1_which_succeeds(self) -> None:
         """Step 1: shutil.which finds the binary on PATH."""
-        with patch("agentlint.setup.shutil.which", return_value="/usr/local/bin/agentlint"):
+        with patch("agentlint.adapters._utils.shutil.which", return_value="/usr/local/bin/agentlint"):
             result = _resolve_command()
         assert result == "/usr/local/bin/agentlint"
 
@@ -137,7 +137,7 @@ class TestResolveCommand:
         scripts_bin.write_text("#!/bin/sh\n")
 
         with self._no_which(), \
-             patch("agentlint.setup.sysconfig.get_path", return_value=str(scripts_dir)):
+             patch("agentlint.adapters._utils.sysconfig.get_path", return_value=str(scripts_dir)):
             result = _resolve_command()
         assert result == str(scripts_bin)
 
@@ -146,7 +146,7 @@ class TestResolveCommand:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
         with self._no_which(), \
-             patch("agentlint.setup.sysconfig.get_path", return_value=None):
+             patch("agentlint.adapters._utils.sysconfig.get_path", return_value=None):
             result = _resolve_command()
         assert result == f"{sys.executable} -m agentlint"
 
@@ -158,7 +158,7 @@ class TestResolveCommand:
         # No binary created
 
         with self._no_which(), \
-             patch("agentlint.setup.sysconfig.get_path", return_value=str(scripts_dir)):
+             patch("agentlint.adapters._utils.sysconfig.get_path", return_value=str(scripts_dir)):
             result = _resolve_command()
         assert result == f"{sys.executable} -m agentlint"
 
@@ -169,7 +169,7 @@ class TestResolveCommand:
         pipx_bin.parent.mkdir(parents=True)
         pipx_bin.write_text("#!/bin/sh\n")
 
-        with patch("agentlint.setup.shutil.which", return_value="/usr/local/bin/agentlint"):
+        with patch("agentlint.adapters._utils.shutil.which", return_value="/usr/local/bin/agentlint"):
             result = _resolve_command()
         assert result == "/usr/local/bin/agentlint"
 
@@ -184,7 +184,7 @@ class TestResolveCommand:
         (scripts_dir / "agentlint").write_text("#!/bin/sh\n")
 
         with self._no_which(), \
-             patch("agentlint.setup.sysconfig.get_path", return_value=str(scripts_dir)):
+             patch("agentlint.adapters._utils.sysconfig.get_path", return_value=str(scripts_dir)):
             result = _resolve_command()
         assert result == str(pipx_bin)
 
@@ -381,7 +381,7 @@ class TestSetupCLI:
 
     def test_setup_embeds_resolved_path(self, tmp_path) -> None:
         runner = CliRunner()
-        with patch("agentlint.cli._resolve_command", return_value="/mock/bin/agentlint"):
+        with patch("agentlint.cli.resolve_command", return_value="/mock/bin/agentlint"):
             result = runner.invoke(main, ["setup", "--project-dir", str(tmp_path)])
 
         assert result.exit_code == 0
@@ -433,7 +433,7 @@ class TestSetupCLI:
 
     def test_uninstall_removes_absolute_path_hooks(self, tmp_path) -> None:
         runner = CliRunner()
-        with patch("agentlint.cli._resolve_command", return_value="/usr/local/bin/agentlint"):
+        with patch("agentlint.cli.resolve_command", return_value="/usr/local/bin/agentlint"):
             runner.invoke(main, ["setup", "--project-dir", str(tmp_path)])
         result = runner.invoke(main, ["uninstall", "--project-dir", str(tmp_path)])
 

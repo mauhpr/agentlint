@@ -1780,3 +1780,135 @@ class TestCombinedFeaturesIntegration:
             main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
         )
         assert result.exit_code == 0
+
+
+class TestAdapterFlags:
+    def test_check_with_cursor_adapter_blocks_secrets(self, tmp_path) -> None:
+        """Cursor adapter should block secrets with Cursor hook format."""
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "config.py",
+                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+            },
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "preToolUse", "--adapter", "cursor", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 2  # Cursor uses exit 2 for blocking
+        data = json.loads(result.output)
+        assert data["permission"] == "deny"
+
+    def test_check_with_cursor_format_override(self, tmp_path) -> None:
+        """Explicit --format cursor_hooks should use Cursor formatter even with default adapter."""
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "config.py",
+                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+            },
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--format", "cursor_hooks", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 2
+        data = json.loads(result.output)
+        assert data["permission"] == "deny"
+
+    def test_check_auto_detects_cursor_from_env(self, tmp_path, monkeypatch) -> None:
+        """CURSOR_SESSION_ID env var should auto-select cursor adapter."""
+        monkeypatch.setenv("CURSOR_SESSION_ID", "test-session-123")
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "config.py",
+                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+            },
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "preToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 2
+        data = json.loads(result.output)
+        assert data["permission"] == "deny"
+
+    def test_check_unknown_adapter_errors(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--adapter", "unknown", "--project-dir", str(tmp_path)],
+            input="{}",
+        )
+        assert result.exit_code != 0
+        assert "Unknown adapter" in result.output
+
+
+class TestSetupPlatformSubcommands:
+    def test_setup_claude_creates_settings(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["setup", "claude", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "Installed" in result.output
+
+        settings_file = tmp_path / ".claude" / "settings.json"
+        assert settings_file.exists()
+
+    def test_setup_cursor_creates_hooks_json(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["setup", "cursor", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "Installed" in result.output
+
+        hooks_file = tmp_path / ".cursor" / "hooks.json"
+        assert hooks_file.exists()
+        data = json.loads(hooks_file.read_text())
+        assert data["version"] == 1
+        assert "hooks" in data
+
+    def test_setup_default_is_claude(self, tmp_path) -> None:
+        """Backward compat: agentlint setup without platform defaults to claude."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["setup", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+
+        settings_file = tmp_path / ".claude" / "settings.json"
+        assert settings_file.exists()
+
+    def test_setup_unknown_platform_errors(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["setup", "unknown", "--project-dir", str(tmp_path)])
+        assert result.exit_code != 0
+        assert "Unknown platform" in result.output
+
+
+class TestUninstallPlatformSubcommands:
+    def test_uninstall_claude_removes_settings(self, tmp_path) -> None:
+        runner = CliRunner()
+        runner.invoke(main, ["setup", "claude", "--project-dir", str(tmp_path)])
+        result = runner.invoke(main, ["uninstall", "claude", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert not (tmp_path / ".claude" / "settings.json").exists()
+
+    def test_uninstall_cursor_removes_hooks(self, tmp_path) -> None:
+        runner = CliRunner()
+        runner.invoke(main, ["setup", "cursor", "--project-dir", str(tmp_path)])
+        result = runner.invoke(main, ["uninstall", "cursor", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert not (tmp_path / ".cursor" / "hooks.json").exists()
+
+    def test_uninstall_default_is_claude(self, tmp_path) -> None:
+        """Backward compat: agentlint uninstall without platform defaults to claude."""
+        runner = CliRunner()
+        runner.invoke(main, ["setup", "--project-dir", str(tmp_path)])
+        result = runner.invoke(main, ["uninstall", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert not (tmp_path / ".claude" / "settings.json").exists()

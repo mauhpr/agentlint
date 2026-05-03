@@ -6,7 +6,9 @@ Run with: agentlint-mcp (stdio transport)
 from __future__ import annotations
 
 import json
-import os
+
+from agentlint.adapters.mcp import MCPAdapter
+from agentlint.session import load_session, save_session
 
 try:
     from fastmcp import FastMCP
@@ -16,25 +18,8 @@ except ImportError:
         "Install with: pip install agentlint[mcp]"
     )
 
-from agentlint.config import AgentLintConfig, load_config
-from agentlint.engine import Engine
-from agentlint.models import HookEvent, RuleContext
-from agentlint.packs import PACK_MODULES, load_custom_rules, load_rules
-
 mcp = FastMCP("agentlint")
-
-
-def _project_dir() -> str:
-    return os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
-
-
-def _load_engine() -> tuple[Engine, AgentLintConfig]:
-    project_dir = _project_dir()
-    config = load_config(project_dir)
-    rules = load_rules(config.packs)
-    if config.custom_rules_dir:
-        rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
-    return Engine(config=config, rules=rules), config
+_adapter = MCPAdapter()
 
 
 @mcp.tool
@@ -50,32 +35,47 @@ def check_content(
     block-then-retry loop from PreToolUse hooks. Set tool_name="Bash"
     and pass the command as content to pre-check Bash commands.
     """
-    try:
-        hook_event = HookEvent.from_string(event)
-    except ValueError:
-        return json.dumps([{"error": f"Unknown event: {event}. Use PreToolUse or PostToolUse."}])
+    violations = _adapter.check_content(content, file_path, tool_name, event)
+    return json.dumps(violations)
 
-    project_dir = _project_dir()
-    engine, config = _load_engine()
 
-    # Resolve project-specific packs for monorepo
-    effective_config = config
-    if file_path and config.projects:
-        effective_packs = config.resolve_packs_for_file(file_path, project_dir)
-        effective_config = config.with_packs(effective_packs)
-        engine = Engine(config=effective_config, rules=load_rules(effective_config.packs))
+@mcp.tool
+def check_event(
+    event: str,
+    tool_name: str,
+    tool_input: dict,
+    file_content: str | None = None,
+) -> str:
+    """Check a generic event against agentlint rules. Returns JSON list of violations.
 
-    tool_input = {"file_path": file_path, "content": content}
-    if tool_name == "Bash":
-        tool_input = {"command": content}
+    Supports normalized event names (pre_tool_use, post_tool_use, etc.)
+    and any agent framework's tool input shape.
+    """
+    from agentlint.config import load_config
+    from agentlint.engine import Engine
+    from agentlint.models import AgentEvent, RuleContext, to_hook_event
+    from agentlint.packs import load_custom_rules, load_rules
+
+    project_dir = _adapter.resolve_project_dir()
+    config = load_config(project_dir)
+    rules = load_rules(config.packs)
+    if config.custom_rules_dir:
+        rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
+
+    agent_event = AgentEvent.from_string(event)
+    hook_event = to_hook_event(agent_event)
+
     context = RuleContext(
         event=hook_event,
         tool_name=tool_name,
         tool_input=tool_input,
         project_dir=project_dir,
-        file_content=content if tool_name != "Bash" else None,
-        config=effective_config.rules,
+        file_content=file_content,
+        config=config.rules,
+        agent_platform="mcp",
     )
+
+    engine = Engine(config=config, rules=rules)
     result = engine.evaluate(context)
     return json.dumps([v.to_dict() for v in result.violations])
 
@@ -83,36 +83,22 @@ def check_content(
 @mcp.tool
 def list_rules(pack: str | None = None) -> str:
     """List all available agentlint rules, optionally filtered by pack. Returns JSON."""
-    project_dir = _project_dir()
-    config = load_config(project_dir)
-    all_rules = load_rules(list(PACK_MODULES.keys()))
-    if config.custom_rules_dir:
-        all_rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
-    if pack:
-        all_rules = [r for r in all_rules if r.pack == pack]
-    data = [
-        {
-            "id": r.id,
-            "description": r.description,
-            "severity": r.severity.value,
-            "events": [e.value for e in r.events],
-            "pack": r.pack,
-        }
-        for r in sorted(all_rules, key=lambda r: (r.pack, r.id))
-    ]
-    return json.dumps(data)
+    rules = _adapter.list_rules(pack)
+    return json.dumps(rules)
 
 
 @mcp.tool
 def get_config() -> str:
     """Get the current agentlint configuration. Returns JSON."""
-    config = load_config(_project_dir())
-    return json.dumps({
-        "severity": config.severity,
-        "packs": config.packs,
-        "custom_rules_dir": config.custom_rules_dir,
-        "rules": config.rules,
-    })
+    config = _adapter.get_config()
+    return json.dumps(config)
+
+
+@mcp.tool
+def get_session() -> str:
+    """Get the current agentlint session state. Returns JSON."""
+    session_state = load_session(key=_adapter.resolve_session_key())
+    return json.dumps(session_state)
 
 
 @mcp.tool
@@ -123,12 +109,11 @@ def suppress_rule(rule_id: str) -> str:
     the engine never suppresses ERROR-severity violations regardless
     of the suppressed_rules list.
     """
-    from agentlint.session import load_session, save_session
-    session_state = load_session()
+    session_state = load_session(key=_adapter.resolve_session_key())
     suppressed = session_state.setdefault("suppressed_rules", [])
     if rule_id not in suppressed:
         suppressed.append(rule_id)
-    save_session(session_state)
+    save_session(session_state, key=_adapter.resolve_session_key())
     return json.dumps({"suppressed": rule_id, "total_suppressed": len(suppressed)})
 
 
@@ -142,6 +127,12 @@ def rules_resource() -> str:
 def config_resource() -> str:
     """Current agentlint configuration."""
     return get_config()
+
+
+@mcp.resource("agentlint://session")
+def session_resource() -> str:
+    """Current agentlint session state."""
+    return get_session()
 
 
 def run():

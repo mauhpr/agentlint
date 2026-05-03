@@ -10,3 +10,7 @@ build/
 .coverage
 htmlcov/
 .worktrees/
+
+.smart-coding-cache/
+coverage.xml
+

@@ -8,11 +8,13 @@
 
 Real-time guardrails for AI coding agents — code quality, security, and infrastructure safety.
 
+Works with **Claude Code**, **Cursor**, **Kimi**, **Grok**, **Gemini**, **Codex**, **Continue.dev**, **OpenAI Agents SDK**, **MCP hosts**, and custom frameworks.
+
 AI coding agents drift during long sessions — they introduce API keys into source, skip tests, force-push to main, and leave debug statements behind. AgentLint catches these problems *as they happen*, not at review time.
 
 ## Vision
 
-The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 68 rules that run locally in milliseconds.
+The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 67 rules that run locally in milliseconds.
 
 The longer-term question is harder: **what does it mean for an agent to operate safely on real infrastructure?** When an agent can run `gcloud`, `kubectl`, `terraform`, or `iptables`, the blast radius is no longer a bad commit — it's a production outage or a deleted database.
 
@@ -20,9 +22,9 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 ## What it catches
 
-AgentLint ships with 68 rules across 8 packs, covering all 17 Claude Code hook events. The 19 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
+AgentLint ships with 67 rules across 8 packs, covering all 17 Claude Code hook events. The 18 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
 
-**v1.7.0 highlights:** Session summary dashboard (`agentlint report --summary`), MCP server documentation, cumulative violation tracking in Stop reports. Previous: global config defaults, warning suppression, auto-suppress, `diff_only` mode, `auto-fix` mode.
+**v2.0.0 highlights:** Multi-platform adapter architecture — supports Claude Code, Cursor, Kimi, Grok, Gemini, Codex, Continue, OpenAI Agents, MCP, and generic HTTP. Unified `AgentEvent` taxonomy, `NormalizedTool` cross-platform mappings, and per-platform hook configuration. Previous: session summary dashboard, MCP server, global config defaults, warning suppression, auto-suppress, `diff_only` mode, `auto-fix` mode.
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -231,12 +233,65 @@ agentlint uninstall
 
 ### Installation options
 
+**Claude Code (default):**
 ```bash
 # Install to project (default)
-agentlint setup
+agentlint setup claude
 
 # Install to user-level settings (~/.claude/settings.json)
-agentlint setup --global
+agentlint setup claude --global
+```
+
+**Cursor IDE:**
+```bash
+# Install to project
+agentlint setup cursor
+
+# Install to user-level settings (~/.cursor/hooks.json)
+agentlint setup cursor --global
+```
+
+**Kimi (Moonshot AI):**
+```bash
+agentlint setup kimi
+```
+
+**Grok (xAI):**
+```bash
+agentlint setup grok
+```
+
+**Gemini (Google):**
+```bash
+agentlint setup gemini
+```
+
+**Codex (OpenAI):**
+```bash
+agentlint setup codex
+```
+
+**Continue.dev:**
+```bash
+agentlint setup continue
+```
+
+**OpenAI Agents SDK:**
+```bash
+agentlint setup openai
+# Follow the printed guardrail integration code
+```
+
+**MCP Hosts (Claude Desktop, VS Code, Windsurf):**
+```bash
+agentlint setup mcp
+# Follow the printed MCP server configuration
+```
+
+**Generic HTTP/Webhook:**
+```bash
+agentlint setup generic
+# Follow the printed webhook configuration
 ```
 
 ### Claude Code marketplace
@@ -617,7 +672,7 @@ Disable it in `agentlint.yml`: `rules: { no-secrets: { enabled: false } }`. Or s
 No. AgentLint is fully offline. It reads stdin from Claude Code's hook system and evaluates rules locally. No telemetry, no network requests.
 
 **Can I use AgentLint outside Claude Code?**
-The CLI works standalone — you can pipe JSON to `agentlint check` in any CI pipeline. However, the hook integration (blocking actions in real-time) is specific to Claude Code.
+Yes. AgentLint supports real-time blocking hooks on Claude Code, Cursor, Kimi, Grok, Gemini, Codex, and Continue.dev. For OpenAI Agents SDK and MCP hosts, use guardrail-based integration. The CLI also works standalone in any CI pipeline.
 
 ## Contributing
 
