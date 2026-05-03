@@ -74,3 +74,10 @@ class TestGenericAdapterMisc:
     def test_uninstall_hooks_noop(self, tmp_path) -> None:
         adapter = GenericAdapter()
         adapter.uninstall_hooks(str(tmp_path))  # should not raise
+
+
+class TestEnvFallbacks:
+    def test_resolves_session_key_from_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_SESSION_ID", "session-123")
+        adapter = GenericAdapter()
+        assert adapter.resolve_session_key() == "session-123"

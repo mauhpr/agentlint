@@ -491,3 +491,36 @@ class TestNormalizedTool:
             agent_platform="claude",
         )
         assert ctx.normalized_tool == NormalizedTool.UNKNOWN
+
+
+class TestToHookEventKeyError:
+    def test_agent_event_not_in_map_raises(self, monkeypatch):
+        from agentlint.models import to_hook_event, AgentEvent
+        from agentlint.core.models import _AGENT_EVENT_TO_HOOK_EVENT
+        # Temporarily remove a mapping to trigger KeyError
+        original = _AGENT_EVENT_TO_HOOK_EVENT.copy()
+        monkeypatch.setitem(_AGENT_EVENT_TO_HOOK_EVENT, AgentEvent.PRE_TOOL_USE, None)
+        del _AGENT_EVENT_TO_HOOK_EVENT[AgentEvent.PRE_TOOL_USE]
+        try:
+            with pytest.raises(ValueError, match="No HookEvent mapping for"):
+                to_hook_event(AgentEvent.PRE_TOOL_USE)
+        finally:
+            _AGENT_EVENT_TO_HOOK_EVENT.clear()
+            _AGENT_EVENT_TO_HOOK_EVENT.update(original)
+
+
+class TestBaseFormatter:
+    def test_format_subagent_start_default(self):
+        from agentlint.formats.base import OutputFormatter
+        from agentlint.models import Severity, Violation, AgentEvent
+
+        class DummyFormatter(OutputFormatter):
+            def format(self, violations, event=""):
+                return "formatted"
+            def exit_code(self, violations, event=""):
+                return 0
+
+        formatter = DummyFormatter()
+        violations = [Violation(rule_id="r1", message="msg", severity=Severity.ERROR)]
+        result = formatter.format_subagent_start(violations)
+        assert result == "formatted"

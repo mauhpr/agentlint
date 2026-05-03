@@ -187,3 +187,27 @@ class TestFormatter:
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
         adapter = GrokAdapter()
         assert isinstance(adapter.formatter, ClaudeHookFormatter)
+
+
+class TestEnvFallbacks:
+    def test_resolves_session_key_from_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_SESSION_ID", "session-123")
+        adapter = GrokAdapter()
+        assert adapter.resolve_session_key() == "session-123"
+
+
+class TestInstallHooksExtra:
+    def test_dry_run_does_not_write(self, tmp_path) -> None:
+        adapter = GrokAdapter()
+        adapter.install_hooks(str(tmp_path), scope="project", dry_run=True)
+        assert not (tmp_path / ".grok" / "settings.json").exists()
+
+
+class TestUninstallHooksExtra:
+    def test_uninstall_aborts_on_corrupted_file(self, tmp_path) -> None:
+        settings_file = tmp_path / ".grok" / "settings.json"
+        settings_file.parent.mkdir(parents=True)
+        settings_file.write_text("not json")
+        adapter = GrokAdapter()
+        adapter.uninstall_hooks(str(tmp_path), scope="project")
+        assert settings_file.read_text() == "not json"

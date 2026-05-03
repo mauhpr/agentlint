@@ -284,3 +284,10 @@ class TestWriteConfig:
         assert "count = 42" in text
         assert "rate = 3.14" in text
         assert "enabled = true" in text
+
+
+class TestFormatter:
+    def test_formatter_property(self) -> None:
+        from agentlint.formats.claude_hooks import ClaudeHookFormatter
+        adapter = KimiAdapter()
+        assert isinstance(adapter.formatter, ClaudeHookFormatter)

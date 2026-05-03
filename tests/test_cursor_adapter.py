@@ -310,3 +310,34 @@ class TestFormatter:
 
         formatter = CursorHookFormatter()
         assert formatter.format_subagent_start([]) is None
+
+
+class TestEnvFallbacks:
+    def test_resolves_project_dir_from_agentlint_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_PROJECT_DIR", "/my/agentlint/project")
+        adapter = CursorAdapter()
+        assert adapter.resolve_project_dir() == "/my/agentlint/project"
+
+    def test_resolves_session_key_from_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_SESSION_ID", "session-123")
+        adapter = CursorAdapter()
+        assert adapter.resolve_session_key() == "session-123"
+
+
+class TestUninstallHooks:
+    def test_uninstall_flat_entry(self, tmp_path) -> None:
+        hooks_file = tmp_path / ".cursor" / "hooks.json"
+        hooks_file.parent.mkdir(parents=True)
+        existing = {
+            "version": 1,
+            "hooks": {
+                "stop": {"_agentlint": "v2", "command": "agentlint check --event stop --adapter cursor"},
+                "preToolUse": [{"command": "echo hello"}],
+            }
+        }
+        hooks_file.write_text(json.dumps(existing))
+        adapter = CursorAdapter()
+        adapter.uninstall_hooks(str(tmp_path), scope="project")
+        data = json.loads(hooks_file.read_text())
+        assert "stop" not in data["hooks"]
+        assert "preToolUse" in data["hooks"]

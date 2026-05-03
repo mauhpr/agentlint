@@ -183,3 +183,27 @@ class TestFormatter:
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
         adapter = CodexAdapter()
         assert isinstance(adapter.formatter, ClaudeHookFormatter)
+
+
+class TestEnvFallbacks:
+    def test_resolves_session_key_from_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_SESSION_ID", "session-123")
+        adapter = CodexAdapter()
+        assert adapter.resolve_session_key() == "session-123"
+
+
+class TestInstallHooksExtra:
+    def test_dry_run_does_not_write(self, tmp_path) -> None:
+        adapter = CodexAdapter()
+        adapter.install_hooks(str(tmp_path), scope="project", dry_run=True)
+        assert not (tmp_path / ".codex" / "hooks.json").exists()
+
+
+class TestUninstallHooksExtra:
+    def test_uninstall_aborts_on_corrupted_file(self, tmp_path) -> None:
+        hooks_file = tmp_path / ".codex" / "hooks.json"
+        hooks_file.parent.mkdir(parents=True)
+        hooks_file.write_text("not json")
+        adapter = CodexAdapter()
+        adapter.uninstall_hooks(str(tmp_path), scope="project")
+        assert hooks_file.read_text() == "not json"

@@ -256,3 +256,40 @@ class TestFormatter:
 
         formatter = GeminiHookFormatter()
         assert formatter.exit_code([], AgentEvent.PRE_TOOL_USE) == 0
+
+
+class TestFormatterEdgeCases:
+    def test_format_returns_none_when_no_violations(self) -> None:
+        from agentlint.formats.gemini_hooks import GeminiHookFormatter
+        formatter = GeminiHookFormatter()
+        assert formatter.format([], AgentEvent.PRE_TOOL_USE) is None
+
+    def test_format_fallback_for_other_events(self) -> None:
+        from agentlint.models import Severity, Violation
+        from agentlint.formats.gemini_hooks import GeminiHookFormatter
+
+        formatter = GeminiHookFormatter()
+        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        output = formatter.format(violations, AgentEvent.STOP)
+        assert output is not None
+        data = json.loads(output)
+        assert "hookSpecificOutput" in data
+        assert "additionalContext" in data["hookSpecificOutput"]
+
+    def test_format_subagent_start(self) -> None:
+        from agentlint.models import Severity, Violation
+        from agentlint.formats.gemini_hooks import GeminiHookFormatter
+
+        formatter = GeminiHookFormatter()
+        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        output = formatter.format_subagent_start(violations)
+        assert output is not None
+        data = json.loads(output)
+        assert data["hookSpecificOutput"]["hookEventName"] == "SubagentStart"
+        assert "Secret found" in data["hookSpecificOutput"]["additionalContext"]
+
+    def test_format_subagent_start_returns_none(self) -> None:
+        from agentlint.formats.gemini_hooks import GeminiHookFormatter
+
+        formatter = GeminiHookFormatter()
+        assert formatter.format_subagent_start([]) is None
