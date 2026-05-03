@@ -324,7 +324,7 @@ class TestEnvFallbacks:
         assert adapter.resolve_session_key() == "session-123"
 
 
-class TestUninstallHooks:
+class TestUninstallHooksExtra:
     def test_uninstall_flat_entry(self, tmp_path) -> None:
         hooks_file = tmp_path / ".cursor" / "hooks.json"
         hooks_file.parent.mkdir(parents=True)
@@ -341,3 +341,20 @@ class TestUninstallHooks:
         data = json.loads(hooks_file.read_text())
         assert "stop" not in data["hooks"]
         assert "preToolUse" in data["hooks"]
+
+
+class TestInstallHooksNonList:
+    def test_install_handles_non_list_entries(self, tmp_path, monkeypatch) -> None:
+        from agentlint.adapters import cursor
+        original_build = cursor._build_hooks
+        def fake_build(cmd):
+            hooks = original_build(cmd)
+            hooks["hooks"]["stop"] = {"_agentlint": "v2", "command": f"{cmd} check --event stop --adapter cursor"}
+            return hooks
+        monkeypatch.setattr(cursor, "_build_hooks", fake_build)
+        adapter = CursorAdapter()
+        adapter.install_hooks(str(tmp_path), scope="project")
+        hooks_file = tmp_path / ".cursor" / "hooks.json"
+        data = json.loads(hooks_file.read_text())
+        assert "stop" in data["hooks"]
+        assert isinstance(data["hooks"]["stop"], list)
