@@ -286,7 +286,7 @@ class TestWriteConfig:
         assert "enabled = true" in text
 
 
-class TestFormatter:
+class TestAdapterFormatter:
     def test_formatter_property(self) -> None:
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
         adapter = KimiAdapter()
