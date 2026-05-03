@@ -127,6 +127,64 @@ class TestIsAgentlintFlatEntry:
         assert is_agentlint_flat_entry(entry) is False
 
 
+class TestClaudeAdapter:
+    def test_resolves_project_dir_from_agentlint_env(self, monkeypatch) -> None:
+        from agentlint.adapters.claude import ClaudeAdapter
+
+        monkeypatch.setenv("AGENTLINT_PROJECT_DIR", "/my/agentlint/project")
+        adapter = ClaudeAdapter()
+        assert adapter.resolve_project_dir() == "/my/agentlint/project"
+
+    def test_resolves_session_key_from_env(self, monkeypatch) -> None:
+        from agentlint.adapters.claude import ClaudeAdapter
+
+        monkeypatch.setenv("AGENTLINT_SESSION_ID", "session-123")
+        adapter = ClaudeAdapter()
+        assert adapter.resolve_session_key() == "session-123"
+
+    def test_normalize_unknown_tool(self) -> None:
+        from agentlint.adapters.claude import ClaudeAdapter
+
+        adapter = ClaudeAdapter()
+        assert adapter.normalize_tool_name("unknown_tool") == "unknown"
+
+    def test_build_rule_context_defaults(self) -> None:
+        from agentlint.adapters.claude import ClaudeAdapter
+        from agentlint.models import AgentEvent
+
+        adapter = ClaudeAdapter()
+        ctx = adapter.build_rule_context(AgentEvent.PRE_TOOL_USE, {"event": "PreToolUse"}, "/tmp", {})
+        assert ctx.tool_input == {}
+        assert ctx.tool_name == ""
+
+    def test_uninstall_preserves_event_with_remaining_hooks(self, tmp_path) -> None:
+        from agentlint.adapters.claude import ClaudeAdapter
+
+        settings_file = tmp_path / ".claude" / "settings.json"
+        settings_file.parent.mkdir(parents=True)
+        existing = {
+            "hooks": {
+                "PreToolUse": [
+                    {"matcher": "Bash", "hooks": [{"command": "echo hello"}]},
+                    {"matcher": "Write", "hooks": [{"command": "agentlint check --event PreToolUse --adapter claude", "_agentlint": "v2"}]},
+                ],
+                "PostToolUse": [
+                    {"matcher": "Write", "hooks": [{"command": "agentlint check --event PostToolUse --adapter claude", "_agentlint": "v2"}]},
+                ]
+            }
+        }
+        settings_file.write_text(json.dumps(existing))
+
+        adapter = ClaudeAdapter()
+        adapter.uninstall_hooks(str(tmp_path), scope="project")
+
+        data = json.loads(settings_file.read_text())
+        assert "PreToolUse" in data["hooks"]
+        assert len(data["hooks"]["PreToolUse"]) == 1
+        assert data["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "echo hello"
+        assert "PostToolUse" not in data["hooks"]
+
+
 class TestCorruptedConfigProtection:
     """Verify uninstall_hooks does not delete corrupted config files."""
 

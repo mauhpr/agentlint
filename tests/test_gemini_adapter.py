@@ -81,6 +81,25 @@ class TestBuildRuleContext:
         adapter = GeminiAdapter()
         assert adapter.resolve_project_dir() == "/my/gemini/project"
 
+    def test_formatter_property(self) -> None:
+        from agentlint.formats.gemini_hooks import GeminiHookFormatter
+        adapter = GeminiAdapter()
+        assert isinstance(adapter.formatter, GeminiHookFormatter)
+
+    def test_resolves_project_dir_from_agentlint_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_PROJECT_DIR", "/my/agentlint/project")
+        adapter = GeminiAdapter()
+        assert adapter.resolve_project_dir() == "/my/agentlint/project"
+
+    def test_resolves_session_key_from_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_SESSION_ID", "session-123")
+        adapter = GeminiAdapter()
+        assert adapter.resolve_session_key() == "session-123"
+
+    def test_normalize_unknown_tool(self) -> None:
+        adapter = GeminiAdapter()
+        assert adapter.normalize_tool_name("unknown_tool") == "unknown"
+
 
 class TestSettingsPath:
     def test_project_scope(self, tmp_path) -> None:
@@ -151,6 +170,13 @@ class TestInstallHooks:
         assert before_tool[0]["hooks"][0]["command"] == "echo hello"
         assert "agentlint" in before_tool[1]["hooks"][0]["command"]
 
+    def test_dry_run_does_not_write(self, tmp_path) -> None:
+        adapter = GeminiAdapter()
+        adapter.install_hooks(str(tmp_path), scope="project", dry_run=True)
+
+        settings_file = tmp_path / ".gemini" / "settings.json"
+        assert not settings_file.exists()
+
 
 class TestUninstallHooks:
     def test_removes_hooks(self, tmp_path) -> None:
@@ -180,6 +206,16 @@ class TestUninstallHooks:
         data = json.loads(settings_file.read_text())
         assert len(data["hooks"]["BeforeTool"]) == 1
         assert data["hooks"]["BeforeTool"][0]["hooks"][0]["command"] == "echo hello"
+
+    def test_uninstall_aborts_on_corrupted_file(self, tmp_path) -> None:
+        settings_file = tmp_path / ".gemini" / "settings.json"
+        settings_file.parent.mkdir(parents=True)
+        settings_file.write_text("not json")
+
+        adapter = GeminiAdapter()
+        adapter.uninstall_hooks(str(tmp_path), scope="project")
+
+        assert settings_file.read_text() == "not json"
 
 
 class TestFormatter:

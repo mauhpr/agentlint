@@ -6,7 +6,7 @@ import os
 
 from click.testing import CliRunner
 
-from agentlint.cli import main
+from agentlint.cli import _resolve_adapter, main
 
 
 class TestCheckCommand:
@@ -1912,3 +1912,367 @@ class TestUninstallPlatformSubcommands:
         result = runner.invoke(main, ["uninstall", "--project-dir", str(tmp_path)])
         assert result.exit_code == 0
         assert not (tmp_path / ".claude" / "settings.json").exists()
+
+
+class TestResolveAdapter:
+    def test_auto_detect_kimi(self, monkeypatch) -> None:
+        monkeypatch.setenv("KIMI_SESSION_ID", "kimi-123")
+        adapter = _resolve_adapter()
+        assert adapter.platform_name == "kimi"
+
+    def test_auto_detect_grok(self, monkeypatch) -> None:
+        monkeypatch.setenv("GROK_PROJECT_DIR", "/grok")
+        adapter = _resolve_adapter()
+        assert adapter.platform_name == "grok"
+
+    def test_auto_detect_gemini(self, monkeypatch) -> None:
+        monkeypatch.setenv("GEMINI_SESSION_ID", "gemini-123")
+        adapter = _resolve_adapter()
+        assert adapter.platform_name == "gemini"
+
+    def test_auto_detect_codex(self, monkeypatch) -> None:
+        monkeypatch.setenv("CODEX_PROJECT_DIR", "/codex")
+        adapter = _resolve_adapter()
+        assert adapter.platform_name == "codex"
+
+    def test_auto_detect_continue(self, monkeypatch) -> None:
+        monkeypatch.setenv("CONTINUE_SESSION_ID", "continue-123")
+        adapter = _resolve_adapter()
+        assert adapter.platform_name == "continue"
+
+    def test_auto_detect_openai(self, monkeypatch) -> None:
+        monkeypatch.setenv("OPENAI_RUN_ID", "run-123")
+        adapter = _resolve_adapter()
+        assert adapter.platform_name == "openai"
+
+    def test_auto_detect_mcp(self, monkeypatch) -> None:
+        monkeypatch.setenv("MCP_SESSION_ID", "mcp-123")
+        adapter = _resolve_adapter()
+        assert adapter.platform_name == "mcp"
+
+    def test_explicit_adapter_overrides_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("KIMI_SESSION_ID", "kimi-123")
+        adapter = _resolve_adapter("cursor")
+        assert adapter.platform_name == "cursor"
+
+
+class TestCheckFormatOverride:
+    def test_format_claude_hooks_override(self, tmp_path) -> None:
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "config.py",
+                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+            },
+        })
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path), "--format", "claude_hooks"],
+            input=payload,
+        )
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert parsed["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_check_with_circuit_breaker(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\ncircuit_breaker:\n  max_violations: 10\n"
+        )
+        payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": "x.py", "content": "a = 1"}})
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+
+class TestCheckCustomRules:
+    def test_check_loads_custom_rules_dir(self, tmp_path) -> None:
+        custom_dir = tmp_path / "custom_rules"
+        custom_dir.mkdir()
+        (custom_dir / "my_rule.py").write_text(
+            "from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation\n"
+            "class MyRule(Rule):\n"
+            "    id = 'my-custom-rule'\n"
+            "    description = 'Test'\n"
+            "    severity = Severity.ERROR\n"
+            "    events = [HookEvent.PRE_TOOL_USE]\n"
+            "    pack = 'custom'\n"
+            "    def evaluate(self, ctx):\n"
+            "        return [Violation(rule_id=self.id, message='Custom hit', severity=self.severity)]\n"
+        )
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n  - custom\ncustom_rules_dir: custom_rules\n")
+        payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": "x.py", "content": "a = 1"}})
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+        assert "my-custom-rule" in result.output
+
+
+class TestStatusVersionFallback:
+    def test_status_version_fallback_on_exception(self, tmp_path, monkeypatch) -> None:
+        import importlib.metadata
+        monkeypatch.setattr(importlib.metadata, "version", lambda _pkg: (_ for _ in ()).throw(RuntimeError("boom")))
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "dev" in result.output
+
+
+class TestDoctorBranches:
+    def test_doctor_corrupted_cursor_hooks(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+        cursor_dir = tmp_path / ".cursor"
+        cursor_dir.mkdir()
+        (cursor_dir / "hooks.json").write_text("not json")
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+
+    def test_doctor_cursor_hooks_only(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+        cursor_dir = tmp_path / ".cursor"
+        cursor_dir.mkdir()
+        (cursor_dir / "hooks.json").write_text(
+            json.dumps({"hooks": {"preToolUse": [{"command": "agentlint check --event preToolUse --adapter cursor"}]}})
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert ".cursor/hooks.json" in result.output
+
+    def test_doctor_alt_config_found(self, tmp_path) -> None:
+        (tmp_path / ".agentlint.yml").write_text("stack: auto\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "found (alternate name)" in result.output
+
+    def test_doctor_both_hooks_installed(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+        runner = CliRunner()
+        runner.invoke(main, ["setup", "claude", "--project-dir", str(tmp_path)])
+        runner.invoke(main, ["setup", "cursor", "--project-dir", str(tmp_path)])
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "both Claude and Cursor" in result.output
+
+    def test_doctor_cli_integration_not_found(self, tmp_path) -> None:
+        (tmp_path / "agentlint.yml").write_text(
+            "stack: auto\n"
+            "rules:\n"
+            "  cli-integration:\n"
+            "    commands:\n"
+            "      - name: fake-linter\n"
+            "        command: definitely_not_a_real_binary_12345 {file.path}\n"
+        )
+        # Install claude hooks so doctor doesn't complain about missing hooks
+        runner = CliRunner()
+        runner.invoke(main, ["setup", "claude", "--project-dir", str(tmp_path)])
+        result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "not found in PATH" in result.output
+
+
+class TestRecordingsStats:
+    def test_stats_with_last_n(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        # Create a recording file
+        rec = tmp_path / "test-session.jsonl"
+        rec.write_text(
+            json.dumps({"event": "PreToolUse", "tool_name": "Write", "violations": [{"rule_id": "no-secrets"}]}) + "\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "stats", "--last", "1"])
+        assert result.exit_code == 0
+        assert "Sessions:" in result.output
+        assert "Top rules fired:" in result.output
+
+    def test_stats_no_recordings(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_RECORDING", "1")
+        monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
+        runner = CliRunner()
+        result = runner.invoke(main, ["recordings", "stats"])
+        assert result.exit_code == 0
+        assert "No recordings found" in result.output
+
+
+class TestSuppressCommand:
+    def _patch_cache(self, monkeypatch, tmp_path):
+        import agentlint.session
+        monkeypatch.setattr(agentlint.session, "_cache_dir", lambda: tmp_path)
+
+    def test_suppress_no_args_shows_usage(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["suppress"])
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
+
+    def test_suppress_add_rule(self, tmp_path, monkeypatch) -> None:
+        self._patch_cache(monkeypatch, tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["suppress", "my-rule"])
+        assert result.exit_code == 0
+        assert "Suppressed 'my-rule'" in result.output
+
+    def test_suppress_list_empty(self, tmp_path, monkeypatch) -> None:
+        self._patch_cache(monkeypatch, tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["suppress", "--list"])
+        assert result.exit_code == 0
+        assert "No rules suppressed" in result.output
+
+    def test_suppress_list_with_rules(self, tmp_path, monkeypatch) -> None:
+        self._patch_cache(monkeypatch, tmp_path)
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "rule-a"])
+        result = runner.invoke(main, ["suppress", "--list"])
+        assert result.exit_code == 0
+        assert "rule-a" in result.output
+
+    def test_suppress_clear(self, tmp_path, monkeypatch) -> None:
+        self._patch_cache(monkeypatch, tmp_path)
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "rule-a"])
+        result = runner.invoke(main, ["suppress", "--clear"])
+        assert result.exit_code == 0
+        assert "All suppressions cleared" in result.output
+
+    def test_suppress_remove_existing(self, tmp_path, monkeypatch) -> None:
+        self._patch_cache(monkeypatch, tmp_path)
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "rule-a"])
+        result = runner.invoke(main, ["suppress", "--remove", "rule-a"])
+        assert result.exit_code == 0
+        assert "Removed suppression" in result.output
+
+    def test_suppress_remove_nonexistent(self, tmp_path, monkeypatch) -> None:
+        self._patch_cache(monkeypatch, tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["suppress", "--remove", "rule-x"])
+        assert result.exit_code == 0
+        assert "not suppressed" in result.output
+
+    def test_suppress_duplicate(self, tmp_path, monkeypatch) -> None:
+        self._patch_cache(monkeypatch, tmp_path)
+        runner = CliRunner()
+        runner.invoke(main, ["suppress", "rule-a"])
+        result = runner.invoke(main, ["suppress", "rule-a"])
+        assert result.exit_code == 0
+        assert "already suppressed" in result.output
+
+    def test_suppress_mutually_exclusive(self, tmp_path, monkeypatch) -> None:
+        self._patch_cache(monkeypatch, tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["suppress", "--list", "--clear"])
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output
+
+
+class TestUninstallUnknownPlatform:
+    def test_uninstall_unknown_platform_errors(self, tmp_path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["uninstall", "unknown", "--project-dir", str(tmp_path)])
+        assert result.exit_code != 0
+        assert "Unknown platform" in result.output
+
+
+class TestCheckOSError:
+    def test_check_handles_file_read_oserror(self, tmp_path, monkeypatch) -> None:
+        """Line 230-231: OSError when reading file should be handled gracefully."""
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        target = tmp_path / "test.py"
+        target.write_text("a = 1\n")
+        payload = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target), "content": "a = 1"},
+        })
+        real_open = open
+        def fake_open(path, *args, **kwargs):
+            if str(path) == str(target):
+                raise OSError("boom")
+            return real_open(path, *args, **kwargs)
+        monkeypatch.setattr("builtins.open", fake_open)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
+        )
+        assert result.exit_code == 0
+
+
+class TestCiCustomRules:
+    def test_ci_loads_custom_rules_dir(self, tmp_path, monkeypatch) -> None:
+        """Line 364: ci command should load custom_rules_dir."""
+        custom_dir = tmp_path / "custom_rules"
+        custom_dir.mkdir()
+        (custom_dir / "my_rule.py").write_text(
+            "from agentlint.models import Rule, RuleContext, Violation, HookEvent, Severity\n"
+            "class MyRule(Rule):\n"
+            "    id = 'my-ci-rule'\n"
+            "    description = 'Test'\n"
+            "    severity = Severity.WARNING\n"
+            "    events = [HookEvent.PRE_TOOL_USE]\n"
+            "    pack = 'custom'\n"
+            "    def evaluate(self, ctx):\n"
+            "        return [Violation(rule_id=self.id, message='CI hit', severity=self.severity)]\n"
+        )
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n  - custom\ncustom_rules_dir: custom_rules\n")
+        test_file = tmp_path / "test.py"
+        test_file.write_text("a = 1\n")
+        import agentlint.cli
+        monkeypatch.setattr(agentlint.cli, "get_diff_files", lambda _pd, _dr: [str(test_file)])
+        runner = CliRunner()
+        result = runner.invoke(main, ["ci", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "my-ci-rule" in result.output
+
+    def test_ci_skips_unreadable_files(self, tmp_path, monkeypatch) -> None:
+        """Line 385-386: ci should skip files that raise OSError."""
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        test_file = tmp_path / "test.py"
+        test_file.write_text("a = 1\n")
+        import agentlint.cli
+        monkeypatch.setattr(agentlint.cli, "get_diff_files", lambda _pd, _dr: [str(test_file)])
+        real_open = open
+        def fake_open(path, *args, **kwargs):
+            if str(path) == str(test_file):
+                raise OSError("boom")
+            return real_open(path, *args, **kwargs)
+        monkeypatch.setattr("builtins.open", fake_open)
+        runner = CliRunner()
+        result = runner.invoke(main, ["ci", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+
+
+class TestReportCustomRules:
+    def test_report_loads_custom_rules_dir(self, tmp_path, monkeypatch) -> None:
+        """Line 521: report command should load custom_rules_dir."""
+        custom_dir = tmp_path / "custom_rules"
+        custom_dir.mkdir()
+        (custom_dir / "my_rule.py").write_text(
+            "from agentlint.models import Rule, RuleContext, Violation, HookEvent, Severity\n"
+            "class MyRule(Rule):\n"
+            "    id = 'my-report-rule'\n"
+            "    description = 'Test'\n"
+            "    severity = Severity.WARNING\n"
+            "    events = [HookEvent.STOP]\n"
+            "    pack = 'custom'\n"
+            "    def evaluate(self, ctx):\n"
+            "        return [Violation(rule_id=self.id, message='Report hit', severity=self.severity)]\n"
+        )
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n  - custom\ncustom_rules_dir: custom_rules\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "my-report-rule" in result.output

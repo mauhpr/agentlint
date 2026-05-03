@@ -276,3 +276,37 @@ class TestFormatter:
         assert output is not None
         data = json.loads(output)
         assert "additional_context" in data
+
+    def test_format_returns_none_when_no_violations(self) -> None:
+        from agentlint.formats.cursor_hooks import CursorHookFormatter
+
+        formatter = CursorHookFormatter()
+        assert formatter.format([], AgentEvent.PRE_TOOL_USE) is None
+
+    def test_format_fallback_for_stop_event(self) -> None:
+        from agentlint.models import Severity, Violation
+        from agentlint.formats.cursor_hooks import CursorHookFormatter
+
+        formatter = CursorHookFormatter()
+        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        output = formatter.format(violations, AgentEvent.STOP)
+        assert output is not None
+        data = json.loads(output)
+        assert "additional_context" in data
+
+    def test_format_subagent_start(self) -> None:
+        from agentlint.models import Severity, Violation
+        from agentlint.formats.cursor_hooks import CursorHookFormatter
+
+        formatter = CursorHookFormatter()
+        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        output = formatter.format_subagent_start(violations)
+        assert output is not None
+        data = json.loads(output)
+        assert "additional_context" in data
+
+    def test_format_subagent_start_returns_none(self) -> None:
+        from agentlint.formats.cursor_hooks import CursorHookFormatter
+
+        formatter = CursorHookFormatter()
+        assert formatter.format_subagent_start([]) is None

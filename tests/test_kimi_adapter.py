@@ -217,6 +217,45 @@ class TestFormatter:
         data = json.loads(output)
         assert data["hookSpecificOutput"]["permissionDecision"] == "deny"
 
+    def test_format_with_warnings_and_infos(self) -> None:
+        from agentlint.models import Severity, Violation
+        from agentlint.formats.claude_hooks import ClaudeHookFormatter
+
+        formatter = ClaudeHookFormatter()
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR, suggestion="Use env vars"),
+            Violation(rule_id="max-file-size", message="File too large", severity=Severity.WARNING, suggestion="Split it"),
+            Violation(rule_id="todo", message="TODO found", severity=Severity.INFO, suggestion="Fix it"),
+        ]
+        output = formatter.format(violations, AgentEvent.STOP)
+        assert output is not None
+        data = json.loads(output)
+        msg = data["systemMessage"]
+        assert "BLOCKED" in msg
+        assert "WARNINGS" in msg
+        assert "INFO" in msg
+        assert "Use env vars" in msg
+        assert "Split it" in msg
+        assert "Fix it" in msg
+
+    def test_format_subagent_start(self) -> None:
+        from agentlint.models import Severity, Violation
+        from agentlint.formats.claude_hooks import ClaudeHookFormatter
+
+        formatter = ClaudeHookFormatter()
+        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        output = formatter.format_subagent_start(violations)
+        assert output is not None
+        data = json.loads(output)
+        assert data["hookSpecificOutput"]["hookEventName"] == "SubagentStart"
+        assert "Secret found" in data["hookSpecificOutput"]["additionalContext"]
+
+    def test_format_subagent_start_returns_none(self) -> None:
+        from agentlint.formats.claude_hooks import ClaudeHookFormatter
+
+        formatter = ClaudeHookFormatter()
+        assert formatter.format_subagent_start([]) is None
+
 
 class TestWriteConfig:
     def test_preserves_non_hooks_dict_section(self, tmp_path) -> None:
