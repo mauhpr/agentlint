@@ -1,6 +1,6 @@
 [project]
 name = "agentlint"
-version = "1.10.0"
+version = "2.0.0"
 description = "Real-time quality guardrails for AI coding agents"
 readme = "README.md"
 license = "MIT"
@@ -8,7 +8,7 @@ requires-python = ">=3.11"
 authors = [
     { name = "mauhpr" }
 ]
-keywords = ["claude-code", "ai-agents", "guardrails", "linting", "hooks", "code-quality", "ai-safety", "agent-guardrails", "claude", "code-review", "pre-commit", "ai-linting", "ai-guardrails", "agentic", "tool-use", "ai-code-review"]
+keywords = ["ai-agents", "agent-guardrails", "guardrails", "linting", "hooks", "code-quality", "ai-safety", "claude-code", "cursor", "codex", "gemini", "grok", "kimi", "continue", "mcp", "code-review", "pre-commit", "ai-linting", "agentic", "tool-use", "ai-code-review"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",

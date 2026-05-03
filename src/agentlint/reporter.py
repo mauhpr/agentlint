@@ -1,145 +1,44 @@
-"""Output formatting for Claude Code hook protocol."""
+"""Output formatting for agent violations."""
 from __future__ import annotations
 
 import json
 
-from agentlint.models import Severity, Violation
+from agentlint.formats.base import OutputFormatter
+from agentlint.formats.claude_hooks import ClaudeHookFormatter
+from agentlint.models import AgentEvent, Severity, Violation
 
 
 class Reporter:
-    """Formats violations for Claude Code hook output."""
+    """Formats violations for agent output.
 
-    def __init__(self, violations: list[Violation], rules_evaluated: int = 0):
+    Uses a pluggable OutputFormatter for platform-specific hook protocols,
+    while session summary/report formatting remains generic.
+    """
+
+    def __init__(
+        self,
+        violations: list[Violation],
+        rules_evaluated: int = 0,
+        formatter: OutputFormatter | None = None,
+    ):
         self.violations = violations
         self.rules_evaluated = rules_evaluated
+        self.formatter = formatter or ClaudeHookFormatter()
 
     def has_blocking_violations(self) -> bool:
         return any(v.severity == Severity.ERROR for v in self.violations)
 
     def exit_code(self, event: str = "") -> int:
-        """Return exit code for Claude Code hook protocol.
-
-        PreToolUse blocking uses exit 0 + JSON deny protocol (exit 2 ignores JSON).
-        Other events use exit 2 for blocking (stderr-based).
-        """
-        if not self.has_blocking_violations():
-            return 0
-        if event == "PreToolUse":
-            return 0  # Deny protocol requires exit 0 with JSON
-        return 2
+        """Return exit code for the configured formatter."""
+        return self.formatter.exit_code(self.violations, event)
 
     def format_hook_output(self, event: str = "") -> str | None:
-        """Format violations as Claude Code hook JSON output. Returns None if no violations.
-
-        Output channel depends on event type:
-        - PreToolUse ERROR: hookSpecificOutput with permissionDecision="deny"
-        - PreToolUse advisory (WARNING/INFO): hookSpecificOutput with additionalContext
-        - PostToolUse/PostToolUseFailure: hookSpecificOutput with additionalContext
-          (+ decision "block" for WARNINGs as strong advisory signal)
-        - Other events (Stop, Notification, etc.): systemMessage for user visibility
-        """
-        if not self.violations:
-            return None
-
-        errors = [v for v in self.violations if v.severity == Severity.ERROR]
-        warnings = [v for v in self.violations if v.severity == Severity.WARNING]
-        infos = [v for v in self.violations if v.severity == Severity.INFO]
-
-        # For PreToolUse with blocking violations, use the deny protocol
-        if event == "PreToolUse" and errors:
-            reason_lines = []
-            for v in errors:
-                reason_lines.append(f"[{v.rule_id}] {v.message}")
-                if v.suggestion:
-                    reason_lines.append(f"  -> {v.suggestion}")
-            # Include warnings/info as additional context
-            for v in warnings + infos:
-                reason_lines.append(f"[{v.rule_id}] {v.message}")
-                if v.suggestion:
-                    reason_lines.append(f"  -> {v.suggestion}")
-
-            return json.dumps({
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": "\n".join(reason_lines),
-                }
-            })
-
-        # Build formatted violation lines for reuse across output paths
-        context_lines: list[str] = []
-        for v in errors + warnings + infos:
-            context_lines.append(f"[{v.rule_id}] {v.message}")
-            if v.suggestion:
-                context_lines.append(f"  -> {v.suggestion}")
-
-        # PreToolUse advisory (no errors) — inject into agent context before tool runs
-        if event == "PreToolUse":
-            return json.dumps({
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "additionalContext": "\n".join(context_lines),
-                }
-            })
-
-        # PostToolUse — inject into agent context so it influences next action
-        if event in ("PostToolUse", "PostToolUseFailure"):
-            result: dict = {
-                "hookSpecificOutput": {
-                    "hookEventName": event,
-                    "additionalContext": "\n".join(context_lines),
-                }
-            }
-            # PostToolUse "block" is a strong advisory signal — the tool already ran,
-            # so this doesn't undo the action. Claude Code treats it as "hook is
-            # unhappy, reconsider before next action." If the protocol adds a
-            # dedicated advisory decision value in the future, switch to that.
-            if warnings or errors:
-                reason_violations = errors + warnings
-                result["decision"] = "block"
-                result["reason"] = "\n".join(
-                    f"[{v.rule_id}] {v.message}" for v in reason_violations
-                )
-            return json.dumps(result)
-
-        # Other events (Stop, Notification, etc.) — systemMessage for user visibility
-        lines = ["", "AgentLint:"]
-        if errors:
-            lines.append("  BLOCKED:")
-            for v in errors:
-                lines.append(f"    [{v.rule_id}] {v.message}")
-                if v.suggestion:
-                    lines.append(f"      -> {v.suggestion}")
-        if warnings:
-            lines.append("  WARNINGS:")
-            for v in warnings:
-                lines.append(f"    [{v.rule_id}] {v.message}")
-                if v.suggestion:
-                    lines.append(f"      -> {v.suggestion}")
-        if infos:
-            lines.append("  INFO:")
-            for v in infos:
-                lines.append(f"    [{v.rule_id}] {v.message}")
-                if v.suggestion:
-                    lines.append(f"      -> {v.suggestion}")
-        return json.dumps({"systemMessage": "\n".join(lines)})
+        """Format violations as hook output via the configured formatter."""
+        return self.formatter.format(self.violations, event)
 
     def format_subagent_start_output(self) -> str | None:
-        """Format SubagentStart output with additionalContext for injection into subagent.
-
-        Uses hookSpecificOutput to inject safety messages into the subagent's context.
-        Returns None if no violations (nothing to inject).
-        """
-        if not self.violations:
-            return None
-
-        context_lines = [v.message for v in self.violations]
-        return json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "SubagentStart",
-                "additionalContext": "\n".join(context_lines),
-            }
-        })
+        """Format SubagentStart output for injection into subagent context."""
+        return self.formatter.format_subagent_start(self.violations)
 
     def format_session_summary(
         self,

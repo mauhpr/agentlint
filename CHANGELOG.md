@@ -1,5 +1,77 @@
 # Changelog
 
+## v2.0.0 (2026-05-01) — Multi-Platform Agent Guardrails
+
+AgentLint is now agent-agnostic. What started as Claude Code guardrails now
+supports **10 AI coding agent platforms** with a unified adapter architecture.
+
+### New Platform Adapters
+
+- **Kimi** (Moonshot AI) — Hooks via `~/.kimi/config.toml`. 13 lifecycle events.
+  TOML config, stdin JSON protocol, `permissionDecision: "deny"` blocking.
+- **Grok** (xAI) — Hooks via `~/.grok/user-settings.json`. 16 lifecycle events.
+  Claude-compatible JSON protocol.
+- **Gemini** (Google) — Hooks via `.gemini/settings.json`. 11 lifecycle events.
+  Unique event taxonomy (BeforeTool/AfterTool/BeforeAgent/AfterAgent).
+  Custom `GeminiHookFormatter` with `decision: "deny"` blocking format.
+- **Codex** (OpenAI) — Hooks via `~/.codex/hooks.json`. 6 lifecycle events.
+  Bash-only PreToolUse coverage (apply_patch/MCP gaps documented).
+  Supports both modern `permissionDecision` and legacy `decision: "block"`.
+- **Continue.dev** — Hooks via `.continue/settings.json`. 17 Claude-compatible
+  lifecycle events. Merges with `.claude/settings.json` natively.
+
+### Architecture
+
+- **Generic `AgentEvent` taxonomy** — 17 lowercase normalized events
+  (`pre_tool_use`, `post_tool_use`, `stop`, etc.) abstract across all platforms.
+- **`NormalizedTool` enum** — Cross-platform tool categories (`file_write`,
+  `shell`, `sub_agent`, etc.) so rules work everywhere without per-platform
+  rewrites.
+- **`AgentAdapter` ABC** — Every platform implements event translation,
+  tool normalization, config file read/write/merge/remove, and output formatting.
+- **`OutputFormatter` protocol** — Platform-specific formatters translate
+  violations into the native hook protocol (JSON deny, exit codes, etc.).
+- **Auto-detection** — CLI `--adapter` flag or env vars (`KIMI_SESSION_ID`,
+  `GROK_SESSION_ID`, `GEMINI_SESSION_ID`, `CODEX_SESSION_ID`,
+  `CONTINUE_SESSION_ID`, etc.) automatically select the right adapter.
+- **Backward compatibility** — `HookEvent` aliases preserved. Existing Claude
+  Code setups work unchanged. `CLAUDE_PROJECT_DIR` / `CLAUDE_SESSION_ID` still
+  recognized with generic `AGENTLINT_*` vars taking precedence.
+
+### Existing Adapters (unchanged)
+
+- **Claude Code** — `.claude/settings.json` (17 events)
+- **Cursor** — `.cursor/hooks.json` (16 events)
+- **OpenAI Agents SDK** — Guardrail-based (`evaluate_tool_call`, `as_guardrail`)
+- **MCP** — FastMCP server + local evaluation mode
+- **Generic** — HTTP/webhook for custom frameworks
+
+### Internal
+
+- `core/models.py` — `_PLATFORM_TOOL_MAPS` registry maps each platform's
+  native tool names to `NormalizedTool`. `RuleContext.normalized_tool` now
+  looks up the correct map based on `agent_platform`.
+- `cli.py` — `_resolve_adapter()` expanded to 10 platforms with env-based
+  auto-detection priority chain.
+- `formats/gemini_hooks.py` — New formatter for Gemini CLI's unique
+  `decision: "deny"` + `hookSpecificOutput` protocol.
+
+### Documentation
+
+- `README.md` — Updated to agent-agnostic positioning
+- `docs/adapters.md` — Guide for writing custom adapters
+- `docs/migration-v2.md` — Migration guide from v1.x
+- `docs/setup-claude.md`, `docs/setup-cursor.md`, `docs/setup-kimi.md`,
+  `docs/setup-grok.md`, `docs/setup-gemini.md`, `docs/setup-codex.md`,
+  `docs/setup-continue.md`, `docs/setup-openai.md`, `docs/setup-mcp.md`,
+  `docs/setup-generic.md` — Per-platform setup guides
+
+### Tests
+
++127 net new adapter tests. Total: 2064 tests, 97% coverage.
+
+---
+
 ## v1.10.0 (2026-04-26) — FP Tuning, Visibility & a Real Bug Fix
 
 User feedback after v1.9.x heavy sessions said "keep all the rules, fix the

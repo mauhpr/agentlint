@@ -6,6 +6,8 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
+from typing import Any
 
 import click
 
@@ -17,10 +19,84 @@ from agentlint.models import HookEvent, RuleContext, Severity
 from agentlint.packs import PACK_MODULES, load_custom_rules, load_rules
 from agentlint.reporter import Reporter
 from agentlint.session import cleanup_session, load_session, save_session
-from agentlint.setup import _resolve_command, merge_hooks, read_settings, remove_hooks, settings_path, write_settings
+from agentlint.adapters._utils import resolve_command
+from agentlint.adapters.claude import ClaudeAdapter
+from agentlint.adapters.codex import CodexAdapter
+from agentlint.adapters.continue_dev import ContinueAdapter
+from agentlint.adapters.cursor import CursorAdapter
+from agentlint.adapters.generic import GenericAdapter
+from agentlint.adapters.gemini import GeminiAdapter
+from agentlint.adapters.grok import GrokAdapter
+from agentlint.adapters.kimi import KimiAdapter
+from agentlint.adapters.mcp import MCPAdapter
+from agentlint.adapters.openai_agents import OpenAIAgentsAdapter
+from agentlint.formats.claude_hooks import ClaudeHookFormatter
+from agentlint.formats.cursor_hooks import CursorHookFormatter
+from agentlint.models import AgentEvent, to_hook_event
+from agentlint.setup import merge_hooks, read_settings, remove_hooks, settings_path, write_settings
 from agentlint.utils.git import get_changed_files, get_diff_files
 
 logger = logging.getLogger("agentlint")
+
+
+def _resolve_project_dir(project_dir: str | None = None) -> str:
+    """Resolve project directory from explicit arg or environment."""
+    return (
+        project_dir
+        or os.environ.get("AGENTLINT_PROJECT_DIR")
+        or os.environ.get("CLAUDE_PROJECT_DIR")
+        or os.getcwd()
+    )
+
+
+def _resolve_adapter(adapter_name: str | None = None) -> Any:
+    """Resolve the agent adapter from explicit flag or environment detection.
+
+    Priority:
+    1. Explicit --adapter flag
+    2. Agent-specific environment variables
+    3. Default to Claude (backward compatibility)
+    """
+    _ADAPTERS: dict[str, Any] = {
+        "claude": ClaudeAdapter,
+        "codex": CodexAdapter,
+        "continue": ContinueAdapter,
+        "cursor": CursorAdapter,
+        "gemini": GeminiAdapter,
+        "generic": GenericAdapter,
+        "grok": GrokAdapter,
+        "kimi": KimiAdapter,
+        "mcp": MCPAdapter,
+        "openai": OpenAIAgentsAdapter,
+    }
+
+    if adapter_name:
+        adapter_cls = _ADAPTERS.get(adapter_name)
+        if adapter_cls is None:
+            raise click.UsageError(
+                f"Unknown adapter: {adapter_name}. Supported: {', '.join(_ADAPTERS)}"
+            )
+        return adapter_cls()
+
+    # Auto-detect from environment
+    if os.environ.get("KIMI_SESSION_ID") or os.environ.get("KIMI_PROJECT_DIR"):
+        return KimiAdapter()
+    if os.environ.get("GROK_SESSION_ID") or os.environ.get("GROK_PROJECT_DIR"):
+        return GrokAdapter()
+    if os.environ.get("GEMINI_SESSION_ID") or os.environ.get("GEMINI_PROJECT_DIR"):
+        return GeminiAdapter()
+    if os.environ.get("CODEX_SESSION_ID") or os.environ.get("CODEX_PROJECT_DIR"):
+        return CodexAdapter()
+    if os.environ.get("CONTINUE_SESSION_ID") or os.environ.get("CONTINUE_PROJECT_DIR"):
+        return ContinueAdapter()
+    if os.environ.get("CURSOR_SESSION_ID") or os.environ.get("CURSOR_PROJECT_DIR"):
+        return CursorAdapter()
+    if os.environ.get("OPENAI_RUN_ID") or os.environ.get("OPENAI_THREAD_ID"):
+        return OpenAIAgentsAdapter()
+    if os.environ.get("MCP_SESSION_ID"):
+        return MCPAdapter()
+    # Default to Claude for backward compatibility
+    return ClaudeAdapter()
 
 
 def _configure_logging() -> None:
@@ -41,11 +117,20 @@ def main():
 @main.command()
 @click.option("--event", required=True, help="Hook event type (e.g. PreToolUse, PostToolUse, UserPromptSubmit)")
 @click.option("--project-dir", default=None, help="Project directory")
-def check(event: str, project_dir: str | None):
+@click.option("--adapter", default=None, help="Agent adapter (claude, cursor). Auto-detected if not set.")
+@click.option("--format", "output_format", default=None, help="Output format override (claude_hooks, cursor_hooks)")
+def check(event: str, project_dir: str | None, adapter: str | None, output_format: str | None):
     """Evaluate rules against a tool call from stdin."""
-    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    adapter_obj = _resolve_adapter(adapter)
+    project_dir = _resolve_project_dir(project_dir)
 
-    hook_event = HookEvent.from_string(event)
+    # Translate event via adapter (supports both native and generic event names)
+    try:
+        agent_event = adapter_obj.translate_event(event)
+    except ValueError:
+        # Fall back to direct HookEvent parsing for backward compatibility
+        agent_event = AgentEvent.from_string(event)
+    hook_event = to_hook_event(agent_event)
 
     # Read tool input from stdin
     try:
@@ -84,6 +169,7 @@ def check(event: str, project_dir: str | None):
         agent_transcript_path=raw.get("agent_transcript_path"),
         agent_type=raw.get("agent_type"),
         agent_id=raw.get("agent_id"),
+        agent_platform=adapter_obj.platform_name,
     )
 
     # Track files touched during the session for the Stop report
@@ -125,6 +211,7 @@ def check(event: str, project_dir: str | None):
                 agent_transcript_path=context.agent_transcript_path,
                 agent_type=context.agent_type,
                 agent_id=context.agent_id,
+                agent_platform=adapter_obj.platform_name,
             )
 
     # For PostToolUse on file operations, try to read file content
@@ -164,6 +251,7 @@ def check(event: str, project_dir: str | None):
                 agent_transcript_path=context.agent_transcript_path,
                 agent_type=context.agent_type,
                 agent_id=context.agent_id,
+                agent_platform=adapter_obj.platform_name,
             )
 
     # Resolve project-specific packs for monorepo
@@ -240,11 +328,22 @@ def check(event: str, project_dir: str | None):
     # Persist session state after evaluation (rules may have mutated it)
     save_session(session_state)
 
-    reporter = Reporter(violations=result.violations, rules_evaluated=result.rules_evaluated)
-    if event == "SubagentStart":
+    # Determine formatter: adapter default or explicit --format override
+    formatter = adapter_obj.formatter
+    if output_format == "claude_hooks":
+        formatter = ClaudeHookFormatter()
+    elif output_format == "cursor_hooks":
+        formatter = CursorHookFormatter()
+
+    reporter = Reporter(
+        violations=result.violations,
+        rules_evaluated=result.rules_evaluated,
+        formatter=formatter,
+    )
+    if event == "SubagentStart" or event == "subagentStart":
         output = reporter.format_subagent_start_output()
     else:
-        output = reporter.format_hook_output(event=event)
+        output = reporter.format_hook_output(event=agent_event)
     if output:
         click.echo(output)
 
@@ -257,7 +356,7 @@ def check(event: str, project_dir: str | None):
 @click.option("--format", "output_format", default="text", type=click.Choice(["text", "json"]))
 def ci(diff: str | None, project_dir: str | None, output_format: str):
     """Scan changed files and report violations for CI pipelines."""
-    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    project_dir = _resolve_project_dir(project_dir)
 
     config = load_config(project_dir)
     rules = load_rules(config.packs)
@@ -342,7 +441,7 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
 @click.option("--project-dir", default=None, help="Project directory")
 def init(project_dir: str | None):
     """Initialize AgentLint config in the project."""
-    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    project_dir = _resolve_project_dir(project_dir)
     packs = detect_stack(project_dir)
 
     pack_lines = "\n".join(f"  - {p}" for p in packs)
@@ -385,9 +484,11 @@ rules: {{}}
 @click.option("--summary", is_flag=True, help="Show cumulative session summary dashboard")
 @click.option("--format", "output_format", default="text", type=click.Choice(["text", "json"]),
               help="Output format (only applies with --summary)")
-def report(project_dir: str | None, summary: bool, output_format: str):
+@click.option("--adapter", default=None, help="Agent adapter (claude, cursor). Auto-detected if not set.")
+def report(project_dir: str | None, summary: bool, output_format: str, adapter: str | None):
     """Generate session summary report (for Stop event)."""
-    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    project_dir = _resolve_project_dir(project_dir)
+    adapter_obj = _resolve_adapter(adapter)
 
     # Only consume stdin if not in --summary mode (Stop hook pipes JSON)
     if not summary:
@@ -469,35 +570,41 @@ def report(project_dir: str | None, summary: bool, output_format: str):
 
 
 @main.command()
-@click.option("--global", "scope", flag_value="user", help="Install to ~/.claude/settings.json")
+@click.argument("platform", required=False, default="claude")
+@click.option("--global", "scope", flag_value="user", help="Install to user settings")
 @click.option(
-    "--project", "scope", flag_value="project", default=True, help="Install to .claude/settings.json (default)"
+    "--project", "scope", flag_value="project", default=True, help="Install to project settings (default)"
 )
 @click.option("--project-dir", default=None, help="Project directory")
 @click.option("--dry-run", is_flag=True, help="Show what would be written without modifying files")
-def setup(scope: str, project_dir: str | None, dry_run: bool):
-    """Install AgentLint hooks into Claude Code settings."""
-    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+def setup(platform: str, scope: str, project_dir: str | None, dry_run: bool):
+    """Install AgentLint hooks into agent settings."""
+    project_dir = _resolve_project_dir(project_dir)
 
-    agentlint_cmd = _resolve_command()
+    _ADAPTERS: dict[str, Any] = {
+        "claude": ClaudeAdapter,
+        "cursor": CursorAdapter,
+        "openai": OpenAIAgentsAdapter,
+        "mcp": MCPAdapter,
+        "generic": GenericAdapter,
+    }
+    adapter_cls = _ADAPTERS.get(platform)
+    if adapter_cls is None:
+        raise click.UsageError(
+            f"Unknown platform: {platform}. Supported: {', '.join(_ADAPTERS)}"
+        )
+    adapter = adapter_cls()
+
+    agentlint_cmd = resolve_command()
     click.echo(f"Resolved agentlint: {agentlint_cmd}")
 
-    path = settings_path(scope, project_dir)
-    existing = read_settings(path)
-    updated = merge_hooks(existing, agentlint_cmd=agentlint_cmd)
+    adapter.install_hooks(project_dir, scope=scope, dry_run=dry_run, cmd=agentlint_cmd)
 
-    if dry_run:
-        click.echo(f"\nDry run — would write to {path}:")
-        click.echo(json.dumps(updated, indent=2))
-        return
-
-    write_settings(path, updated)
-
-    click.echo(f"Installed AgentLint hooks in {path}")
+    click.echo(f"Installed AgentLint hooks for {platform}")
 
     # Also create agentlint.yml if it doesn't exist
     config_path = os.path.join(project_dir, "agentlint.yml")
-    if not os.path.exists(config_path):
+    if not dry_run and not os.path.exists(config_path):
         ctx = click.Context(init)
         ctx.invoke(init, project_dir=project_dir)
 
@@ -507,7 +614,7 @@ def setup(scope: str, project_dir: str | None, dry_run: bool):
 @click.option("--project-dir", default=None, help="Project directory")
 def list_rules(pack: str | None, project_dir: str | None):
     """List all available rules."""
-    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    project_dir = _resolve_project_dir(project_dir)
 
     builtin_packs = sorted(PACK_MODULES.keys()) if pack is None else [p for p in [pack] if p in PACK_MODULES]
     rules = load_rules(builtin_packs)
@@ -549,7 +656,7 @@ def status(project_dir: str | None):
     """Show AgentLint status for the current project."""
     from importlib.metadata import version as get_version
 
-    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    project_dir = _resolve_project_dir(project_dir)
 
     try:
         ver = get_version("agentlint")
@@ -581,7 +688,7 @@ def status(project_dir: str | None):
 @click.option("--project-dir", default=None, help="Project directory")
 def doctor(project_dir: str | None):
     """Diagnose common AgentLint misconfigurations."""
-    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    project_dir = _resolve_project_dir(project_dir)
     issues: list[str] = []
     checks_ok: list[str] = []
 
@@ -598,16 +705,35 @@ def doctor(project_dir: str | None):
     else:
         issues.append("Config file: agentlint.yml not found. Run 'agentlint init' to create one.")
 
-    # Check hooks registered
-    hook_path = settings_path("project", project_dir)
-    hook_data = read_settings(hook_path)
-    if "hooks" in hook_data and any(
-        "agentlint" in str(hook_data["hooks"].get(evt, []))
+    # Check hooks registered (Claude)
+    claude_hook_path = settings_path("project", project_dir)
+    claude_hook_data = read_settings(claude_hook_path)
+    claude_hooks_installed = "hooks" in claude_hook_data and any(
+        "agentlint" in str(claude_hook_data["hooks"].get(evt, []))
         for evt in ("PreToolUse", "PostToolUse", "Stop")
-    ):
+    )
+
+    # Check hooks registered (Cursor)
+    cursor_hook_path = Path(project_dir) / ".cursor" / "hooks.json"
+    cursor_hooks_installed = False
+    if cursor_hook_path.exists():
+        try:
+            cursor_hook_data = json.loads(cursor_hook_path.read_text())
+            cursor_hooks_installed = "hooks" in cursor_hook_data and any(
+                "agentlint" in str(cursor_hook_data["hooks"].get(evt, []))
+                for evt in ("preToolUse", "postToolUse", "stop")
+            )
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if claude_hooks_installed and cursor_hooks_installed:
+        checks_ok.append("Hooks: installed for both Claude and Cursor")
+    elif claude_hooks_installed:
         checks_ok.append("Hooks: installed in .claude/settings.json")
+    elif cursor_hooks_installed:
+        checks_ok.append("Hooks: installed in .cursor/hooks.json")
     else:
-        issues.append("Hooks: not installed. Run 'agentlint setup' to install.")
+        issues.append("Hooks: not installed. Run 'agentlint setup claude' or 'agentlint setup cursor' to install.")
 
     # Check Python version
     import sys as _sys
@@ -761,7 +887,7 @@ def suppress(rule_id: str | None, list_mode: bool, clear: bool, remove_id: str |
 @click.option("--merge", "merge_mode", is_flag=True, help="Merge with existing agentlint.yml")
 def import_agents_md(project_dir: str | None, dry_run: bool, merge_mode: bool):
     """Import conventions from AGENTS.md into AgentLint config."""
-    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    project_dir = _resolve_project_dir(project_dir)
 
     agents_path = find_agents_md(project_dir)
     if agents_path is None:
@@ -799,25 +925,32 @@ def import_agents_md(project_dir: str | None, dry_run: bool, merge_mode: bool):
 
 
 @main.command()
-@click.option("--global", "scope", flag_value="user", help="Remove from ~/.claude/settings.json")
+@click.argument("platform", required=False, default="claude")
+@click.option("--global", "scope", flag_value="user", help="Remove from user settings")
 @click.option(
-    "--project", "scope", flag_value="project", default=True, help="Remove from .claude/settings.json (default)"
+    "--project", "scope", flag_value="project", default=True, help="Remove from project settings (default)"
 )
 @click.option("--project-dir", default=None, help="Project directory")
-def uninstall(scope: str, project_dir: str | None):
-    """Remove AgentLint hooks from Claude Code settings."""
-    project_dir = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+def uninstall(platform: str, scope: str, project_dir: str | None):
+    """Remove AgentLint hooks from agent settings."""
+    project_dir = _resolve_project_dir(project_dir)
 
-    path = settings_path(scope, project_dir)
-    existing = read_settings(path)
-    updated = remove_hooks(existing)
+    _ADAPTERS: dict[str, Any] = {
+        "claude": ClaudeAdapter,
+        "cursor": CursorAdapter,
+        "openai": OpenAIAgentsAdapter,
+        "mcp": MCPAdapter,
+        "generic": GenericAdapter,
+    }
+    adapter_cls = _ADAPTERS.get(platform)
+    if adapter_cls is None:
+        raise click.UsageError(
+            f"Unknown platform: {platform}. Supported: {', '.join(_ADAPTERS)}"
+        )
+    adapter = adapter_cls()
 
-    if updated:
-        write_settings(path, updated)
-    elif path.exists():
-        path.unlink()
-
-    click.echo(f"Removed AgentLint hooks from {path}")
+    adapter.uninstall_hooks(project_dir, scope=scope)
+    click.echo(f"Removed AgentLint hooks for {platform}")
 
 
 @main.group()

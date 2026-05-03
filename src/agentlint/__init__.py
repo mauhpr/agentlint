@@ -1,9 +1,11 @@
 """AgentLint - Real-time quality guardrails for AI coding agents."""
 
-__version__ = "0.9.5"
+__version__ = "2.0.0"
 
-from agentlint.models import (
+from agentlint.core.models import (
+    AgentEvent,
     HookEvent,
+    NormalizedTool,
     Rule,
     RuleContext,
     Severity,
@@ -11,7 +13,9 @@ from agentlint.models import (
 )
 
 __all__ = [
+    "AgentEvent",
     "HookEvent",
+    "NormalizedTool",
     "Rule",
     "RuleContext",
     "Severity",

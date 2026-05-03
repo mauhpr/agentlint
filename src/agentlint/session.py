@@ -1,8 +1,8 @@
 """Session state persistence for AgentLint.
 
-Each Claude Code session gets a JSON file in ~/.cache/agentlint/sessions/
-so that state survives across separate hook invocations (PreToolUse,
-PostToolUse, Stop) within the same session.
+Each agent session gets a JSON file in ~/.cache/agentlint/sessions/
+so that state survives across separate hook invocations within the
+same session.
 """
 from __future__ import annotations
 
@@ -10,14 +10,25 @@ import json
 import os
 from pathlib import Path
 
+
 def _cache_dir() -> Path:
     """Return the cache directory, reading env var lazily."""
     return Path(os.environ.get("AGENTLINT_CACHE_DIR", "~/.cache/agentlint/sessions")).expanduser()
 
 
 def _session_key() -> str:
-    """Derive a session key from the environment."""
-    return os.environ.get("CLAUDE_SESSION_ID", f"pid-{os.getppid()}")
+    """Derive a session key from the environment.
+
+    Checks agent-specific env vars first, then generic, then falls back
+    to parent PID for compatibility with standalone usage.
+    """
+    return (
+        os.environ.get("AGENTLINT_SESSION_ID")
+        or os.environ.get("CLAUDE_SESSION_ID")
+        or os.environ.get("CURSOR_SESSION_ID")
+        or os.environ.get("OPENAI_SESSION_ID")
+        or f"pid-{os.getppid()}"
+    )
 
 
 def _session_path(key: str | None = None) -> Path:
