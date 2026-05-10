@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -83,6 +82,71 @@ def test_policy_refresh_reports_invalid_and_oversized_payload(tmp_path, monkeypa
     assert result.error == "policy payload too large"
 
 
+def test_policy_refresh_reports_setup_http_and_json_failures(tmp_path, monkeypatch):
+    from agentlint.agentchute import policy
+
+    monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path))
+    monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+    assert policy.refresh_policy().error == "AGENTCHUTE_LICENSE_KEY not set"
+
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+    with patch("requests.get", side_effect=RuntimeError("network down")):
+        result = policy.refresh_policy()
+    assert result.ok is False
+    assert result.error == "network down"
+
+    bad_status = MagicMock(status_code=500, content=b"", headers={})
+    with patch("requests.get", return_value=bad_status):
+        result = policy.refresh_policy()
+    assert result.ok is False
+    assert result.error == "HTTP 500"
+
+    bad_json = MagicMock(status_code=200, content=b"x", headers={})
+    bad_json.json.side_effect = ValueError("not json")
+    with patch("requests.get", return_value=bad_json):
+        result = policy.refresh_policy()
+    assert result.ok is False
+    assert result.error == "policy response is not JSON"
+
+
+def test_validate_policy_reports_shape_errors():
+    from agentlint.agentchute import policy
+
+    assert policy.validate_policy("bad") == ["policy must be an object"]
+    assert policy.validate_policy({"version": "one", "rules": "bad"}) == [
+        "version must be an integer",
+        "rules must be a list",
+    ]
+
+    errors = policy.validate_policy(
+        {
+            "rules": [
+                "bad",
+                {
+                    "id": "",
+                    "severity": "critical",
+                    "event": "Nope",
+                    "match": {
+                        "operator": "nope",
+                        "field": "",
+                        "value": ["not scalar"],
+                    },
+                },
+            ],
+            "required_packs": "agentlint",
+        }
+    )
+
+    assert "rules[0] must be an object" in errors
+    assert "rules[1].id is required" in errors
+    assert "rules[1].severity is invalid" in errors
+    assert "rules[1].event is invalid" in errors
+    assert "rules[1].match.operator is unsupported" in errors
+    assert "rules[1].match.field is required" in errors
+    assert "rules[1].match.value must be scalar" in errors
+    assert "required_packs must be a list" in errors
+
+
 def test_policy_status_records_invalid_cached_policy(tmp_path, monkeypatch):
     from agentlint.agentchute import policy
 
@@ -127,6 +191,34 @@ def test_declarative_policy_rules_match_supported_operators():
     assert all(v.severity in {Severity.WARNING, Severity.ERROR, Severity.INFO} for rule in rules for v in rule.evaluate(ctx))
 
 
+def test_declarative_policy_rules_skip_non_matches_and_invalid_rules():
+    from agentlint.agentchute.policy import build_policy_rules
+
+    policy_doc = {
+        "rules": [
+            {"id": "external", "source": "manual", "match": {"field": "tool_name", "operator": "equals", "value": "Bash"}},
+            {"source": "declarative", "match": {"field": "tool_name", "operator": "equals", "value": "Bash"}},
+            {"id": "tool-miss", "tool": "Write", "match": {"field": "tool_name", "operator": "equals", "value": "Bash"}},
+            {"id": "prompt", "match": {"field": "prompt", "operator": "contains", "value": "ship"}},
+            {"id": "missing", "match": {"field": "tool_input.deep.value", "operator": "equals", "value": "x"}},
+            {"id": "unknown", "match": {"field": "tool_name", "operator": "unknown", "value": "Bash"}},
+        ]
+    }
+    rules = build_policy_rules(policy_doc)
+    ctx = RuleContext(
+        event=HookEvent.USER_PROMPT_SUBMIT,
+        tool_name="Bash",
+        tool_input={"deep": "not-a-dict"},
+        project_dir="/repo",
+        prompt="please ship it",
+    )
+
+    fired = {rule.id for rule in rules for _ in rule.evaluate(ctx)}
+
+    assert {rule.id for rule in rules} == {"tool-miss", "prompt", "missing", "unknown"}
+    assert fired == {"prompt"}
+
+
 def test_required_packs_filters_and_reports_missing(monkeypatch):
     from importlib.metadata import PackageNotFoundError
     from agentlint.agentchute import policy
@@ -163,6 +255,19 @@ def test_queue_enqueue_flush_dry_run_and_status(tmp_path, monkeypatch):
     assert queue.queue_status()["pending"] == 0
 
 
+def test_queue_disabled_and_oversized_events_are_not_queued(tmp_path, monkeypatch):
+    from agentlint.agentchute import queue
+
+    monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path))
+    monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+    assert queue.enqueue_event({"tool": "Bash"}, session_key="s1") is None
+
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+    monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
+    assert queue.enqueue_event({"blob": "x" * 70_000}, session_key="s1") is None
+    assert not (tmp_path / "queue.jsonl").exists()
+
+
 def test_queue_flush_skips_poison_and_records_retry(tmp_path, monkeypatch):
     from agentlint.agentchute import queue
 
@@ -183,6 +288,46 @@ def test_queue_flush_skips_poison_and_records_retry(tmp_path, monkeypatch):
     retry = json.loads((tmp_path / "retry.json").read_text())
     assert retry["failures"] == 1
     assert retry["next_attempt_at"] > 0
+
+
+def test_queue_flush_success_paths_and_aborts(tmp_path, monkeypatch):
+    from agentlint.agentchute import queue
+
+    monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path))
+    monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+    assert queue.flush_queue().aborted_reason == "AGENTCHUTE_LICENSE_KEY not set"
+
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+    monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
+    events = [
+        {"event_id": "e1", "event": {"n": 1}},
+        {"event_id": "e2", "event": {"n": 2}},
+    ]
+    (tmp_path / "queue.jsonl").write_text(
+        "\n".join(json.dumps(event) for event in events),
+        encoding="utf-8",
+    )
+    queue._save_json(tmp_path / "retry.json", {"failures": 2, "next_attempt_at": 123})
+
+    with patch(
+        "agentlint.agentchute.client.AgentChuteClient.post_events_batch",
+        return_value={"accepted": 0, "duplicates": 0, "failed": []},
+    ):
+        result = queue.flush_queue(batch_size=2)
+
+    assert result.attempted == 2
+    assert result.delivered == 2
+    assert not (tmp_path / "retry.json").exists()
+
+    queue._save_json(tmp_path / "cursor.json", {"offset": 0})
+    with patch(
+        "agentlint.agentchute.client.AgentChuteClient.post_events_batch",
+        return_value={"accepted": 1, "duplicates": 0, "failed": ["e2"]},
+    ):
+        result = queue.flush_queue(batch_size=2)
+
+    assert result.failed == 1
+    assert json.loads((tmp_path / "retry.json").read_text())["failures"] == 1
 
 
 def test_queue_flush_handles_lock_and_stale_lock(tmp_path, monkeypatch):
@@ -220,6 +365,9 @@ def test_trigger_background_flush_respects_retry_and_spawns(tmp_path, monkeypatc
         queue.trigger_background_flush()
     popen.assert_called_once()
 
+    with patch("subprocess.Popen", side_effect=RuntimeError("spawn failed")):
+        queue.trigger_background_flush()
+
 
 def test_sync_recordings_dry_run_cursor_and_failure(tmp_path, monkeypatch):
     from agentlint.agentchute import sync
@@ -250,6 +398,32 @@ def test_sync_recordings_dry_run_cursor_and_failure(tmp_path, monkeypatch):
         result = sync.sync_recordings(dry_run=False)
     assert result.events_attempted == 1
     assert result.events_failed == 1
+
+
+def test_sync_no_client_unreadable_file_and_all_succeeded(tmp_path, monkeypatch):
+    from agentlint.agentchute import sync
+
+    monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+    assert sync.sync_recordings().aborted_reason == (
+        "AGENTCHUTE_LICENSE_KEY not set — nothing to sync to"
+    )
+
+    rec_file = tmp_path / "missing.jsonl"
+    monkeypatch.setattr(sync, "_recordings_dir", lambda: tmp_path / "recordings")
+    monkeypatch.setattr(
+        sync,
+        "list_recordings",
+        lambda: [{"session_key": "missing", "path": str(rec_file)}],
+    )
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+    result = sync.sync_recordings(dry_run=True)
+    assert result.files_scanned == 1
+    assert result.events_attempted == 0
+    assert result.all_succeeded is False
+
+    rec_file.write_text(json.dumps({"event": "one"}), encoding="utf-8")
+    result = sync.sync_recordings(dry_run=True)
+    assert result.all_succeeded is True
 
 
 def test_sync_aborts_after_three_initial_failures(tmp_path, monkeypatch):

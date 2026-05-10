@@ -136,6 +136,10 @@ class TestRangeMatching:
         assert not _matches_any_range((1, 5, 0), ranges)
         assert not _matches_any_range((3, 0, 0), ranges)
 
+    def test_malformed_ranges_do_not_match(self):
+        assert not _matches_any_range((1, 0, 0), None)
+        assert not _matches_any_range((1, 0, 0), ["bad", {"events": "bad"}])
+
 
 # ---------- self-degrading ----------
 
@@ -156,6 +160,12 @@ class TestSelfDegrading:
         ):
             ctx = _ctx("npm install lodash@4.17.20")
             assert self.rule.evaluate(ctx) == []
+
+    def test_no_op_for_empty_command_and_non_dict_feed(self, monkeypatch):
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
+        assert self.rule.evaluate(_ctx("")) == []
+        with patch("agentlint.agentchute.cloud_feed.get", return_value=[]):
+            assert self.rule.evaluate(_ctx("npm install lodash@4.17.20")) == []
 
     def test_no_op_for_non_bash(self):
         ctx = _ctx("npm install bad@1.0.0", tool_name="Write")
@@ -279,3 +289,23 @@ class TestHappyPath:
         with self._patch(feed):
             violations = self.rule.evaluate(_ctx("npm install lodash@4.17.20"))
         assert len(violations) == 1
+
+    def test_skips_malformed_records_and_blocks_cargo(self, monkeypatch):
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
+        feed = self._feed(
+            "bad",
+            {},
+            {"ecosystem": "crates.io", "package": "ripgrep"},
+            {
+                "ecosystem": "crates.io",
+                "package": "ripgrep",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}, {"fixed": "14.0.0"}]}],
+                "ghsa_id": "GHSA-ripgrep",
+            },
+        )
+        with self._patch(feed):
+            violations = self.rule.evaluate(
+                _ctx("cargo install ripgrep --version 13.0.0")
+            )
+        assert len(violations) == 1
+        assert "crates.io:ripgrep@13.0.0" in violations[0].message

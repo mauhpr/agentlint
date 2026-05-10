@@ -313,6 +313,20 @@ def test_agentchute_config_enables_post(captured_post, monkeypatch):
     assert len(captured_post) == 1
 
 
+def test_agentchute_config_disabled_and_client_missing_license(monkeypatch):
+    from agentlint.agentchute import is_agentchute_enabled
+    from agentlint.agentchute.client import AgentChuteClient
+    from agentlint.config import AgentLintConfig
+
+    monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+    assert AgentChuteClient.from_env() is None
+
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_xxx")
+    monkeypatch.delenv("AGENTCHUTE_ENABLED", raising=False)
+    assert is_agentchute_enabled(AgentLintConfig(agentchute={"enabled": False})) is False
+    assert is_agentchute_enabled(None) is False
+
+
 def _check_is_agentchute_enabled_with_envs():
     from agentlint.agentchute import is_agentchute_enabled
 
@@ -374,6 +388,17 @@ def test_client_post_event_handles_status_codes(monkeypatch, caplog):
         assert client.post_event({"event": 1}) is False
 
 
+def test_client_post_event_handles_timeout_and_request_exception():
+    import requests
+    from agentlint.agentchute.client import AgentChuteClient
+
+    client = AgentChuteClient(api_url="https://api.example.test/v1", license_key="k")
+    with patch("requests.post", side_effect=requests.exceptions.Timeout):
+        assert client.post_event({"event": 1}) is False
+    with patch("requests.post", side_effect=requests.exceptions.RequestException("down")):
+        assert client.post_event({"event": 1}) is False
+
+
 def test_client_batch_handles_empty_invalid_json_and_failed_ids():
     from agentlint.agentchute.client import AgentChuteClient
 
@@ -387,6 +412,30 @@ def test_client_batch_handles_empty_invalid_json_and_failed_ids():
     assert result == {"accepted": 1, "duplicates": 0, "failed": []}
 
     response = MagicMock(status_code=401)
+    with patch("requests.post", return_value=response):
+        assert client.post_events_batch([{"event_id": "e1"}]) is None
+
+
+def test_client_batch_handles_success_timeout_and_server_error():
+    import requests
+    from agentlint.agentchute.client import AgentChuteClient
+
+    client = AgentChuteClient(api_url="https://api.example.test/v1", license_key="k")
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"accepted": 1, "duplicates": 1, "failed": []}
+    with patch("requests.post", return_value=response):
+        assert client.post_events_batch([{"event_id": "e1"}]) == {
+            "accepted": 1,
+            "duplicates": 1,
+            "failed": [],
+        }
+
+    with patch("requests.post", side_effect=requests.exceptions.Timeout):
+        assert client.post_events_batch([{"event_id": "e1"}]) is None
+    with patch("requests.post", side_effect=requests.exceptions.RequestException("down")):
+        assert client.post_events_batch([{"event_id": "e1"}]) is None
+
+    response = MagicMock(status_code=500)
     with patch("requests.post", return_value=response):
         assert client.post_events_batch([{"event_id": "e1"}]) is None
 

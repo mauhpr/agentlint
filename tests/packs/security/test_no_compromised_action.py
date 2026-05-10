@@ -80,6 +80,10 @@ class TestExtractUses:
         content = "      uses: actions/checkout"
         assert _extract_uses(content) == [("actions/checkout", None)]
 
+    def test_skips_overlong_repo(self):
+        content = "      uses: " + ("o" * 201) + "/repo@v1"
+        assert _extract_uses(content) == []
+
     def test_dedup(self):
         content = """
         uses: actions/checkout@v4
@@ -148,6 +152,12 @@ class TestSelfDegrading:
         )
         assert self.rule.evaluate(ctx) == []
 
+    def test_empty_content_and_non_dict_feed(self, monkeypatch):
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
+        assert self.rule.evaluate(_ctx("")) == []
+        with patch("agentlint.agentchute.cloud_feed.get", return_value=[]):
+            assert self.rule.evaluate(_ctx("uses: foo/bar@v1")) == []
+
 
 # ---------- happy path ----------
 
@@ -213,6 +223,34 @@ class TestHappyPath:
             v = self.rule.evaluate(_ctx(
                 f"      uses: tj-actions/changed-files@{sha}"
             ))
+        assert len(v) == 1
+
+    def test_no_ref_surfaces_advisory(self, monkeypatch):
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
+        feed = self._feed({
+            "repo": "actions/checkout",
+            "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
+            "ghsa_id": "GHSA-no-ref",
+            "severity": "HIGH",
+        })
+        with self._patch(feed):
+            v = self.rule.evaluate(_ctx("      uses: actions/checkout"))
+        assert len(v) == 1
+        assert "(no ref)" in v[0].message
+
+    def test_edit_tool_uses_new_string_and_skips_malformed_records(self, monkeypatch):
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
+        feed = self._feed(
+            "bad",
+            {},
+            {
+                "repo": "actions/setup-python",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
+                "ghsa_id": "GHSA-python",
+            },
+        )
+        with self._patch(feed):
+            v = self.rule.evaluate(_ctx("uses: actions/setup-python@v1", tool="Edit"))
         assert len(v) == 1
 
     def test_unrelated_action_not_flagged(self, monkeypatch):
