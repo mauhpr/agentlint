@@ -26,7 +26,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 AgentLint ships with 76 rules across 8 packs and normalizes tool events across supported AI coding agents. The 23 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
 
-**v2.2.0 highlights:** Public documentation cleanup, platform-neutral setup flow in the core README, and removal of internal planning/release artifacts from the package repository. Previous: AgentChute-ready team sync, hybrid cloud feeds, privacy-safe event queueing, multi-platform adapter architecture, unified `AgentEvent` taxonomy, `NormalizedTool` cross-platform mappings, session summary dashboard, MCP server, global config defaults, warning suppression, auto-suppress, `diff_only` mode, and `auto-fix` mode.
+**v2.2.1 highlights:** Install experience polish with `agentlint --version` and AgentChute sync support from the default `pip install agentlint` package. Previous: Public documentation cleanup, AgentChute-ready team sync, hybrid cloud feeds, privacy-safe event queueing, multi-platform adapter architecture, unified `AgentEvent` taxonomy, `NormalizedTool` cross-platform mappings, session summary dashboard, MCP server, global config defaults, warning suppression, auto-suppress, `diff_only` mode, and `auto-fix` mode.
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -325,6 +325,8 @@ rules:
 AgentLint runs locally by default. No event data leaves your machine unless you enable AgentChute with a license key and an explicit opt-in:
 
 ```bash
+pip install agentlint
+agentlint --version
 agentlint init --team-key=ac_team_...
 ```
 

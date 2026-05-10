@@ -4,23 +4,20 @@ requires-python = ">=3.11"
 
 [[package]]
 name = "agentlint"
-version = "2.2.0"
+version = "2.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "pyyaml" },
+    { name = "requests" },
 ]
 
 [package.optional-dependencies]
-agentchute = [
-    { name = "requests" },
-]
 dev = [
     { name = "fastmcp" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
-    { name = "requests" },
 ]
 mcp = [
     { name = "fastmcp" },
@@ -35,10 +32,9 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "requests", marker = "extra == 'agentchute'", specifier = ">=2.31" },
-    { name = "requests", marker = "extra == 'dev'", specifier = ">=2.31" },
+    { name = "requests", specifier = ">=2.31" },
 ]
-provides-extras = ["dev", "mcp", "agentchute"]
+provides-extras = ["dev", "mcp"]
 
 [[package]]
 name = "aiofile"

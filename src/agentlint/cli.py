@@ -11,6 +11,7 @@ from typing import Any
 
 import click
 
+from agentlint import __version__
 from agentlint.agents_md import find_agents_md, generate_config, map_to_config, merge_with_existing, parse_agents_md
 from agentlint.config import load_config
 from agentlint.detector import detect_stack
@@ -123,6 +124,7 @@ def _configure_logging() -> None:
 
 
 @click.group()
+@click.version_option(__version__, prog_name="agentlint", message="agentlint %(version)s")
 def main():
     """AgentLint - Real-time quality guardrails for AI coding agents."""
     _configure_logging()
