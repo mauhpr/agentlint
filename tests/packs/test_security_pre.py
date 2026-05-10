@@ -391,10 +391,16 @@ class TestSecurityPackLoader:
         from agentlint.packs import load_rules
 
         rules = load_rules(["security"])
-        assert len(rules) == 3
+        # 3 prior + 2 (Phase 19B) + 2 (Phase 19C, no-blocked-domain-fetch +
+        # no-compromised-action)
+        assert len(rules) == 7
         ids = {r.id for r in rules}
         assert "no-bash-file-write" in ids
         assert "no-network-exfil" in ids
+        assert "no-leaked-secret-pattern" in ids
+        assert "no-malicious-url-fetch" in ids
+        assert "no-blocked-domain-fetch" in ids
+        assert "no-compromised-action" in ids
         assert "env-credential-reference" in ids
 
     def test_all_rules_are_pre_tool_use(self):

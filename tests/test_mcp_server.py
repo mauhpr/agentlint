@@ -97,7 +97,8 @@ class TestListRules:
     async def test_filter_by_pack(self, client):
         result = await client.call_tool("list_rules", {"pack": "security"})
         rules = json.loads(result.data)
-        assert len(rules) == 3
+        # 3 + 2 (Phase 19B) + 2 (Phase 19C)
+        assert len(rules) == 7
         assert all(r["pack"] == "security" for r in rules)
 
 

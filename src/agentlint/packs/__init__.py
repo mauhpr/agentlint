@@ -5,9 +5,14 @@ import importlib
 import importlib.util
 import logging
 import sys
+from importlib.metadata import entry_points
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from agentlint.models import Rule
+
+if TYPE_CHECKING:
+    from agentlint.config import AgentLintConfig
 
 logger = logging.getLogger("agentlint")
 
@@ -31,6 +36,43 @@ def load_rules(active_packs: list[str]) -> list[Rule]:
         if module_path:
             module = importlib.import_module(module_path)
             rules.extend(getattr(module, "RULES", []))
+    return rules
+
+
+def load_project_rules(config: "AgentLintConfig", project_dir: str, *, include_policy: bool = True) -> list[Rule]:
+    """Load built-in, installed custom, repo-local custom, and policy rules."""
+    rules = load_rules(config.packs)
+    rules.extend(r for r in load_installed_rules() if r.pack in config.packs)
+    if config.custom_rules_dir:
+        rules.extend(r for r in load_custom_rules(config.custom_rules_dir, project_dir) if r.pack in config.packs)
+    if include_policy:
+        try:
+            from agentlint.agentchute.policy import build_policy_rules
+            rules.extend(build_policy_rules())
+        except Exception:
+            logger.debug("Failed to load AgentChute policy rules", exc_info=True)
+    return rules
+
+
+def load_installed_rules() -> list[Rule]:
+    """Load custom Rule objects from installed Python entry points."""
+    rules: list[Rule] = []
+    try:
+        eps = entry_points(group="agentlint.rules")
+    except TypeError:  # pragma: no cover - older importlib.metadata API
+        eps = entry_points().get("agentlint.rules", [])
+    for ep in eps:
+        try:
+            factory = ep.load()
+            produced = factory()
+            if isinstance(produced, Rule):
+                rules.append(produced)
+            else:
+                for item in produced or []:
+                    if isinstance(item, Rule):
+                        rules.append(item)
+        except Exception:
+            logger.exception("Failed to load installed AgentLint rules from %s", ep.name)
     return rules
 
 

@@ -69,6 +69,12 @@ class TestLoadConfig:
         config = load_config(str(tmp_path))
         assert config.custom_rules_dir == "my_rules/"
 
+    def test_agentchute_config_is_parsed(self, tmp_path):
+        cfg = {"agentchute": {"enabled": True}}
+        (tmp_path / "agentlint.yml").write_text(yaml.dump(cfg))
+        config = load_config(str(tmp_path))
+        assert config.agentchute == {"enabled": True}
+
     def test_empty_config_file(self, tmp_path):
         (tmp_path / "agentlint.yml").write_text("")
         config = load_config(str(tmp_path))

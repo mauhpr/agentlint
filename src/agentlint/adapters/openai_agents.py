@@ -23,7 +23,7 @@ from agentlint.adapters.base import AgentAdapter
 from agentlint.config import load_config
 from agentlint.engine import Engine
 from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext, Severity, to_hook_event
-from agentlint.packs import load_custom_rules, load_rules
+from agentlint.packs import load_project_rules
 
 
 # Mapping from OpenAI Agents SDK event names to generic AgentEvent
@@ -153,9 +153,7 @@ agent = Agent(
         """
         project_dir = project_dir or self.resolve_project_dir()
         config = load_config(project_dir)
-        rules = load_rules(config.packs)
-        if config.custom_rules_dir:
-            rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
+        rules = load_project_rules(config, project_dir)
 
         context = RuleContext(
             event=HookEvent.PRE_TOOL_USE,

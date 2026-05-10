@@ -54,13 +54,11 @@ def check_event(
     from agentlint.config import load_config
     from agentlint.engine import Engine
     from agentlint.models import AgentEvent, RuleContext, to_hook_event
-    from agentlint.packs import load_custom_rules, load_rules
+    from agentlint.packs import load_project_rules
 
     project_dir = _adapter.resolve_project_dir()
     config = load_config(project_dir)
-    rules = load_rules(config.packs)
-    if config.custom_rules_dir:
-        rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
+    rules = load_project_rules(config, project_dir)
 
     agent_event = AgentEvent.from_string(event)
     hook_event = to_hook_event(agent_event)

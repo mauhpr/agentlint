@@ -11,6 +11,16 @@ build/
 htmlcov/
 .worktrees/
 
+# Local AgentLint dogfood/setup artifacts. Keep agentlint.yml.example and docs
+# committed; generated hook configs often contain absolute local paths.
+agentlint.yml
+.claude/
+.codex/
+.continue/
+.cursor/
+.gemini/
+.grok/
+.kimi/
+
 .smart-coding-cache/
 coverage.xml
-
