@@ -1,5 +1,28 @@
 # Changelog
 
+## v2.2.0 (2026-05-10) — Public Docs Cleanup
+
+This release cleans the public repository after the AgentChute-ready 2.1.0
+release. It keeps user-facing setup and reference docs, removes internal
+planning/release artifacts, and makes the main README less Claude-centric.
+
+### Changed
+
+- Core README now presents platform setup through a neutral platform matrix and
+  links to per-platform setup guides instead of embedding a long Claude manual
+  hook configuration.
+- Added `docs/README.md` as a public docs index.
+- Removed internal implementation plans, release checklists, and unpublished
+  pack specs from the public docs tree.
+
+### Compatibility
+
+- No runtime behavior changes.
+- Existing Claude Code, Cursor, Codex, Gemini, Kimi, Grok, Continue, OpenAI
+  Agents SDK, MCP, and generic integrations are unchanged.
+
+---
+
 ## v2.0.0 (2026-05-01) — Multi-Platform Agent Guardrails
 
 AgentLint is now agent-agnostic. What started as Claude Code guardrails now
