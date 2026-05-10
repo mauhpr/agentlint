@@ -38,7 +38,7 @@ class Engine:
         for rule in self.rules:
             if rule.pack not in self.config.packs:
                 continue
-            if not self.config.is_rule_enabled(rule.id):
+            if not getattr(rule, "locked", False) and not self.config.is_rule_enabled(rule.id):
                 continue
             if not rule.matches_event(context.event):
                 continue
@@ -68,7 +68,8 @@ class Engine:
                 continue
 
             for v in violations:
-                v.severity = self.config.effective_severity(v.severity)
+                if not getattr(rule, "locked", False):
+                    v.severity = self.config.effective_severity(v.severity)
 
             result.violations.extend(violations)
 

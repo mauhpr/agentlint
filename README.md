@@ -12,9 +12,11 @@ Works with **Claude Code**, **Cursor**, **Kimi**, **Grok**, **Gemini**, **Codex*
 
 AI coding agents drift during long sessions — they introduce API keys into source, skip tests, force-push to main, and leave debug statements behind. AgentLint catches these problems *as they happen*, not at review time.
 
+Architecture overview: [docs/architecture.md](docs/architecture.md)
+
 ## Vision
 
-The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 67 rules that run locally in milliseconds.
+The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 76 rules that run locally in milliseconds.
 
 The longer-term question is harder: **what does it mean for an agent to operate safely on real infrastructure?** When an agent can run `gcloud`, `kubectl`, `terraform`, or `iptables`, the blast radius is no longer a bad commit — it's a production outage or a deleted database.
 
@@ -22,9 +24,9 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 ## What it catches
 
-AgentLint ships with 67 rules across 8 packs, covering all 17 Claude Code hook events. The 18 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
+AgentLint ships with 76 rules across 8 packs and normalizes tool events across supported AI coding agents. The 23 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
 
-**v2.0.0 highlights:** Multi-platform adapter architecture — supports Claude Code, Cursor, Kimi, Grok, Gemini, Codex, Continue, OpenAI Agents, MCP, and generic HTTP. Unified `AgentEvent` taxonomy, `NormalizedTool` cross-platform mappings, and per-platform hook configuration. Previous: session summary dashboard, MCP server, global config defaults, warning suppression, auto-suppress, `diff_only` mode, `auto-fix` mode.
+**v2.1.0 highlights:** AgentChute-ready team sync, hybrid cloud feeds, privacy-safe event queueing, and broader multi-agent setup docs for Claude Code, Cursor, Kimi, Grok, Gemini, Codex, Continue, OpenAI Agents, MCP, and generic HTTP. Previous: multi-platform adapter architecture, unified `AgentEvent` taxonomy, `NormalizedTool` cross-platform mappings, session summary dashboard, MCP server, global config defaults, warning suppression, auto-suppress, `diff_only` mode, and `auto-fix` mode.
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -47,6 +49,10 @@ AgentLint ships with 67 rules across 8 packs, covering all 17 Claude Code hook e
 | `cli-integration` | configurable | Runs external CLI tools (ruff, eslint, etc.) on file changes |
 | `git-checkpoint` | INFO | Creates git stash before destructive ops (opt-in, disabled by default) |
 | `no-todo-left` | INFO | Reports TODO/FIXME comments in changed files |
+| `no-compromised-dependency` | ERROR | Blocks installs of packages on AgentChute's compromised-package feed |
+| `no-vulnerable-version-install` | ERROR | Blocks pinned installs of versions known vulnerable in GHSA data |
+| `no-vulnerable-import` | WARNING | Warns when importing packages with active GHSA advisories |
+| `token-burn-against-team-budget` | WARNING | Warns when AgentChute reports team-level budget pressure |
 
 **ERROR** rules block the agent's action. **WARNING** rules inject advice into the agent's context. **INFO** rules appear in the session report.
 
@@ -119,13 +125,17 @@ AgentLint ships with 67 rules across 8 packs, covering all 17 Claude Code hook e
 </details>
 
 <details>
-<summary><strong>Security pack</strong> (3 rules) — opt-in, add <code>security</code> to your packs list</summary>
+<summary><strong>Security pack</strong> (7 rules) — opt-in, add <code>security</code> to your packs list</summary>
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
 | `no-bash-file-write` | ERROR | Blocks file writes via Bash (`cat >`, `tee`, `sed -i`, `cp`, heredocs, etc.) |
 | `no-network-exfil` | ERROR | Blocks data exfiltration via `curl POST`, `nc`, `scp`, `wget --post-file` |
 | `env-credential-reference` | WARNING | Warns when `*_FILE` env vars reference local paths (credential leakage risk) |
+| `no-leaked-secret-pattern` | ERROR | Blocks patterns from AgentChute's cloud-curated secret ruleset |
+| `no-malicious-url-fetch` | ERROR | Blocks fetches of known-malicious URLs from URLhaus-derived feeds |
+| `no-blocked-domain-fetch` | ERROR | Blocks fetches from blocked malware/ad/tracker domains |
+| `no-compromised-action` | ERROR | Blocks GitHub Actions pinned to compromised advisories |
 
 The security pack addresses the most common agent escape hatch: bypassing Write/Edit guardrails via the Bash tool. Enable it by adding `security` to your packs list:
 
@@ -204,13 +214,18 @@ The `universal` and `quality` packs are always active. To override auto-detectio
 
 ## Quick start
 
+Pick the AI coding agent you actually use:
+
 ```bash
 pip install agentlint
 cd your-project
-agentlint setup
+agentlint setup claude    # Claude Code
+agentlint setup cursor    # Cursor
+agentlint setup codex     # Codex CLI
+agentlint setup gemini    # Gemini CLI
 ```
 
-That's it! AgentLint hooks are now active in Claude Code. `agentlint setup` resolves the absolute path to the binary, so hooks work regardless of your shell's PATH — whether you installed via pip, pipx, uv, poetry, or a virtual environment.
+Run `agentlint setup --help` for the full platform list. `agentlint setup` resolves the absolute path to the binary, so hooks work regardless of your shell's PATH — whether you installed via pip, pipx, uv, poetry, or a virtual environment.
 
 When AgentLint blocks a dangerous action, the agent sees:
 
@@ -222,7 +237,7 @@ When AgentLint blocks a dangerous action, the agent sees:
 The agent's action is blocked before it can write the secret into your codebase.
 
 The `setup` command:
-- Installs hooks into `.claude/settings.json`
+- Installs hooks or guardrails for the selected agent platform
 - Creates `agentlint.yml` with auto-detected settings (if it doesn't exist)
 
 To remove AgentLint hooks:
@@ -233,7 +248,20 @@ agentlint uninstall
 
 ### Installation options
 
-**Claude Code (default):**
+| Platform | Setup command | Integration style |
+| --- | --- | --- |
+| Claude Code | `agentlint setup claude` | Native hooks in `.claude/settings.json` or user settings |
+| Cursor IDE | `agentlint setup cursor` | Native hooks in `.cursor/hooks.json` |
+| Codex CLI | `agentlint setup codex` | Native hooks in `.codex/hooks.json`; Bash coverage is strongest |
+| Gemini CLI | `agentlint setup gemini` | Native hooks in `.gemini/settings.json` |
+| Continue.dev | `agentlint setup continue` | Native hooks in `.continue/settings.json` |
+| Kimi Code CLI | `agentlint setup kimi` | Native TOML hooks |
+| Grok CLI | `agentlint setup grok` | Native JSON hooks |
+| OpenAI Agents SDK | `agentlint setup openai` | Guardrail integration code |
+| MCP hosts | `agentlint setup mcp` | MCP server config |
+| Custom tools | `agentlint setup generic` | Generic normalized HTTP/webhook adapter |
+
+**Claude Code:**
 ```bash
 # Install to project (default)
 agentlint setup claude
@@ -317,7 +345,7 @@ The AgentLint plugin includes specialized agents for multi-step operations:
 - **`/agentlint:doctor`** — Diagnose configuration issues, verify hook installation, suggest optimal pack settings
 - **`/agentlint:fix`** — Auto-fix common violations (debug artifacts, accessibility, dead imports) with confirmation
 
-### Manual hook configuration
+### Claude Code manual hook configuration
 
 > **Note:** The manual configuration below uses the bare `agentlint` command and requires it to be on your shell's PATH. For reliable resolution across all installation methods, use `agentlint setup` instead — it embeds the absolute path automatically.
 
@@ -405,6 +433,30 @@ rules:
 # Load custom rules from a directory
 # custom_rules_dir: .agentlint/rules/
 ```
+
+### AgentChute opt-in
+
+AgentLint runs locally by default. No event data leaves your machine unless you enable AgentChute with a license key and an explicit opt-in:
+
+```bash
+agentlint init --team-key=ac_team_...
+```
+
+That enables AgentChute in `agentlint.yml` and prints the env vars to add to your shell, CI, or AI tool settings. The plaintext key is not written to repo config.
+
+```yaml
+agentchute:
+  enabled: true
+```
+
+```bash
+export AGENTCHUTE_LICENSE_KEY=ac_team_...
+export AGENTCHUTE_ENABLED=true
+# Optional for self-hosted/local API:
+export AGENTCHUTE_API_URL=http://localhost:8000/v1
+```
+
+When enabled, AgentLint sends privacy-safe event summaries only: file paths and lengths for writes/edits, truncated Bash command previews, truncated prompt previews, violation metadata, and rule counts. It never sends raw file contents, full edit strings, or full prompts.
 
 ### AGENTS.md integration
 
@@ -607,7 +659,7 @@ Commands with unresolvable placeholders are silently skipped. All placeholder va
 
 ## How it works
 
-AgentLint supports all 17 Claude Code hook events. `agentlint setup` registers 7 events out of the box:
+AgentLint normalizes each platform's hook or guardrail payload into a shared event model. Claude Code has the broadest native lifecycle coverage today: all 17 Claude Code hook events are understood, and `agentlint setup claude` registers 7 high-value runtime events out of the box:
 
 | Event | When | Behavior |
 |-------|------|----------|
@@ -621,7 +673,7 @@ AgentLint supports all 17 Claude Code hook events. `agentlint setup` registers 7
 
 Custom rules can target any of the 17 events (SessionStart, PreCompact, WorktreeCreate, TaskCompleted, etc.).
 
-Each invocation loads your config, evaluates matching rules, and returns JSON that Claude Code understands. Session state persists across invocations so rules like `drift-detector` can track cumulative behavior.
+Each invocation loads your config, evaluates matching rules, and returns the protocol response expected by the selected adapter. Session state persists across invocations so rules like `drift-detector` can track cumulative behavior.
 
 ### Circuit breaker (Progressive Trust)
 
@@ -662,14 +714,14 @@ rules:
 
 ## FAQ
 
-**Does AgentLint slow down Claude Code?**
+**Does AgentLint slow down my AI coding agent?**
 No. Rules evaluate in <10ms. AgentLint runs locally as a subprocess — no network calls, no API dependencies.
 
 **What if a rule is too strict for my project?**
 Disable it in `agentlint.yml`: `rules: { no-secrets: { enabled: false } }`. Or switch to `severity: relaxed` to downgrade warnings to informational. The circuit breaker also helps — if a rule fires 3+ times in a session, it automatically degrades from blocking to advisory.
 
 **Is my code sent anywhere?**
-No. AgentLint is fully offline. It reads stdin from Claude Code's hook system and evaluates rules locally. No telemetry, no network requests.
+No. AgentLint is fully offline by default. It reads the local hook, guardrail, MCP, or webhook payload and evaluates rules locally. No telemetry, no network requests. AgentChute sync is a separate opt-in path and sends only privacy-safe event summaries.
 
 **Can I use AgentLint outside Claude Code?**
 Yes. AgentLint supports real-time blocking hooks on Claude Code, Cursor, Kimi, Grok, Gemini, Codex, and Continue.dev. For OpenAI Agents SDK and MCP hosts, use guardrail-based integration. The CLI also works standalone in any CI pipeline.

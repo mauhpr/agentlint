@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
@@ -77,6 +78,21 @@ class TestInitCommand:
 
         assert result.exit_code == 0
         assert "universal" in result.output.lower()
+
+    def test_init_team_key_enables_agentchute_without_persisting_secret(self, tmp_path) -> None:
+        """--team-key should wire AgentChute config without writing the key to disk."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["init", "--project-dir", str(tmp_path), "--team-key", "ac_team_test_secret"],
+        )
+
+        assert result.exit_code == 0
+        config_text = (tmp_path / "agentlint.yml").read_text()
+        assert "agentchute:" in config_text
+        assert "enabled: true" in config_text
+        assert "ac_team_test_secret" not in config_text
+        assert "export AGENTCHUTE_LICENSE_KEY=ac_team_test_secret" in result.output
 
 
 class TestCheckErrorPaths:
@@ -261,7 +277,7 @@ class TestListRulesCommand:
         assert result.exit_code == 0
         assert "no-bash-file-write" in result.output
         assert "no-network-exfil" in result.output
-        assert "3 rules total" in result.output
+        assert "7 rules total" in result.output
 
     def test_list_rules_autopilot_pack(self) -> None:
         """list-rules --pack autopilot should show only autopilot rules."""
@@ -279,7 +295,7 @@ class TestListRulesCommand:
         result = runner.invoke(main, ["list-rules", "--pack", "universal"])
         assert result.exit_code == 0
         assert "no-secrets" in result.output
-        assert "19 rules total" in result.output
+        assert "23 rules total" in result.output
 
     def test_list_rules_quality_pack(self) -> None:
         """list-rules --pack quality should show only quality rules."""
@@ -497,6 +513,111 @@ class TestStatusCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
         assert "Projects:" not in result.output
+
+
+class TestSyncCommand:
+    def test_sync_dry_run_matches_agentchute_flush_dry_run(self, tmp_path, monkeypatch) -> None:
+        queue_dir = tmp_path / "queue"
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(queue_dir))
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+        monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
+
+        runner = CliRunner()
+        sync_result = runner.invoke(main, ["sync", "--dry-run"])
+        flush_result = runner.invoke(main, ["agentchute", "flush", "--dry-run"])
+
+        assert sync_result.exit_code == 0
+        assert flush_result.exit_code == 0
+        assert sync_result.output == flush_result.output
+        assert "Would deliver" in sync_result.output
+
+    def test_agentchute_status_outputs_queue_and_policy(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path / "queue"))
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path / "policy"))
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+        from agentlint.agentchute import policy
+        from agentlint.agentchute import queue
+
+        queue.enqueue_event(
+            {"tool_name": "Bash"},
+            session_key="s1",
+            config=type("Cfg", (), {"agentchute": {"enabled": True}})(),
+        )
+        policy._policy_root().mkdir(parents=True, exist_ok=True)
+        policy._policy_path().write_text(
+            '{"version": 2, "updated_at": "today", "rules": []}',
+            encoding="utf-8",
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["agentchute", "status"])
+
+        assert result.exit_code == 0
+        assert "Queue: 1 pending / 1 total" in result.output
+        assert "Policy: cached" in result.output
+        assert "Policy version: 2" in result.output
+
+    def test_agentchute_flush_locked_and_aborted_messages(self) -> None:
+        from agentlint.agentchute.queue import FlushResult
+
+        runner = CliRunner()
+        with patch("agentlint.agentchute.queue.flush_queue", return_value=FlushResult(locked=True)):
+            result = runner.invoke(main, ["agentchute", "flush"])
+        assert result.exit_code == 0
+        assert "already running" in result.output
+
+        with patch(
+            "agentlint.agentchute.queue.flush_queue",
+            return_value=FlushResult(aborted_reason="missing key"),
+        ):
+            result = runner.invoke(main, ["agentchute", "flush"])
+        assert result.exit_code == 2
+        assert "Flush aborted: missing key" in result.output
+
+    def test_agentchute_policy_commands(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path))
+        from agentlint.agentchute import policy
+        from agentlint.agentchute.policy import PolicyRefreshResult
+
+        runner = CliRunner()
+
+        with patch(
+            "agentlint.agentchute.policy.refresh_policy",
+            return_value=PolicyRefreshResult(ok=False, error="bad token"),
+        ):
+            result = runner.invoke(main, ["agentchute", "refresh"])
+        assert result.exit_code == 2
+        assert "Policy refresh failed: bad token" in result.output
+
+        with patch(
+            "agentlint.agentchute.policy.refresh_policy",
+            return_value=PolicyRefreshResult(ok=True, version=9),
+        ):
+            result = runner.invoke(main, ["agentchute", "refresh"])
+        assert result.exit_code == 0
+        assert "Policy cached: version 9" in result.output
+
+        policy._policy_root().mkdir(parents=True, exist_ok=True)
+        policy._policy_path().write_text(
+            '{"version": 4, "required_packs": [{"name": "agentlint"}], "rules": [{"id": "r", "match": {"field": "tool_name", "operator": "equals", "value": "Bash"}}]}',
+            encoding="utf-8",
+        )
+        result = runner.invoke(main, ["agentchute", "policy"])
+        assert result.exit_code == 0
+        assert "Policy version: 4" in result.output
+        assert "Rules: 1 declarative" in result.output
+        result = runner.invoke(main, ["agentchute", "policy", "--format", "json"])
+        assert result.exit_code == 0
+        assert '"version": 4' in result.output
+
+    def test_agentchute_policy_missing_cache_exits_one(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path))
+        runner = CliRunner()
+
+        result = runner.invoke(main, ["agentchute", "policy"])
+
+        assert result.exit_code == 1
+        assert "No AgentChute policy cache found." in result.output
 
 
 class TestDoctorCommand:

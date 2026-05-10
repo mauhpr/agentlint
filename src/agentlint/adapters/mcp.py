@@ -14,7 +14,7 @@ from agentlint.adapters.base import AgentAdapter
 from agentlint.config import load_config
 from agentlint.engine import Engine
 from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext, to_hook_event, to_agent_event
-from agentlint.packs import load_custom_rules, load_rules
+from agentlint.packs import load_project_rules
 
 
 # Mapping from MCP tool event names to generic AgentEvent
@@ -148,9 +148,7 @@ class MCPAdapter(AgentAdapter):
         effective_packs = config.resolve_packs_for_file(file_path, project_dir)
         effective_config = config.with_packs(effective_packs)
 
-        rules = load_rules(effective_packs)
-        if config.custom_rules_dir:
-            rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
+        rules = load_project_rules(effective_config, project_dir)
 
         try:
             agent_event = AgentEvent.from_string(event)
@@ -181,13 +179,19 @@ class MCPAdapter(AgentAdapter):
 
     def list_rules(self, pack: str | None = None) -> list[dict[str, Any]]:
         """MCP server mode: list all available rules."""
-        from agentlint.packs import PACK_MODULES
+        from agentlint.packs import PACK_MODULES, load_installed_rules, load_custom_rules, load_rules
 
         project_dir = self.resolve_project_dir()
         config = load_config(project_dir)
         all_rules = load_rules(list(PACK_MODULES.keys()))
+        all_rules.extend(load_installed_rules())
         if config.custom_rules_dir:
             all_rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
+        try:
+            from agentlint.agentchute.policy import build_policy_rules
+            all_rules.extend(build_policy_rules())
+        except Exception:
+            pass
         if pack:
             all_rules = [r for r in all_rules if r.pack == pack]
         return [

@@ -2,6 +2,11 @@
 from agentlint.packs.universal.cicd_pipeline_guard import CicdPipelineGuard
 from agentlint.packs.universal.cli_integration import CliIntegration
 from agentlint.packs.universal.dependency_hygiene import DependencyHygiene
+from agentlint.packs.universal.no_compromised_dependency import NoCompromisedDependency
+from agentlint.packs.universal.no_vulnerable_import import NoVulnerableImport
+from agentlint.packs.universal.no_vulnerable_version_install import (
+    NoVulnerableVersionInstall,
+)
 from agentlint.packs.universal.file_scope import FileScope
 from agentlint.packs.universal.drift_detector import DriftDetector
 from agentlint.packs.universal.git_checkpoint import GitCheckpoint
@@ -18,6 +23,9 @@ from agentlint.packs.universal.no_todo_left import NoTodoLeft
 from agentlint.packs.universal.package_publish_guard import PackagePublishGuard
 from agentlint.packs.universal.test_with_changes import TestWithChanges
 from agentlint.packs.universal.token_budget import TokenBudget
+from agentlint.packs.universal.token_burn_against_team_budget import (
+    TokenBurnAgainstTeamBudget,
+)
 
 RULES = [
     # PreToolUse
@@ -28,6 +36,9 @@ RULES = [
     NoSkipHooks(),
     NoDestructiveCommands(),
     DependencyHygiene(),
+    NoCompromisedDependency(),  # hybrid rule — uses cloud_feed deny list
+    NoVulnerableVersionInstall(),  # hybrid rule — GHSA version-range filter
+    NoVulnerableImport(),  # hybrid rule — GHSA import-time advisory warning
     NoTestWeakening(),
     GitCheckpoint(),  # disabled by default — opt in via config
     CicdPipelineGuard(),
@@ -38,6 +49,7 @@ RULES = [
     MaxFileSize(),
     DriftDetector(),
     TokenBudget(),
+    TokenBurnAgainstTeamBudget(),  # hybrid rule — uses cloud_feed for team budget
     # Stop (TokenBudget and GitCheckpoint also fire on Stop)
     NoDebugArtifacts(),
     NoTodoLeft(),

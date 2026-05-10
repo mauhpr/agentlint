@@ -1,6 +1,6 @@
 [project]
 name = "agentlint"
-version = "2.0.0"
+version = "2.1.0"
 description = "Real-time quality guardrails for AI coding agents"
 readme = "README.md"
 license = "MIT"
@@ -32,9 +32,13 @@ dev = [
     "pytest-cov>=5.0",
     "pytest-asyncio>=0.24",
     "fastmcp>=3.0",
+    "requests>=2.31",  # for the agentchute/ HTTP client tests
 ]
 mcp = [
     "fastmcp>=3.0",
+]
+agentchute = [
+    "requests>=2.31",  # AgentChute policy/feed/event HTTP client (opt-in feature)
 ]
 
 [project.urls]

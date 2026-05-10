@@ -1,6 +1,6 @@
 # AgentLint Roadmap
 
-> **Current state:** v1.6.0 — 68 rules across 8 packs, ~1555 tests, 96% coverage. Production feedback features shipped.
+> **Current state:** v2.0.0 — 76 rules across 8 packs, 2300+ tests. Multi-platform adapters and AgentChute-backed hybrid feeds are in progress.
 
 ---
 

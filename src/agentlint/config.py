@@ -31,6 +31,7 @@ class AgentLintConfig:
     custom_rules_dir: str | None = None
     circuit_breaker: dict = field(default_factory=dict)
     recording: dict = field(default_factory=dict)
+    agentchute: dict = field(default_factory=dict)
     projects: dict[str, dict] = field(default_factory=dict)
 
     @property
@@ -87,6 +88,7 @@ class AgentLintConfig:
             custom_rules_dir=self.custom_rules_dir,
             circuit_breaker=self.circuit_breaker,
             recording=self.recording,
+            agentchute=self.agentchute,
             projects=self.projects,
         )
 
@@ -153,5 +155,6 @@ def load_config(project_dir: str) -> AgentLintConfig:
         custom_rules_dir=raw.get("custom_rules_dir"),
         circuit_breaker=raw.get("circuit_breaker", {}),
         recording=raw.get("recording", {}),
+        agentchute=raw.get("agentchute", {}),
         projects=raw.get("projects", {}),
     )
