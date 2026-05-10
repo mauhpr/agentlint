@@ -26,7 +26,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 AgentLint ships with 76 rules across 8 packs and normalizes tool events across supported AI coding agents. The 23 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
 
-**v2.1.0 highlights:** AgentChute-ready team sync, hybrid cloud feeds, privacy-safe event queueing, and broader multi-agent setup docs for Claude Code, Cursor, Kimi, Grok, Gemini, Codex, Continue, OpenAI Agents, MCP, and generic HTTP. Previous: multi-platform adapter architecture, unified `AgentEvent` taxonomy, `NormalizedTool` cross-platform mappings, session summary dashboard, MCP server, global config defaults, warning suppression, auto-suppress, `diff_only` mode, and `auto-fix` mode.
+**v2.2.0 highlights:** Public documentation cleanup, platform-neutral setup flow in the core README, and removal of internal planning/release artifacts from the package repository. Previous: AgentChute-ready team sync, hybrid cloud feeds, privacy-safe event queueing, multi-platform adapter architecture, unified `AgentEvent` taxonomy, `NormalizedTool` cross-platform mappings, session summary dashboard, MCP server, global config defaults, warning suppression, auto-suppress, `diff_only` mode, and `auto-fix` mode.
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -261,139 +261,25 @@ agentlint uninstall
 | MCP hosts | `agentlint setup mcp` | MCP server config |
 | Custom tools | `agentlint setup generic` | Generic normalized HTTP/webhook adapter |
 
-**Claude Code:**
-```bash
-# Install to project (default)
-agentlint setup claude
+For platform-specific details, use the setup guides in `docs/`:
 
-# Install to user-level settings (~/.claude/settings.json)
-agentlint setup claude --global
-```
+- [Claude Code](docs/setup-claude.md)
+- [Cursor](docs/setup-cursor.md)
+- [Codex](docs/setup-codex.md)
+- [Gemini](docs/setup-gemini.md)
+- [Kimi](docs/setup-kimi.md)
+- [Grok](docs/setup-grok.md)
+- [Continue.dev](docs/setup-continue.md)
+- [OpenAI Agents SDK](docs/setup-openai.md)
+- [MCP hosts](docs/setup-mcp.md)
+- [Generic integrations](docs/setup-generic.md)
 
-**Cursor IDE:**
-```bash
-# Install to project
-agentlint setup cursor
+### Claude Code marketplace plugin
 
-# Install to user-level settings (~/.cursor/hooks.json)
-agentlint setup cursor --global
-```
-
-**Kimi (Moonshot AI):**
-```bash
-agentlint setup kimi
-```
-
-**Grok (xAI):**
-```bash
-agentlint setup grok
-```
-
-**Gemini (Google):**
-```bash
-agentlint setup gemini
-```
-
-**Codex (OpenAI):**
-```bash
-agentlint setup codex
-```
-
-**Continue.dev:**
-```bash
-agentlint setup continue
-```
-
-**OpenAI Agents SDK:**
-```bash
-agentlint setup openai
-# Follow the printed guardrail integration code
-```
-
-**MCP Hosts (Claude Desktop, VS Code, Windsurf):**
-```bash
-agentlint setup mcp
-# Follow the printed MCP server configuration
-```
-
-**Generic HTTP/Webhook:**
-```bash
-agentlint setup generic
-# Follow the printed webhook configuration
-```
-
-### Claude Code marketplace
-
-Add the AgentLint marketplace and install the plugin:
-
-```
-/plugin marketplace add mauhpr/agentlint-plugin
-/plugin install agentlint@agentlint
-```
-
-### Local plugin (development)
-
-```bash
-claude --plugin-dir /path/to/agentlint/plugin
-```
-
-### Plugin agents
-
-The AgentLint plugin includes specialized agents for multi-step operations:
-
-- **`/agentlint:security-audit`** — Scan your codebase for security vulnerabilities, hardcoded secrets, and unsafe patterns
-- **`/agentlint:doctor`** — Diagnose configuration issues, verify hook installation, suggest optimal pack settings
-- **`/agentlint:fix`** — Auto-fix common violations (debug artifacts, accessibility, dead imports) with confirmation
-
-### Claude Code manual hook configuration
-
-> **Note:** The manual configuration below uses the bare `agentlint` command and requires it to be on your shell's PATH. For reliable resolution across all installation methods, use `agentlint setup` instead — it embeds the absolute path automatically.
-
-`agentlint setup` registers 7 hook events. Add to your project's `.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|Edit|Write",
-        "hooks": [{ "type": "command", "command": "agentlint check --event PreToolUse", "timeout": 5 }]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [{ "type": "command", "command": "agentlint check --event PostToolUse", "timeout": 10 }]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [{ "type": "command", "command": "agentlint check --event UserPromptSubmit", "timeout": 5 }]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [{ "type": "command", "command": "agentlint check --event SubagentStart", "timeout": 5 }]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [{ "type": "command", "command": "agentlint check --event SubagentStop", "timeout": 10 }]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [{ "type": "command", "command": "agentlint check --event Notification", "timeout": 5 }]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [{ "type": "command", "command": "agentlint report", "timeout": 30 }]
-      }
-    ]
-  }
-}
-```
+Claude Code users can also install the marketplace wrapper from
+[`mauhpr/agentlint-plugin`](https://github.com/mauhpr/agentlint-plugin). The
+plugin repo contains Claude-specific marketplace metadata, hook files, and
+plugin commands; this repo contains the core engine and cross-platform setup.
 
 ## Configuration
 
