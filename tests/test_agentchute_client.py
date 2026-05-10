@@ -343,3 +343,57 @@ def test_post_swallows_network_errors(monkeypatch):
 
         time.sleep(0.1)  # let the daemon thread complete
     # If we got here without a propagated exception, the test passes.
+
+
+def test_client_from_env_normalizes_default_url(monkeypatch):
+    from agentlint.agentchute.client import AgentChuteClient
+
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+    monkeypatch.delenv("AGENTCHUTE_API_URL", raising=False)
+
+    client = AgentChuteClient.from_env()
+
+    assert client is not None
+    assert client.api_url == "https://api.agentchute.io/v1"
+    assert client.license_key == "ac_team_test_x"
+
+
+def test_client_post_event_handles_status_codes(monkeypatch, caplog):
+    from agentlint.agentchute.client import AgentChuteClient
+
+    client = AgentChuteClient(api_url="https://api.example.test/v1", license_key="k")
+    response = MagicMock(status_code=403)
+    with patch("requests.post", return_value=response):
+        ok = client.post_event({"event": 1})
+
+    assert ok is False
+    assert "rejected by API" in caplog.text
+
+    response = MagicMock(status_code=500)
+    with patch("requests.post", return_value=response):
+        assert client.post_event({"event": 1}) is False
+
+
+def test_client_batch_handles_empty_invalid_json_and_failed_ids():
+    from agentlint.agentchute.client import AgentChuteClient
+
+    client = AgentChuteClient(api_url="https://api.example.test/v1", license_key="k")
+    assert client.post_events_batch([]) == {"accepted": 0, "duplicates": 0, "failed": []}
+
+    response = MagicMock(status_code=200)
+    response.json.side_effect = ValueError("not json")
+    with patch("requests.post", return_value=response):
+        result = client.post_events_batch([{"event_id": "e1"}])
+    assert result == {"accepted": 1, "duplicates": 0, "failed": []}
+
+    response = MagicMock(status_code=401)
+    with patch("requests.post", return_value=response):
+        assert client.post_events_batch([{"event_id": "e1"}]) is None
+
+
+def test_safe_post_swallows_unexpected_exception():
+    from agentlint.agentchute.client import AgentChuteClient, _safe_post
+
+    client = AgentChuteClient(api_url="https://api.example.test/v1", license_key="k")
+    with patch.object(client, "post_event", side_effect=RuntimeError("boom")):
+        _safe_post(client, {"event": 1})
