@@ -10,6 +10,16 @@ from click.testing import CliRunner
 from agentlint.cli import _resolve_adapter, main
 
 
+class TestMainCommand:
+    def test_version_option(self) -> None:
+        """--version should print the installed AgentLint version."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--version"])
+
+        assert result.exit_code == 0
+        assert result.output.strip() == "agentlint 2.2.1"
+
+
 class TestCheckCommand:
     def test_check_with_empty_input(self, tmp_path) -> None:
         """Empty JSON input should produce no violations and exit 0."""

@@ -1,5 +1,27 @@
 # Changelog
 
+## v2.2.1 (2026-05-10) — Install Experience Polish
+
+This release removes the last extra-step surprise from AgentChute setup.
+`pip install agentlint` now includes the HTTP client dependency needed for
+team sync, so users do not need to know about an optional extra before their
+first event can reach AgentChute.
+
+### Changed
+
+- Added `agentlint --version` for quick install verification.
+- Made `requests>=2.31` a base dependency so AgentChute policy, feed, and event
+  sync work from the default install.
+- Removed the obsolete `agentchute` optional extra.
+
+### Compatibility
+
+- Existing local rules, MCP usage through `agentlint[mcp]`, and all platform
+  adapters remain unchanged.
+- `pip install agentlint[agentchute]` is no longer supported.
+
+---
+
 ## v2.2.0 (2026-05-10) — Public Docs Cleanup
 
 This release cleans the public repository after the AgentChute-ready 2.1.0
