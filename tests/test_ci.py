@@ -8,6 +8,7 @@ import sys
 from click.testing import CliRunner
 
 from agentlint.cli import main
+from agentlint.models import Severity, Violation
 
 
 class TestCiCommand:
@@ -140,6 +141,25 @@ class TestCiCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["ci", "--project-dir", str(tmp_path)])
         assert "Clean" in result.output or "No changed" in result.output
+
+
+class TestCiTextGrouping:
+    def test_groups_repeated_rule_findings(self):
+        from agentlint.cli import _group_ci_violations
+
+        violations = [
+            Violation("no-unnecessary-async", "async def one() has no await expression", Severity.INFO, "app.py", 1),
+            Violation("no-unnecessary-async", "async def two() has no await expression", Severity.INFO, "app.py", 4),
+            Violation("max-file-size", "File has 600 lines", Severity.WARNING, "app.py"),
+        ]
+
+        groups = _group_ci_violations(violations)
+        assert len(groups) == 2
+        assert [v.message for v in groups[0]] == [
+            "async def one() has no await expression",
+            "async def two() has no await expression",
+        ]
+        assert groups[1][0].rule_id == "max-file-size"
 
 
 class TestGetDiffFiles:

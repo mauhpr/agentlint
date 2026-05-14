@@ -17,7 +17,7 @@ class TestMainCommand:
         result = runner.invoke(main, ["--version"])
 
         assert result.exit_code == 0
-        assert result.output.strip() == "agentlint 2.2.1"
+        assert result.output.strip() == "agentlint 2.3.0"
 
 
 class TestCheckCommand:

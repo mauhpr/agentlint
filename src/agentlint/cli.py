@@ -488,12 +488,27 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
         if not all_violations:
             click.echo(f"Clean — {len(changed_files)} files scanned, {total_evaluated} rules evaluated.")
         else:
-            for v in all_violations:
-                sev = v.severity.value.upper()
-                loc = f"{v.file_path}" if v.file_path else "?"
-                click.echo(f"{loc}  [{v.rule_id}] {sev}  {v.message}")
-                if v.suggestion:
-                    click.echo(f"  → {v.suggestion}")
+            for group in _group_ci_violations(all_violations):
+                if len(group) == 1:
+                    v = group[0]
+                    sev = v.severity.value.upper()
+                    loc = f"{v.file_path}" if v.file_path else "?"
+                    click.echo(f"{loc}  [{v.rule_id}] {sev}  {v.message}")
+                    if v.suggestion:
+                        click.echo(f"  → {v.suggestion}")
+                    click.echo()
+                    continue
+
+                first = group[0]
+                sev = first.severity.value.upper()
+                loc = f"{first.file_path}" if first.file_path else "?"
+                click.echo(f"{loc}  [{first.rule_id}] {sev}  {len(group)} findings")
+                for v in group:
+                    line = f"line {v.line}: " if v.line is not None else ""
+                    click.echo(f"  - {line}{v.message}")
+                suggestions = sorted({v.suggestion for v in group if v.suggestion})
+                if len(suggestions) == 1:
+                    click.echo(f"  → {suggestions[0]}")
                 click.echo()
             click.echo(
                 f"{len(all_violations)} violation(s) "
@@ -502,6 +517,19 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
             )
 
     sys.exit(1 if has_errors else 0)
+
+
+def _group_ci_violations(violations: list) -> list[list]:
+    """Group repeated text CI findings by file, rule, and severity."""
+    grouped: list[list] = []
+    index: dict[tuple, list] = {}
+    for violation in violations:
+        key = (violation.file_path, violation.rule_id, violation.severity.value)
+        if key not in index:
+            index[key] = []
+            grouped.append(index[key])
+        index[key].append(violation)
+    return grouped
 
 
 @main.command()

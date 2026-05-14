@@ -1,5 +1,31 @@
 # Changelog
 
+## v2.3.0 (2026-05-14) — CI Signal Polish
+
+This release applies real-world Codex and AgentLint dogfooding feedback. It
+keeps CI adoption safe by preserving INFO-as-non-blocking behavior while
+reducing repeated output and avoiding framework-convention false positives.
+
+### Changed
+
+- `no-unnecessary-async` is now FastAPI-aware and skips route handlers such as
+  `@router.get(...)` and `@app.post(...)` by default.
+- `agentlint ci --format text` now groups repeated findings by file, rule, and
+  severity while leaving JSON output unchanged.
+- Added per-rule `ignore_paths` as an accepted-pattern alias for documented
+  local conventions.
+- Documented `ignore_fastapi_routes`, per-rule `ignore_paths`, and `reason`
+  examples in the sample config and README.
+
+### Compatibility
+
+- INFO findings still do not fail CI by default.
+- Teams that want strict async-route checks can set
+  `rules.no-unnecessary-async.ignore_fastapi_routes: false`.
+- Existing `allow_paths` behavior is unchanged.
+
+---
+
 ## v2.2.1 (2026-05-10) — Install Experience Polish
 
 This release removes the last extra-step surprise from AgentChute setup.

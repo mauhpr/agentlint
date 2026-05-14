@@ -59,6 +59,15 @@ class Engine:
                     if any(fnmatch(context.file_path, p) or fnmatch(basename, p) for p in rule_allow):
                         continue
 
+                # Per-rule ignore_paths — accepted-pattern alias for allow_paths.
+                # Useful when teams want to document why a rule does not apply
+                # to a local convention without disabling the rule globally.
+                rule_ignore = get_rule_setting(context.config, rule.id, "ignore_paths", [])
+                if isinstance(rule_ignore, list) and rule_ignore:
+                    basename = os.path.basename(context.file_path)
+                    if any(fnmatch(context.file_path, p) or fnmatch(basename, p) for p in rule_ignore):
+                        continue
+
             result.rules_evaluated += 1
 
             try:

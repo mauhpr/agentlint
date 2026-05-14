@@ -51,6 +51,11 @@ rules:
   # ── PostToolUse (warnings after the action) ─────────────
   # max-file-size:
   #   limit: 500                # Warn if file exceeds this many lines
+  # no-unnecessary-async:
+  #   ignore_fastapi_routes: true  # Default: don't flag FastAPI route handlers
+  #   ignore_paths:
+  #     - "app/api/*_routes.py"
+  #   reason: "FastAPI route consistency"
   # drift-detector:
   #   threshold: 10             # Warn after this many edits without tests
 

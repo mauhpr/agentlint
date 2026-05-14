@@ -592,6 +592,17 @@ class TestPerRuleAllowPaths:
         result = engine.evaluate(ctx)
         assert len(result.violations) == 0
 
+    def test_rule_ignore_paths_alias_skips_specific_rule(self) -> None:
+        ctx = self._make_context("/project/app/api/users_routes.py", config={
+            "always-warn": {
+                "ignore_paths": ["**/api/*_routes.py"],
+                "reason": "FastAPI route consistency",
+            },
+        })
+        engine = self._make_engine()
+        result = engine.evaluate(ctx)
+        assert len(result.violations) == 0
+
     def test_other_rules_still_fire(self) -> None:
         """Rule A has allow_paths, rule B does not — B should still fire."""
         ctx = self._make_context("/project/generated/out.py", config={
