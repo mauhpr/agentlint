@@ -8,6 +8,7 @@ from agentlint.packs.python.no_sql_injection import NoSqlInjection
 from agentlint.packs.python.no_bare_except import NoBareExcept
 from agentlint.packs.python.no_unsafe_shell import NoUnsafeShell
 from agentlint.packs.python.no_dangerous_migration import NoDangerousMigration
+from agentlint.packs.python.no_unnecessary_async import NoUnnecessaryAsync
 from agentlint.packs.python.no_wildcard_import import NoWildcardImport
 
 
@@ -610,6 +611,48 @@ class TestNoWildcardImport:
         ctx = _ctx("Read", {"file_path": "app/utils.py"})
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
+
+
+# ---------------------------------------------------------------------------
+# NoUnnecessaryAsync
+# ---------------------------------------------------------------------------
+
+
+class TestNoUnnecessaryAsync:
+    rule = NoUnnecessaryAsync()
+
+    def test_detects_plain_async_without_await(self):
+        ctx = _ctx("Write", {
+            "file_path": "app/service.py",
+            "content": "async def compute():\n    return 1\n",
+        })
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert violations[0].severity == Severity.INFO
+
+    def test_skips_fastapi_route_by_default(self):
+        ctx = _ctx("Write", {
+            "file_path": "app/api/routes.py",
+            "content": "@router.get('/health')\nasync def health():\n    return {'ok': True}\n",
+        })
+        violations = self.rule.evaluate(ctx)
+        assert violations == []
+
+    def test_skips_fastapi_app_route_by_default(self):
+        ctx = _ctx("Write", {
+            "file_path": "app/main.py",
+            "content": "@app.post('/items')\nasync def create_item():\n    return {'ok': True}\n",
+        })
+        violations = self.rule.evaluate(ctx)
+        assert violations == []
+
+    def test_fastapi_route_can_be_checked_when_configured(self):
+        ctx = _ctx("Write", {
+            "file_path": "app/api/routes.py",
+            "content": "@router.get('/health')\nasync def health():\n    return {'ok': True}\n",
+        }, config={"ignore_fastapi_routes": False})
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
 
 
 # ---------------------------------------------------------------------------

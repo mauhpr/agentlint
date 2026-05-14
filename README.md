@@ -26,7 +26,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 AgentLint ships with 76 rules across 8 packs and normalizes tool events across supported AI coding agents. The 23 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
 
-**v2.2.1 highlights:** Install experience polish with `agentlint --version` and AgentChute sync support from the default `pip install agentlint` package. Previous: Public documentation cleanup, AgentChute-ready team sync, hybrid cloud feeds, privacy-safe event queueing, multi-platform adapter architecture, unified `AgentEvent` taxonomy, `NormalizedTool` cross-platform mappings, session summary dashboard, MCP server, global config defaults, warning suppression, auto-suppress, `diff_only` mode, and `auto-fix` mode.
+**v2.3.0 highlights:** Codex dogfooding polish with FastAPI-aware `no-unnecessary-async`, grouped text CI findings, and repo-local accepted patterns through per-rule `ignore_paths`. Previous: Install experience polish, `agentlint --version`, AgentChute sync support from the default `pip install agentlint` package, public documentation cleanup, AgentChute-ready team sync, hybrid cloud feeds, privacy-safe event queueing, multi-platform adapter architecture, unified `AgentEvent` taxonomy, `NormalizedTool` cross-platform mappings, session summary dashboard, MCP server, global config defaults, warning suppression, auto-suppress, `diff_only` mode, and `auto-fix` mode.
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -80,7 +80,7 @@ AgentLint ships with 76 rules across 8 packs and normalizes tool events across s
 | `no-unsafe-shell` | ERROR | Blocks unsafe shell execution via subprocess or os module |
 | `no-dangerous-migration` | WARNING | Warns on risky Alembic migration operations |
 | `no-wildcard-import` | WARNING | Prevents `from module import *` |
-| `no-unnecessary-async` | INFO | Flags async functions that never use `await` |
+| `no-unnecessary-async` | INFO | Flags async functions that never use `await`; skips FastAPI route handlers by default |
 | `no-sql-injection` | ERROR | Blocks SQL via string interpolation (f-strings, `.format()`) |
 
 </details>
@@ -157,6 +157,16 @@ rules:
 ```
 
 </details>
+
+Per-rule accepted patterns can be documented locally:
+
+```yaml
+rules:
+  no-unnecessary-async:
+    ignore_paths:
+      - "app/api/*_routes.py"
+    reason: "FastAPI route consistency"
+```
 
 <details>
 <summary><strong>Autopilot pack</strong> (18 rules) — ⚠️ experimental, opt-in</summary>

@@ -9,6 +9,7 @@ _WRITE_TOOLS = {"Write", "Edit"}
 
 _ASYNC_DEF_RE = re.compile(r"^(\s*)async\s+def\s+(\w+)\s*\(", re.MULTILINE)
 _AWAIT_RE = re.compile(r"\bawait\b")
+_FASTAPI_ROUTE_METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "trace", "websocket"}
 _SKIP_DECORATORS = {"property", "override", "abstractmethod"}
 _SKIP_BODIES = {"pass", "...", "raise NotImplementedError"}
 
@@ -45,6 +46,7 @@ class NoUnnecessaryAsync(Rule):
 
         ignore_decorators = set(context.config.get("ignore_decorators", []))
         all_skip_decorators = _SKIP_DECORATORS | ignore_decorators
+        ignore_fastapi_routes = context.config.get("ignore_fastapi_routes", True)
 
         violations: list[Violation] = []
         lines = content.splitlines()
@@ -57,9 +59,11 @@ class NoUnnecessaryAsync(Rule):
             # Check decorators above
             decorator_line = func_line - 1
             skip = False
+            decorators: list[str] = []
             while decorator_line >= 0:
                 dline = lines[decorator_line].strip()
                 if dline.startswith("@"):
+                    decorators.append(dline)
                     dec_name = dline[1:].split("(")[0].split(".")[-1]
                     if dec_name in all_skip_decorators:
                         skip = True
@@ -71,6 +75,8 @@ class NoUnnecessaryAsync(Rule):
                     break
 
             if skip:
+                continue
+            if ignore_fastapi_routes and _has_fastapi_route_decorator(decorators):
                 continue
 
             # Extract body lines
@@ -104,3 +110,20 @@ class NoUnnecessaryAsync(Rule):
                 )
 
         return violations
+
+
+def _has_fastapi_route_decorator(decorators: list[str]) -> bool:
+    """Return True for common FastAPI route decorators.
+
+    Async FastAPI handlers are a framework convention even when a handler
+    currently has no direct await; dependencies, middleware, or later
+    instrumentation often remain async.
+    """
+    for decorator in decorators:
+        target = decorator[1:].split("(", 1)[0]
+        parts = target.split(".")
+        if len(parts) >= 2 and parts[-1] in _FASTAPI_ROUTE_METHODS:
+            receiver = parts[-2].lower()
+            if receiver == "app" or receiver.endswith("router"):
+                return True
+    return False
