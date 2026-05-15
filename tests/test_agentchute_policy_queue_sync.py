@@ -256,6 +256,33 @@ def test_queue_enqueue_flush_dry_run_and_status(tmp_path, monkeypatch):
     assert not (tmp_path / "flush.lock").exists()
 
 
+def test_queue_flush_dry_run_counts_limited_poison_entries(tmp_path, monkeypatch):
+    from agentlint.agentchute import queue
+
+    monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path))
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+    monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
+    queue._save_json(tmp_path / "cursor.json", {"offset": 1})
+    (tmp_path / "queue.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps({"event_id": "already-delivered", "event": {}}),
+                "",
+                "{not-json",
+                json.dumps({"event_id": "e1", "event": {"n": 1}}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = queue.flush_queue(max_events=3, dry_run=True)
+
+    assert result.skipped == 2
+    assert result.attempted == 1
+    assert result.delivered == 1
+    assert json.loads((tmp_path / "cursor.json").read_text())["offset"] == 1
+
+
 def test_queue_disabled_and_oversized_events_are_not_queued(tmp_path, monkeypatch):
     from agentlint.agentchute import queue
 
@@ -331,6 +358,35 @@ def test_queue_flush_success_paths_and_aborts(tmp_path, monkeypatch):
     assert json.loads((tmp_path / "retry.json").read_text())["failures"] == 1
 
 
+def test_queue_flush_empty_queue_clears_retry(tmp_path, monkeypatch):
+    from agentlint.agentchute import queue
+
+    monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path))
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+    monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
+    queue._save_json(tmp_path / "retry.json", {"failures": 2, "next_attempt_at": 123})
+
+    result = queue.flush_queue()
+
+    assert result.attempted == 0
+    assert not (tmp_path / "retry.json").exists()
+
+
+def test_queue_flush_advances_over_poison_only_batch(tmp_path, monkeypatch):
+    from agentlint.agentchute import queue
+
+    monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path))
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+    monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
+    (tmp_path / "queue.jsonl").write_text("\n{not-json\n", encoding="utf-8")
+
+    result = queue.flush_queue(batch_size=2)
+
+    assert result.skipped == 2
+    assert result.attempted == 0
+    assert json.loads((tmp_path / "cursor.json").read_text())["offset"] == 2
+
+
 def test_queue_flush_handles_lock_and_stale_lock(tmp_path, monkeypatch):
     from agentlint.agentchute import queue
 
@@ -350,11 +406,48 @@ def test_queue_flush_handles_lock_and_stale_lock(tmp_path, monkeypatch):
     assert queue.flush_queue(dry_run=True).locked is False
 
 
+def test_queue_filesystem_failures_are_nonfatal(tmp_path, monkeypatch):
+    from agentlint.agentchute import queue
+
+    monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path))
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+    monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
+    queue._save_json(tmp_path / "queue.jsonl", {"not": "jsonl"})
+
+    with patch("pathlib.Path.read_text", side_effect=OSError("cannot read")):
+        assert queue._read_lines() == []
+
+    with patch("builtins.open", side_effect=OSError("cannot count")):
+        assert queue._count_lines(tmp_path / "queue.jsonl") == 0
+
+    with patch("os.open", side_effect=OSError("cannot lock")):
+        assert queue.flush_queue().locked is True
+
+    lock = tmp_path / "flush.lock"
+    lock.write_text("other", encoding="utf-8")
+    old = 1
+    import os
+
+    os.utime(lock, (old, old))
+    with patch("pathlib.Path.unlink", side_effect=OSError("cannot unlink stale lock")):
+        assert queue.flush_queue().locked is True
+
+    with patch("pathlib.Path.unlink", side_effect=OSError("cannot unlink")):
+        queue._release_lock()
+        queue._clear_retry()
+
+
 def test_trigger_background_flush_respects_retry_and_spawns(tmp_path, monkeypatch):
     from agentlint.agentchute import queue
 
     monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path))
     monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
+    monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
+    monkeypatch.setenv("AGENTCHUTE_ENABLED", "false")
+    with patch("subprocess.Popen") as popen:
+        queue.trigger_background_flush()
+    popen.assert_not_called()
+
     monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
     queue._save_json(tmp_path / "retry.json", {"next_attempt_at": 9999999999})
     with patch("subprocess.Popen") as popen:

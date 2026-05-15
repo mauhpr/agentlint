@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from agentlint.cli import _resolve_adapter, main
+from agentlint.cli import _codex_hooks_enabled, _enable_codex_hooks, _resolve_adapter, main
 
 
 class TestMainCommand:
@@ -2051,6 +2051,42 @@ class TestSetupPlatformSubcommands:
         config = tomllib.loads(config_file.read_text())
         assert config["features"]["codex_hooks"] is True
         assert config["tui"]["model_availability_nux"] == {"gpt-5.5": 4}
+
+    def test_codex_hooks_enabled_reads_features_only(self, tmp_path, monkeypatch) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        config_file = home / ".codex" / "config.toml"
+        config_file.parent.mkdir(parents=True)
+
+        assert _codex_hooks_enabled() is False
+
+        config_file.write_text("[features\n", encoding="utf-8")
+        assert _codex_hooks_enabled() is False
+
+        config_file.write_text('features = "not-a-table"\n', encoding="utf-8")
+        assert _codex_hooks_enabled() is False
+
+        config_file.write_text("[features]\nhooks = true\n", encoding="utf-8")
+        assert _codex_hooks_enabled() is True
+
+    def test_enable_codex_hooks_handles_existing_feature_variants(self, tmp_path, monkeypatch) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        config_file = home / ".codex" / "config.toml"
+        config_file.parent.mkdir(parents=True)
+
+        config_file.write_text("[features]\ncodex_hooks = false\n", encoding="utf-8")
+        _enable_codex_hooks()
+        assert tomllib.loads(config_file.read_text())["features"]["codex_hooks"] is True
+
+        config_file.write_text("[features]\nhooks = false\n", encoding="utf-8")
+        _enable_codex_hooks()
+        assert tomllib.loads(config_file.read_text())["features"]["hooks"] is True
+
+        config_file.write_text('model = "gpt-5.5"\n', encoding="utf-8")
+        _enable_codex_hooks()
+        text = config_file.read_text()
+        assert '\n\n[features]\ncodex_hooks = true\n' in text
 
     def test_setup_default_is_claude(self, tmp_path) -> None:
         """Backward compat: agentlint setup without platform defaults to claude."""
