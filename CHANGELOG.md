@@ -11,9 +11,9 @@ mutating or crashing on the local sync queue.
 - `agentlint init --team-key ...` now prints `AGENTCHUTE_API_URL` alongside the
   license key and enable flag, so local AgentChute tests keep targeting the
   local API instead of silently falling back to production defaults.
-- `agentlint setup codex` now checks whether `codex_hooks = true` is present in
-  `~/.codex/config.toml` and prints a copy-paste next-step block when it is
-  missing.
+- `agentlint setup codex` now enables `codex_hooks = true` under `[features]` in
+  `~/.codex/config.toml`, and repairs stale root or nested `codex_hooks` keys
+  that can make Codex fail to load its config.
 - Codex, Claude Code, and Cursor setup docs now include AgentChute local testing
   env vars and restart/reload guidance.
 - `agentlint sync --dry-run` now counts queued events without acquiring the

@@ -16,16 +16,19 @@ This creates `.codex/hooks.json` in your project root with hooks for:
 - `SessionStart` — session initialization
 - `Stop` — session summary report
 
-Codex also requires native hooks to be enabled globally. If `agentlint setup codex`
-prints the next-step block, run it once:
+Codex also requires native hooks to be enabled globally. `agentlint setup codex`
+updates `~/.codex/config.toml` for you by adding the flag under `[features]`:
 
-```bash
-mkdir -p ~/.codex
-touch ~/.codex/config.toml
-grep -q '^codex_hooks *= *true' ~/.codex/config.toml || printf '\ncodex_hooks = true\n' >> ~/.codex/config.toml
+```toml
+[features]
+codex_hooks = true
 ```
 
-Then restart Codex from the terminal where your AgentLint/AgentChute environment
+Do not append `codex_hooks = true` to the end of `config.toml` manually. TOML
+assigns bare keys to the most recent table, so appending after a section such as
+`[tui.model_availability_nux]` can make Codex fail to load its config.
+
+Restart Codex from the terminal where your AgentLint/AgentChute environment
 variables are set:
 
 ```bash
@@ -96,7 +99,7 @@ Removes only AgentLint hooks; preserves any other custom hooks you have configur
 - Bash tool calls should always trigger PreToolUse hooks
 
 **No events in AgentChute?**
-- Ensure `codex_hooks = true` is present in `~/.codex/config.toml`
+- Ensure `codex_hooks = true` is present under `[features]` in `~/.codex/config.toml`
 - Start a fresh Codex session after running `agentlint setup codex`
 - Launch Codex from the same terminal where `AGENTCHUTE_API_URL`, `AGENTCHUTE_LICENSE_KEY`, and `AGENTCHUTE_ENABLED` are exported
 - Run `agentlint agentchute status` and `agentlint sync` from the project root
