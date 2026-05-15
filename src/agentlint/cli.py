@@ -64,6 +64,23 @@ def _resolve_project_dir(project_dir: str | None = None) -> str:
     )
 
 
+def _codex_hooks_enabled() -> bool:
+    """Return whether Codex native hooks are enabled in ~/.codex/config.toml."""
+    config_path = Path.home() / ".codex" / "config.toml"
+    try:
+        text = config_path.read_text()
+    except OSError:
+        return False
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        if stripped.replace(" ", "") == "codex_hooks=true":
+            return True
+    return False
+
+
 def _resolve_adapter(adapter_name: str | None = None) -> Any:
     """Resolve the agent adapter from explicit flag or environment detection.
 
@@ -585,8 +602,12 @@ agentchute:
     click.echo(f"Created {config_path}")
     click.echo(f"Detected packs: {', '.join(packs)}")
     if team_key:
+        from agentlint.agentchute.client import DEFAULT_API_URL, ENV_AGENTCHUTE_API_URL
+
+        api_url = os.environ.get(ENV_AGENTCHUTE_API_URL, DEFAULT_API_URL)
         click.echo("")
         click.echo("AgentChute enabled. Add these env vars to your shell or AI tool settings:")
+        click.echo(f"export AGENTCHUTE_API_URL={api_url}")
         click.echo(f"export AGENTCHUTE_LICENSE_KEY={team_key}")
         click.echo("export AGENTCHUTE_ENABLED=true")
 
@@ -713,6 +734,20 @@ def setup(platform: str, scope: str, project_dir: str | None, dry_run: bool):
     adapter.install_hooks(project_dir, scope=scope, dry_run=dry_run, cmd=agentlint_cmd)
 
     click.echo(f"Installed AgentLint hooks for {platform}")
+
+    if platform == "codex" and not dry_run:
+        if _codex_hooks_enabled():
+            click.echo("Codex hooks are enabled in ~/.codex/config.toml.")
+        else:
+            click.echo("")
+            click.echo("Next: enable Codex hooks globally, then restart Codex:")
+            click.echo("  mkdir -p ~/.codex")
+            click.echo("  touch ~/.codex/config.toml")
+            click.echo(
+                "  grep -q '^codex_hooks *= *true' ~/.codex/config.toml || "
+                "printf '\\ncodex_hooks = true\\n' >> ~/.codex/config.toml"
+            )
+            click.echo("  codex")
 
     # Also create agentlint.yml if it doesn't exist
     config_path = os.path.join(project_dir, "agentlint.yml")

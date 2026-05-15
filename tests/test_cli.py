@@ -102,6 +102,7 @@ class TestInitCommand:
         assert "agentchute:" in config_text
         assert "enabled: true" in config_text
         assert "ac_team_test_secret" not in config_text
+        assert "export AGENTCHUTE_API_URL=" in result.output
         assert "export AGENTCHUTE_LICENSE_KEY=ac_team_test_secret" in result.output
 
 
@@ -2004,6 +2005,18 @@ class TestSetupPlatformSubcommands:
         data = json.loads(hooks_file.read_text())
         assert data["version"] == 1
         assert "hooks" in data
+
+    def test_setup_codex_prints_global_hooks_next_step(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        runner = CliRunner()
+        result = runner.invoke(main, ["setup", "codex", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "Installed AgentLint hooks for codex" in result.output
+        assert "codex_hooks = true" in result.output
+        assert "restart Codex" in result.output
+
+        hooks_file = tmp_path / ".codex" / "hooks.json"
+        assert hooks_file.exists()
 
     def test_setup_default_is_claude(self, tmp_path) -> None:
         """Backward compat: agentlint setup without platform defaults to claude."""

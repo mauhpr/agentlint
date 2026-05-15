@@ -17,6 +17,17 @@ This creates `.cursor/hooks.json` in your project root with hooks for:
 - `subagentStart` / `subagentStop` — subagent safety
 - `stop` — session summary report
 
+For AgentChute local testing, set the API URL before launching Cursor:
+
+```bash
+export AGENTCHUTE_API_URL=http://localhost:8000/v1
+export AGENTCHUTE_LICENSE_KEY=ac_team_...
+export AGENTCHUTE_ENABLED=true
+```
+
+Reload the Cursor window after running `agentlint setup cursor` so it loads the
+updated hook config.
+
 ## Hook Format
 
 Cursor hooks use a JSON-based protocol:
@@ -57,3 +68,11 @@ agentlint uninstall cursor
 | `CURSOR_SESSION_ID` | Session ID for state tracking |
 | `AGENTLINT_PROJECT_DIR` | Generic project directory (takes precedence) |
 | `AGENTLINT_SESSION_ID` | Generic session ID (takes precedence) |
+
+## Troubleshooting
+
+**No events in AgentChute?**
+- Verify `.cursor/hooks.json` exists in the project
+- Reload the Cursor window after installing hooks
+- Ensure Cursor inherits `AGENTCHUTE_API_URL`, `AGENTCHUTE_LICENSE_KEY`, and `AGENTCHUTE_ENABLED`
+- Run `agentlint agentchute status` and `agentlint sync` from the project root

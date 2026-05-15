@@ -252,7 +252,8 @@ def test_queue_enqueue_flush_dry_run_and_status(tmp_path, monkeypatch):
 
     assert result.attempted == 1
     assert result.delivered == 1
-    assert queue.queue_status()["pending"] == 0
+    assert queue.queue_status()["pending"] == 1
+    assert not (tmp_path / "flush.lock").exists()
 
 
 def test_queue_disabled_and_oversized_events_are_not_queued(tmp_path, monkeypatch):
