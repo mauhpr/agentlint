@@ -140,8 +140,29 @@ def flush_queue(
     """Flush queued events to AgentChute in bounded batches."""
     result = FlushResult()
     client = AgentChuteClient.from_env()
-    if client is None:
+    if client is None and not dry_run:
         result.aborted_reason = "AGENTCHUTE_LICENSE_KEY not set"
+        return result
+
+    if dry_run:
+        cursor = int(_load_json(_cursor_path(), {"offset": 0}).get("offset", 0))
+        lines = _read_lines()
+        if cursor >= len(lines):
+            return result
+        pending = lines[cursor:]
+        if max_events is not None:
+            pending = pending[:max_events]
+        for raw in pending:
+            if not raw.strip():
+                result.skipped += 1
+                continue
+            try:
+                json.loads(raw)
+            except json.JSONDecodeError:
+                result.skipped += 1
+                continue
+            result.attempted += 1
+            result.delivered += 1
         return result
 
     if not _acquire_lock():
@@ -270,6 +291,9 @@ def _acquire_lock() -> bool:
             except OSError:
                 return False
             return _acquire_lock()
+        return False
+    except OSError:
+        logger.debug("agentlint.agentchute: could not acquire flush lock", exc_info=True)
         return False
 
 

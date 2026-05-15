@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import json
 import os
+import tomllib
 from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from agentlint.cli import _resolve_adapter, main
+from agentlint.cli import _codex_hooks_enabled, _enable_codex_hooks, _resolve_adapter, main
 
 
 class TestMainCommand:
@@ -17,7 +18,7 @@ class TestMainCommand:
         result = runner.invoke(main, ["--version"])
 
         assert result.exit_code == 0
-        assert result.output.strip() == "agentlint 2.3.0"
+        assert result.output.strip() == "agentlint 2.3.1"
 
 
 class TestCheckCommand:
@@ -102,6 +103,7 @@ class TestInitCommand:
         assert "agentchute:" in config_text
         assert "enabled: true" in config_text
         assert "ac_team_test_secret" not in config_text
+        assert "export AGENTCHUTE_API_URL=" in result.output
         assert "export AGENTCHUTE_LICENSE_KEY=ac_team_test_secret" in result.output
 
 
@@ -2004,6 +2006,101 @@ class TestSetupPlatformSubcommands:
         data = json.loads(hooks_file.read_text())
         assert data["version"] == 1
         assert "hooks" in data
+
+    def test_setup_codex_enables_global_hooks(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        runner = CliRunner()
+        result = runner.invoke(main, ["setup", "codex", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "Installed AgentLint hooks for codex" in result.output
+        assert "Enabled Codex hooks" in result.output
+        assert "codex_hooks = true" in result.output
+        assert "Restart Codex" in result.output
+
+        hooks_file = tmp_path / ".codex" / "hooks.json"
+        assert hooks_file.exists()
+        config_file = tmp_path / "home" / ".codex" / "config.toml"
+        config = tomllib.loads(config_file.read_text())
+        assert config["features"]["codex_hooks"] is True
+
+    def test_setup_codex_reports_existing_global_hooks(self, tmp_path, monkeypatch) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        config_file = home / ".codex" / "config.toml"
+        config_file.parent.mkdir(parents=True)
+        config_file.write_text("[features]\ncodex_hooks = true\n", encoding="utf-8")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["setup", "codex", "--project-dir", str(tmp_path)])
+
+        assert result.exit_code == 0
+        assert "Codex hooks are enabled in ~/.codex/config.toml." in result.output
+        assert "Enabled Codex hooks" not in result.output
+
+    def test_setup_codex_repairs_orphan_codex_hooks_key(self, tmp_path, monkeypatch) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        config_file = home / ".codex" / "config.toml"
+        config_file.parent.mkdir(parents=True)
+        config_file.write_text(
+            "\n".join(
+                [
+                    'model = "gpt-5.5"',
+                    "",
+                    "[features]",
+                    "goals = true",
+                    "",
+                    "[tui.model_availability_nux]",
+                    '"gpt-5.5" = 4',
+                    "codex_hooks = true",
+                    "",
+                ]
+            )
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["setup", "codex", "--project-dir", str(tmp_path)])
+        assert result.exit_code == 0
+
+        config = tomllib.loads(config_file.read_text())
+        assert config["features"]["codex_hooks"] is True
+        assert config["tui"]["model_availability_nux"] == {"gpt-5.5": 4}
+
+    def test_codex_hooks_enabled_reads_features_only(self, tmp_path, monkeypatch) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        config_file = home / ".codex" / "config.toml"
+        config_file.parent.mkdir(parents=True)
+
+        assert _codex_hooks_enabled() is False
+
+        config_file.write_text("[features\n", encoding="utf-8")
+        assert _codex_hooks_enabled() is False
+
+        config_file.write_text('features = "not-a-table"\n', encoding="utf-8")
+        assert _codex_hooks_enabled() is False
+
+        config_file.write_text("[features]\nhooks = true\n", encoding="utf-8")
+        assert _codex_hooks_enabled() is True
+
+    def test_enable_codex_hooks_handles_existing_feature_variants(self, tmp_path, monkeypatch) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        config_file = home / ".codex" / "config.toml"
+        config_file.parent.mkdir(parents=True)
+
+        config_file.write_text("[features]\ncodex_hooks = false\n", encoding="utf-8")
+        _enable_codex_hooks()
+        assert tomllib.loads(config_file.read_text())["features"]["codex_hooks"] is True
+
+        config_file.write_text("[features]\nhooks = false\n", encoding="utf-8")
+        _enable_codex_hooks()
+        assert tomllib.loads(config_file.read_text())["features"]["hooks"] is True
+
+        config_file.write_text('model = "gpt-5.5"\n', encoding="utf-8")
+        _enable_codex_hooks()
+        text = config_file.read_text()
+        assert '\n\n[features]\ncodex_hooks = true\n' in text
 
     def test_setup_default_is_claude(self, tmp_path) -> None:
         """Backward compat: agentlint setup without platform defaults to claude."""

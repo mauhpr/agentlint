@@ -1,5 +1,34 @@
 # Changelog
 
+## v2.3.1 (2026-05-15) — AgentChute Onboarding Polish
+
+This release applies first-run AgentChute setup feedback from local Codex
+dogfooding. It makes the install path less ambiguous and keeps diagnostics from
+mutating or crashing on the local sync queue.
+
+### Changed
+
+- `agentlint init --team-key ...` now prints `AGENTCHUTE_API_URL` alongside the
+  license key and enable flag, so local AgentChute tests keep targeting the
+  local API instead of silently falling back to production defaults.
+- `agentlint setup codex` now enables `codex_hooks = true` under `[features]` in
+  `~/.codex/config.toml`, and repairs stale root or nested `codex_hooks` keys
+  that can make Codex fail to load its config.
+- Codex, Claude Code, and Cursor setup docs now include AgentChute local testing
+  env vars and restart/reload guidance.
+- `agentlint sync --dry-run` now counts queued events without acquiring the
+  flush lock or advancing the delivery cursor.
+- AgentChute queue flushing now treats lock acquisition failures as a locked
+  queue instead of crashing.
+
+### Compatibility
+
+- Existing hook files and AgentLint configs remain valid.
+- Codex users must still restart Codex after enabling hooks; Codex loads hooks
+  when the session starts.
+
+---
+
 ## v2.3.0 (2026-05-14) — CI Signal Polish
 
 This release applies real-world Codex and AgentLint dogfooding feedback. It

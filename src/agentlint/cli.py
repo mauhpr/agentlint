@@ -4,8 +4,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import time
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +42,10 @@ from agentlint.utils.git import get_changed_files, get_diff_files
 
 logger = logging.getLogger("agentlint")
 
+_TOML_SECTION_RE = re.compile(r"^\s*\[([^\[\]]+)\]\s*(?:#.*)?$")
+_CODEX_HOOKS_KEY_RE = re.compile(r"^(\s*)codex_hooks\s*=.*$")
+_HOOKS_KEY_RE = re.compile(r"^(\s*)hooks\s*=.*$")
+
 _SUPPORTED_ADAPTERS = (
     "claude",
     "cursor",
@@ -62,6 +68,85 @@ def _resolve_project_dir(project_dir: str | None = None) -> str:
         or os.environ.get("CLAUDE_PROJECT_DIR")
         or os.getcwd()
     )
+
+
+def _codex_hooks_enabled() -> bool:
+    """Return whether Codex native hooks are enabled in ~/.codex/config.toml."""
+    config_path = Path.home() / ".codex" / "config.toml"
+    try:
+        text = config_path.read_text()
+    except OSError:
+        return False
+
+    try:
+        config = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return False
+
+    features = config.get("features")
+    if not isinstance(features, dict):
+        return False
+    return features.get("hooks") is True or features.get("codex_hooks") is True
+
+
+def _enable_codex_hooks() -> Path:
+    """Enable Codex hooks in ~/.codex/config.toml without corrupting TOML tables."""
+    config_path = Path.home() / ".codex" / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        text = config_path.read_text()
+    except OSError:
+        text = ""
+
+    lines = text.splitlines()
+    output: list[str] = []
+    current_section: str | None = None
+    features_start: int | None = None
+    features_end: int | None = None
+    features_codex_hooks_index: int | None = None
+    features_hooks_index: int | None = None
+
+    for line in lines:
+        section_match = _TOML_SECTION_RE.match(line)
+        if section_match:
+            if current_section == "features" and features_end is None:
+                features_end = len(output)
+            current_section = section_match.group(1).strip()
+            if current_section == "features":
+                features_start = len(output)
+            output.append(line)
+            continue
+
+        if _CODEX_HOOKS_KEY_RE.match(line):
+            if current_section == "features":
+                features_codex_hooks_index = len(output)
+                output.append("codex_hooks = true")
+            # Drop stale root or nested codex_hooks keys. The flag is only valid
+            # under [features], and nested keys can break Codex schema loading.
+            continue
+
+        if current_section == "features" and _HOOKS_KEY_RE.match(line):
+            features_hooks_index = len(output)
+            output.append("hooks = true")
+            continue
+
+        output.append(line)
+
+    if current_section == "features" and features_end is None:
+        features_end = len(output)
+
+    if features_hooks_index is None and features_codex_hooks_index is None:
+        if features_start is None:
+            if output and output[-1].strip():
+                output.append("")
+            output.extend(["[features]", "codex_hooks = true"])
+        else:
+            insert_at = features_end if features_end is not None else len(output)
+            output.insert(insert_at, "codex_hooks = true")
+
+    config_path.write_text("\n".join(output) + "\n")
+    return config_path
 
 
 def _resolve_adapter(adapter_name: str | None = None) -> Any:
@@ -585,8 +670,12 @@ agentchute:
     click.echo(f"Created {config_path}")
     click.echo(f"Detected packs: {', '.join(packs)}")
     if team_key:
+        from agentlint.agentchute.client import DEFAULT_API_URL, ENV_AGENTCHUTE_API_URL
+
+        api_url = os.environ.get(ENV_AGENTCHUTE_API_URL, DEFAULT_API_URL)
         click.echo("")
         click.echo("AgentChute enabled. Add these env vars to your shell or AI tool settings:")
+        click.echo(f"export AGENTCHUTE_API_URL={api_url}")
         click.echo(f"export AGENTCHUTE_LICENSE_KEY={team_key}")
         click.echo("export AGENTCHUTE_ENABLED=true")
 
@@ -713,6 +802,15 @@ def setup(platform: str, scope: str, project_dir: str | None, dry_run: bool):
     adapter.install_hooks(project_dir, scope=scope, dry_run=dry_run, cmd=agentlint_cmd)
 
     click.echo(f"Installed AgentLint hooks for {platform}")
+
+    if platform == "codex" and not dry_run:
+        if _codex_hooks_enabled():
+            click.echo("Codex hooks are enabled in ~/.codex/config.toml.")
+        else:
+            config_path = _enable_codex_hooks()
+            click.echo(f"Enabled Codex hooks in {config_path}.")
+            click.echo("Set [features].codex_hooks = true.")
+        click.echo("Restart Codex from the terminal where your AgentLint/AgentChute env vars are set.")
 
     # Also create agentlint.yml if it doesn't exist
     config_path = os.path.join(project_dir, "agentlint.yml")

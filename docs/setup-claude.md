@@ -18,6 +18,17 @@ This creates `.claude/settings.json` in your project root with hooks for:
 - `Notification` — notification-triggered rules
 - `Stop` — session summary report
 
+For AgentChute local testing, set the API URL before starting Claude Code:
+
+```bash
+export AGENTCHUTE_API_URL=http://localhost:8000/v1
+export AGENTCHUTE_LICENSE_KEY=ac_team_...
+export AGENTCHUTE_ENABLED=true
+```
+
+Restart Claude Code in the project after running `agentlint setup claude` so it
+loads the updated hook config.
+
 ## Hook Format
 
 Claude Code uses a JSON-based hook protocol:
@@ -74,6 +85,7 @@ Removes only AgentLint hooks; preserves any other custom hooks you have configur
 **Hooks not firing?**
 - Verify `.claude/settings.json` exists and contains a `"hooks"` key
 - Check that the `agentlint` binary is on PATH or that `agentlint setup` embedded an absolute path
+- Restart Claude Code after installing hooks
 - Run `agentlint doctor` to diagnose installation issues
 
 **Blocking rules not actually blocking?**

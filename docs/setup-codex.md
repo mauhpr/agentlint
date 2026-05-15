@@ -16,6 +16,33 @@ This creates `.codex/hooks.json` in your project root with hooks for:
 - `SessionStart` — session initialization
 - `Stop` — session summary report
 
+Codex also requires native hooks to be enabled globally. `agentlint setup codex`
+updates `~/.codex/config.toml` for you by adding the flag under `[features]`:
+
+```toml
+[features]
+codex_hooks = true
+```
+
+Do not append `codex_hooks = true` to the end of `config.toml` manually. TOML
+assigns bare keys to the most recent table, so appending after a section such as
+`[tui.model_availability_nux]` can make Codex fail to load its config.
+
+Restart Codex from the terminal where your AgentLint/AgentChute environment
+variables are set:
+
+```bash
+codex
+```
+
+For AgentChute local testing, set the API URL before starting Codex:
+
+```bash
+export AGENTCHUTE_API_URL=http://localhost:8000/v1
+export AGENTCHUTE_LICENSE_KEY=ac_team_...
+export AGENTCHUTE_ENABLED=true
+```
+
 ## Important: Codex Hook Coverage
 
 Codex's PreToolUse hook currently only reliably intercepts **Bash tool calls**. Coverage for `apply_patch` edits and MCP tool calls is intermittent and depends on the Codex CLI version. This is a known upstream limitation.
@@ -70,6 +97,12 @@ Removes only AgentLint hooks; preserves any other custom hooks you have configur
 - This is a known Codex CLI limitation. PreToolUse hooks for `apply_patch` and MCP tools have intermittent coverage
 - Ensure your Codex CLI is up to date; hook support is evolving rapidly
 - Bash tool calls should always trigger PreToolUse hooks
+
+**No events in AgentChute?**
+- Ensure `codex_hooks = true` is present under `[features]` in `~/.codex/config.toml`
+- Start a fresh Codex session after running `agentlint setup codex`
+- Launch Codex from the same terminal where `AGENTCHUTE_API_URL`, `AGENTCHUTE_LICENSE_KEY`, and `AGENTCHUTE_ENABLED` are exported
+- Run `agentlint agentchute status` and `agentlint sync` from the project root
 
 **Need full file-write coverage?**
 - Consider using AgentLint's MCP server alongside hooks for pre-validation
