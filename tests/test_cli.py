@@ -2023,6 +2023,20 @@ class TestSetupPlatformSubcommands:
         config = tomllib.loads(config_file.read_text())
         assert config["features"]["codex_hooks"] is True
 
+    def test_setup_codex_reports_existing_global_hooks(self, tmp_path, monkeypatch) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        config_file = home / ".codex" / "config.toml"
+        config_file.parent.mkdir(parents=True)
+        config_file.write_text("[features]\ncodex_hooks = true\n", encoding="utf-8")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["setup", "codex", "--project-dir", str(tmp_path)])
+
+        assert result.exit_code == 0
+        assert "Codex hooks are enabled in ~/.codex/config.toml." in result.output
+        assert "Enabled Codex hooks" not in result.output
+
     def test_setup_codex_repairs_orphan_codex_hooks_key(self, tmp_path, monkeypatch) -> None:
         home = tmp_path / "home"
         monkeypatch.setenv("HOME", str(home))
