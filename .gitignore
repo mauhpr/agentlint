@@ -11,9 +11,8 @@ build/
 htmlcov/
 .worktrees/
 
-# Local AgentLint dogfood/setup artifacts. Keep agentlint.yml.example and docs
-# committed; generated hook configs often contain absolute local paths.
-agentlint.yml
+# Local AgentLint hook artifacts. The repo-level agentlint.yml is committed so
+# AgentLint dogfoods the same accepted patterns in local dev and CI.
 .claude/
 .codex/
 .continue/

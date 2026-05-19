@@ -368,7 +368,7 @@ def test_client_from_env_normalizes_default_url(monkeypatch):
     client = AgentChuteClient.from_env()
 
     assert client is not None
-    assert client.api_url == "https://api.agentchute.io/v1"
+    assert client.api_url == "https://api.agentchute.com/v1"
     assert client.license_key == "ac_team_test_x"
 
 

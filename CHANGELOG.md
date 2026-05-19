@@ -1,5 +1,50 @@
 # Changelog
 
+## v2.4.0 (2026-05-19) — AgentChute Local-First Onboarding
+
+This release aligns AgentLint with the AgentChute pilot experience: local-first
+policy enforcement, automatic durable event delivery, and one-command setup
+flows that do not require users to understand hook files or queue internals.
+
+### Added
+
+- Added `agentlint onboard` for updating/installing AgentLint, detecting coding
+  agents, installing or repairing hooks, saving AgentChute environment values,
+  validating connectivity, and running a safe verification event.
+- Added `agentlint login` for AgentChute dashboard pairing, plus `agentlint
+  setup-agent` for adding or repairing Codex, Claude Code, Cursor, Gemini,
+  Kimi, Grok, and Continue hook integrations.
+- Added `agentlint status`, `agentlint doctor --fix`, `agentlint test`,
+  `agentlint test-policy`, `agentlint queue ...`, `agentlint env ...`, and
+  `agentlint policy ...` commands for supportable first-run diagnostics.
+- Added declarative AgentChute policy cache support with local-only hook
+  evaluation, strict schema validation, safe predicates, and self-degrading
+  behavior when cloud policy is missing or invalid.
+- Added durable AgentChute event queueing and automatic background flushing so
+  API outages do not block hooks and normal users do not need to run manual
+  sync commands.
+- Added a repo-local dogfood `agentlint.yml` so AgentLint uses its own rules in
+  development without enabling paid AgentChute upload by default.
+
+### Changed
+
+- Changed the default AgentChute API origin to `https://api.agentchute.com/v1`
+  to match the deployed AgentChute product and dashboard docs.
+- Changed Codex setup to write `[features].hooks = true` and remove deprecated
+  or misplaced `codex_hooks` keys from `~/.codex/config.toml`.
+- Kept `agentlint sync` available as a support/debug flush command, while the
+  primary delivery path is now local spool plus automatic background upload.
+
+### Compatibility
+
+- Existing local AgentLint rules and hook integrations remain valid.
+- AgentChute policy and upload behavior remain opt-in through
+  `AGENTCHUTE_ENABLED=true` plus a license key.
+- Cloud policies are declarative JSON only; AgentLint never executes
+  cloud-provided Python or JavaScript.
+
+---
+
 ## v2.3.1 (2026-05-15) — AgentChute Onboarding Polish
 
 This release applies first-run AgentChute setup feedback from local Codex

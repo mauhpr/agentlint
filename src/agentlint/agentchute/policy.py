@@ -160,6 +160,8 @@ def validate_policy(policy: Any) -> list[str]:
             continue
         if not isinstance(rule.get("id"), str) or not rule["id"]:
             errors.append(f"{prefix}.id is required")
+        if rule.get("tool") == "Any":
+            errors.append(f"{prefix}.tool must be omitted to match any tool")
         if rule.get("severity", "warning") not in {"error", "warning", "info"}:
             errors.append(f"{prefix}.severity is invalid")
         if rule.get("event") and rule["event"] not in {e.value for e in HookEvent}:
@@ -202,13 +204,17 @@ def required_packs(policy: dict | None = None) -> list[dict]:
     if not policy:
         return []
     packs = policy.get("required_packs") or []
-    return [p for p in packs if isinstance(p, dict) and p.get("name")]
+    return [p for p in packs if isinstance(p, dict) and (p.get("name") or p.get("id"))]
 
 
 def missing_required_packs(policy: dict | None = None) -> list[str]:
     missing: list[str] = []
     for pack in required_packs(policy):
-        name = str(pack["name"])
+        if pack.get("type") == "cloud_feed" or pack.get("managed_by") == "agentchute":
+            continue
+        name = str(pack.get("name") or "")
+        if not name:
+            continue
         try:
             package_version(name)
         except PackageNotFoundError:

@@ -1,0 +1,74 @@
+# AgentLint dogfood configuration for the AgentLint repo.
+
+stack: auto
+severity: standard
+
+packs:
+  - universal
+  - quality
+  - python
+  - security
+  - autopilot
+
+rules:
+  no-secrets:
+    allow_paths:
+      - "README.md"
+      - "**/README.md"
+      - "CHANGELOG.md"
+      - "**/CHANGELOG.md"
+      - "tests/**"
+      - "**/tests/**"
+      - "src/agentlint/packs/security/no_leaked_secret_pattern.py"
+      - "**/src/agentlint/packs/security/no_leaked_secret_pattern.py"
+  max-file-size:
+    ignore_paths:
+      - "README.md"
+      - "**/README.md"
+      - "CHANGELOG.md"
+      - "**/CHANGELOG.md"
+      - "uv.lock"
+      - "**/uv.lock"
+      - "src/agentlint/cli.py"
+      - "**/src/agentlint/cli.py"
+      - "tests/test_agentchute_policy_queue_sync.py"
+      - "**/tests/test_agentchute_policy_queue_sync.py"
+      - "tests/test_cli.py"
+      - "**/tests/test_cli.py"
+  no-large-diff:
+    ignore_paths:
+      - "src/agentlint/cli.py"
+      - "**/src/agentlint/cli.py"
+      - "src/agentlint/agentchute/client.py"
+      - "**/src/agentlint/agentchute/client.py"
+      - "src/agentlint/agentchute/policy.py"
+      - "**/src/agentlint/agentchute/policy.py"
+  cli-integration:
+    timeout: 20
+    diff_only: true
+    commands:
+      - name: pytest-focused
+        on: ["Write", "Edit"]
+        glob: "src/**/*.py"
+        command: "uv run pytest tests/test_cli.py tests/test_agentchute_client.py -q"
+        timeout: 60
+        severity: warning
+  no-bash-file-write:
+    allow_paths:
+      - "agentlint.yml"
+      - ".claude/settings.json"
+      - ".cursor/hooks.json"
+      - ".codex/hooks.json"
+      - ".kimi/hooks.json"
+      - ".grok/settings.json"
+      - ".gemini/settings.json"
+      - ".continue/settings.json"
+  no-network-exfil:
+    allowed_hosts:
+      - "api.agentchute.com"
+
+agentchute:
+  enabled: false
+  policy:
+    enabled: true
+    missing_required_pack: warn_local_fail_ci

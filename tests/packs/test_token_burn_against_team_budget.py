@@ -72,7 +72,7 @@ class TestStatusField:
         assert len(violations) == 1
         assert violations[0].severity.value == "error"
         assert "exceeded" in violations[0].message.lower()
-        assert "app.agentchute.io" in violations[0].suggestion
+        assert "app.agentchute.com" in violations[0].suggestion
 
     def test_status_warning_fires_warning(self):
         with _patch_feed({"status": "warning", "percent_used": 85.0}):

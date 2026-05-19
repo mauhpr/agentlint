@@ -75,4 +75,5 @@ agentlint uninstall cursor
 - Verify `.cursor/hooks.json` exists in the project
 - Reload the Cursor window after installing hooks
 - Ensure Cursor inherits `AGENTCHUTE_API_URL`, `AGENTCHUTE_LICENSE_KEY`, and `AGENTCHUTE_ENABLED`
-- Run `agentlint agentchute status` and `agentlint sync` from the project root
+- Run `agentlint agentchute status` from the project root
+- If events are queued, run `agentlint agentchute flush` as a support/debug step

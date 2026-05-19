@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import tomllib
+from pathlib import Path
 from unittest.mock import patch
 
 from click.testing import CliRunner
@@ -18,7 +19,7 @@ class TestMainCommand:
         result = runner.invoke(main, ["--version"])
 
         assert result.exit_code == 0
-        assert result.output.strip() == "agentlint 2.3.1"
+        assert result.output.strip() == "agentlint 2.4.0"
 
 
 class TestCheckCommand:
@@ -622,6 +623,44 @@ class TestSyncCommand:
         assert result.exit_code == 0
         assert '"version": 4' in result.output
 
+        result = runner.invoke(main, ["policy", "status"])
+        assert result.exit_code == 0
+        assert "Workspace policy: cached" in result.output
+        assert "Version: 4" in result.output
+
+        result = runner.invoke(main, ["policy", "explain"])
+        assert result.exit_code == 0
+        assert "Workspace policy: v4" in result.output
+        assert "Hook behavior: local-only, no network required" in result.output
+
+        result = runner.invoke(main, ["policy", "explain", "--format", "json"])
+        assert result.exit_code == 0
+        assert '"hook_behavior": "local-only, no network required"' in result.output
+
+    def test_policy_explain_reports_cloud_feeds(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path))
+        from agentlint.agentchute import policy
+
+        policy._policy_root().mkdir(parents=True, exist_ok=True)
+        policy._policy_path().write_text(
+            json.dumps({
+                "version": 7,
+                "required_packs": [
+                    {"id": "agentchute-compromised-packages", "type": "cloud_feed"},
+                    {"name": "definitely-missing-agentlint-pack"},
+                ],
+                "rules": [],
+            }),
+            encoding="utf-8",
+        )
+        runner = CliRunner()
+
+        result = runner.invoke(main, ["policy", "explain"])
+
+        assert result.exit_code == 0
+        assert "Cloud feeds: agentchute-compromised-packages" in result.output
+        assert "Missing custom packs: definitely-missing-agentlint-pack" in result.output
+
     def test_agentchute_policy_missing_cache_exits_one(self, tmp_path, monkeypatch) -> None:
         monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path))
         runner = CliRunner()
@@ -631,10 +670,875 @@ class TestSyncCommand:
         assert result.exit_code == 1
         assert "No AgentChute policy cache found." in result.output
 
+        result = runner.invoke(main, ["policy", "explain"])
+        assert result.exit_code == 1
+        assert "No AgentChute policy cache found." in result.output
+
+
+class TestMagicalUxCommands:
+    def test_agentchute_policy_metadata_degrades_on_policy_status_error(self, monkeypatch) -> None:
+        import agentlint.cli
+        from agentlint.agentchute import policy
+
+        monkeypatch.setattr(policy, "policy_status", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+
+        assert agentlint.cli._agentchute_policy_metadata() == {
+            "cached": False,
+            "version": None,
+            "updated_at": None,
+            "error": "unavailable",
+        }
+
+    def test_default_shell_profile_uses_common_shells(self, monkeypatch) -> None:
+        import agentlint.cli
+
+        monkeypatch.delenv("AGENTLINT_SHELL_PROFILE", raising=False)
+        monkeypatch.setenv("SHELL", "/bin/zsh")
+        assert agentlint.cli._default_shell_profile().name == ".zshrc"
+
+        monkeypatch.setenv("SHELL", "/bin/bash")
+        assert agentlint.cli._default_shell_profile().name == ".bashrc"
+
+        monkeypatch.setenv("SHELL", "/bin/fish")
+        assert agentlint.cli._default_shell_profile().name == ".profile"
+
+    def test_detect_update_command_common_installers(self, monkeypatch) -> None:
+        import agentlint.cli
+
+        monkeypatch.delenv("AGENTLINT_UPDATE_COMMAND", raising=False)
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+
+        monkeypatch.setattr(agentlint.cli.sys, "executable", "/opt/pipx/venvs/agentlint/bin/python")
+        monkeypatch.setattr(agentlint.cli.shutil, "which", lambda name: f"/bin/{name}" if name == "pipx" else None)
+        assert agentlint.cli._detect_update_command()[0] == "pipx"
+
+        monkeypatch.setattr(agentlint.cli.sys, "executable", "/Users/me/.local/share/uv/tools/agentlint/bin/python")
+        monkeypatch.setattr(agentlint.cli.shutil, "which", lambda name: f"/bin/{name}" if name == "uv" else None)
+        assert agentlint.cli._detect_update_command()[0] == "uv tool"
+
+        monkeypatch.setenv("VIRTUAL_ENV", "/tmp/venv")
+        monkeypatch.setattr(agentlint.cli.sys, "executable", "/tmp/venv/bin/python")
+        monkeypatch.setattr(agentlint.cli.shutil, "which", lambda _name: None)
+        assert agentlint.cli._detect_update_command()[0] == "pip"
+
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+        monkeypatch.setattr(agentlint.cli.sys, "executable", "/usr/bin/python")
+        monkeypatch.setattr(agentlint.cli, "resolve_command", lambda: "/usr/local/bin/agentlint")
+        assert agentlint.cli._detect_update_command()[0] == "pip"
+
+    def test_detect_update_command_uv_tool_from_resolved_binary(self, monkeypatch, tmp_path) -> None:
+        import agentlint.cli
+
+        binary = tmp_path / ".local" / "bin" / "agentlint"
+        binary.parent.mkdir(parents=True)
+        binary.write_text("#!/bin/sh\n")
+        monkeypatch.delenv("AGENTLINT_UPDATE_COMMAND", raising=False)
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+        monkeypatch.setattr(agentlint.cli.sys, "executable", "/usr/bin/python")
+        monkeypatch.setattr(agentlint.cli, "resolve_command", lambda: str(binary))
+        monkeypatch.setattr(agentlint.cli.shutil, "which", lambda name: "/bin/uv" if name == "uv" else None)
+
+        assert agentlint.cli._detect_update_command()[0] == "uv tool"
+
+    def test_config_env_and_hook_helpers_cover_edge_states(self, tmp_path, monkeypatch) -> None:
+        import agentlint.cli
+
+        profile = tmp_path / ".zshrc"
+        profile.write_text("before\n" + agentlint.cli._agentchute_env_block(api_url="old", team_key="old") + "\nafter\n")
+        agentlint.cli._persist_agentchute_env(api_url="new-url", team_key="new-key", profile=profile)
+        assert "old" not in profile.read_text()
+        assert "new-key" in profile.read_text()
+
+        missing_config = tmp_path / "missing.yml"
+        agentlint.cli._ensure_agentchute_enabled_config(missing_config)
+        assert not missing_config.exists()
+
+        config = tmp_path / "agentlint.yml"
+        config.write_text("agentchute:\n  policy:\n    enabled: true\npacks:\n  - universal\n")
+        agentlint.cli._ensure_agentchute_enabled_config(config)
+        assert "agentchute:\n  enabled: true\n  policy:" in config.read_text()
+
+        config.write_text("agentchute:\n  enabled: false\n")
+        agentlint.cli._ensure_agentchute_enabled_config(config)
+        assert "enabled: true" in config.read_text()
+
+        config.write_text("agentchute:\n")
+        agentlint.cli._ensure_agentchute_enabled_config(config)
+        assert config.read_text() == "agentchute:\n  enabled: true\n"
+
+        config.write_text("agentchute:\n# comment\npacks:\n  - universal\n")
+        agentlint.cli._ensure_agentchute_enabled_config(config)
+        assert "agentchute:\n# comment\n  enabled: true\npacks:" in config.read_text()
+
+        assert agentlint.cli._platform_hook_file("unknown", str(tmp_path)) is None
+        assert agentlint.cli._agentlint_hooks_present(None) is False
+        assert agentlint.cli._agentlint_hooks_present(tmp_path / "absent.json") is False
+
+        hook_file = tmp_path / ".claude" / "settings.json"
+        hook_file.parent.mkdir()
+        hook_file.write_text('{"command": "/old/path/agentlint check"}')
+        assert agentlint.cli._agentlint_hooks_present(hook_file) is True
+        monkeypatch.setattr(agentlint.cli, "resolve_command", lambda: "/new/path/agentlint")
+        assert agentlint.cli._hook_status("claude", str(tmp_path))[0] == "stale"
+        assert agentlint.cli._hook_status("unknown", str(tmp_path))[0] == "unsupported"
+
+        custom_file = tmp_path / ".cursor" / "hooks.json"
+        custom_file.parent.mkdir()
+        custom_file.write_text("{}")
+        assert agentlint.cli._hook_status("cursor", str(tmp_path))[0] == "custom"
+
+        real_read_text = Path.read_text
+
+        def raise_for_hook(path, *args, **kwargs):
+            if path == custom_file:
+                raise OSError("boom")
+            return real_read_text(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", raise_for_hook)
+        assert agentlint.cli._hook_status("cursor", str(tmp_path))[0] == "unreadable"
+        assert agentlint.cli._agentlint_hooks_present(custom_file) is False
+
+    def test_onboard_platform_resolution_variants(self, tmp_path, monkeypatch) -> None:
+        import agentlint.cli
+
+        monkeypatch.setenv("GEMINI_SESSION_ID", "session")
+        assert agentlint.cli._detected_agent_platforms(str(tmp_path)) == ["gemini"]
+        assert agentlint.cli._resolve_onboard_platforms(("auto",), str(tmp_path)) == ["gemini"]
+        assert agentlint.cli._resolve_onboard_platforms(("all",), str(tmp_path)) == list(agentlint.cli._HOOK_PLATFORMS)
+        assert agentlint.cli._resolve_onboard_platforms(("claude,,cursor",), str(tmp_path)) == ["claude", "cursor"]
+
+        try:
+            agentlint.cli._resolve_onboard_platforms(("unknown",), str(tmp_path))
+        except Exception as exc:
+            assert "Unknown hook platform" in str(exc)
+        else:
+            raise AssertionError("unknown platform should fail")
+
+    def test_update_dry_run_reports_detected_command(self, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_UPDATE_COMMAND", "uv tool install --upgrade agentlint")
+        runner = CliRunner()
+
+        result = runner.invoke(main, ["update", "--dry-run"])
+
+        assert result.exit_code == 0
+        assert "Detected install: override" in result.output
+        assert "uv tool install --upgrade agentlint" in result.output
+
+    def test_update_runs_detected_command_and_reports_failure(self, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_UPDATE_COMMAND", "agentlint-self-test")
+        calls: list[list[str]] = []
+
+        class Completed:
+            returncode = 0
+
+        def fake_run(command, check=False):
+            calls.append(command)
+            return Completed()
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        runner = CliRunner()
+        ok = runner.invoke(main, ["update"])
+
+        assert ok.exit_code == 0
+        assert calls == [["agentlint-self-test"]]
+
+        class Failed:
+            returncode = 3
+
+        monkeypatch.setattr("subprocess.run", lambda _command, check=False: Failed())
+        failed = runner.invoke(main, ["update"])
+        assert failed.exit_code != 0
+        assert "Installer failed with exit code 3" in failed.output
+
+    def test_onboard_update_failure_and_prompt_existing_config(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_UPDATE_COMMAND", "agentlint-self-test")
+
+        class Failed:
+            returncode = 5
+
+        monkeypatch.setattr("subprocess.run", lambda _command, check=False: Failed())
+        failed = CliRunner().invoke(
+            main,
+            [
+                "onboard",
+                "--project-dir",
+                str(tmp_path),
+                "--platform",
+                "claude",
+                "--yes",
+            ],
+        )
+        assert failed.exit_code != 0
+        assert "AgentLint update failed" in failed.output
+
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        ok = CliRunner().invoke(
+            main,
+            [
+                "onboard",
+                "--project-dir",
+                str(tmp_path),
+                "--platform",
+                "claude",
+                "--no-update",
+            ],
+            input="ac_team_prompted_secret\n",
+        )
+        assert ok.exit_code == 0
+        assert "Updated" in ok.output
+
+    def test_onboard_dry_run_shows_full_flow(self, tmp_path, monkeypatch) -> None:
+        profile = tmp_path / ".zshrc"
+        monkeypatch.setenv("AGENTLINT_SHELL_PROFILE", str(profile))
+        runner = CliRunner()
+
+        result = runner.invoke(
+            main,
+            [
+                "onboard",
+                "--project-dir",
+                str(tmp_path),
+                "--platform",
+                "claude",
+                "--team-key",
+                "ac_team_test_secret",
+                "--api-url",
+                "http://localhost:8000",
+                "--no-update",
+                "--dry-run",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "AgentLint onboarding" in result.output
+        assert "Coding agents: claude" in result.output
+        assert "Would create/update" in result.output
+        assert "Would persist AgentChute env vars" in result.output
+        assert "claude:" in result.output
+        assert not profile.exists()
+
+    def test_onboard_runs_update_and_writes_config_env_hooks_and_dashboard(self, tmp_path, monkeypatch) -> None:
+        import agentlint.cli
+
+        profile = tmp_path / ".zshrc"
+        opened: list[str] = []
+
+        class Completed:
+            returncode = 0
+
+        monkeypatch.setenv("AGENTLINT_SHELL_PROFILE", str(profile))
+        monkeypatch.setenv("AGENTLINT_UPDATE_COMMAND", "agentlint-self-test")
+        monkeypatch.setattr("subprocess.run", lambda _command, check=False: Completed())
+        monkeypatch.setattr(agentlint.cli, "resolve_command", lambda: "agentlint")
+        monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url) or True)
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "onboard",
+                "--project-dir",
+                str(tmp_path),
+                "--platform",
+                "claude",
+                "--team-key",
+                "ac_team_test_secret",
+                "--api-url",
+                "https://api.agentchute.com/v1",
+                "--yes",
+                "--open-dashboard",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Saved AgentChute env vars" in result.output
+        assert "Local rule smoke:" in result.output
+        assert opened == ["https://app.agentchute.com/dashboard"]
+        assert (tmp_path / "agentlint.yml").exists()
+        assert "AGENTCHUTE_LICENSE_KEY=ac_team_test_secret" in profile.read_text()
+
+    def test_onboard_codex_enables_feature(self, tmp_path, monkeypatch) -> None:
+        import agentlint.cli
+
+        enabled: list[bool] = []
+        monkeypatch.setattr(agentlint.cli, "_enable_codex_hooks", lambda: enabled.append(True))
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "onboard",
+                "--project-dir",
+                str(tmp_path),
+                "--platform",
+                "codex",
+                "--no-update",
+                "--yes",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert enabled == [True]
+
+    def test_setup_agent_installs_hooks_for_selected_agent(self, tmp_path) -> None:
+        runner = CliRunner()
+
+        result = runner.invoke(
+            main,
+            ["setup-agent", "--project-dir", str(tmp_path), "--platform", "claude", "--yes"],
+        )
+
+        assert result.exit_code == 0
+        assert "Detected coding-agent hook state" in result.output
+        assert "Installed AgentLint hooks for claude" in result.output
+        assert (tmp_path / ".claude" / "settings.json").exists()
+
+    def test_setup_agent_all_installs_codex_feature(self, tmp_path, monkeypatch) -> None:
+        import agentlint.cli
+
+        enabled: list[bool] = []
+        monkeypatch.setattr(agentlint.cli, "_enable_codex_hooks", lambda: enabled.append(True))
+
+        result = CliRunner().invoke(
+            main,
+            ["setup-agent", "--project-dir", str(tmp_path), "--platform", "codex", "--yes"],
+        )
+
+        assert result.exit_code == 0
+        assert enabled == [True]
+
+    def test_setup_agent_can_be_cancelled(self, tmp_path) -> None:
+        result = CliRunner().invoke(
+            main,
+            ["setup-agent", "--project-dir", str(tmp_path), "--platform", "claude"],
+            input="n\n",
+        )
+
+        assert result.exit_code == 0
+        assert not (tmp_path / ".claude").exists()
+
+    def test_agentlint_test_runs_local_smoke_without_agentchute_key(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path / "queue"))
+        monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+        monkeypatch.delenv("AGENTCHUTE_ENABLED", raising=False)
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        runner = CliRunner()
+
+        result = runner.invoke(main, ["test", "--project-dir", str(tmp_path), "--flush"])
+
+        assert result.exit_code == 0
+        assert "Local rule smoke:" in result.output
+        assert "AgentChute queue: skipped" in result.output
+        assert "AgentChute upload: skipped" in result.output
+
+    def test_agentlint_test_reports_locked_flush(self, tmp_path, monkeypatch) -> None:
+        from agentlint.agentchute.queue import FlushResult
+
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path / "queue"))
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_secret")
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\nagentchute:\n  enabled: true\n"
+        )
+        monkeypatch.setattr(
+            "agentlint.agentchute.queue.flush_queue",
+            lambda max_events=10: FlushResult(delivered=0, failed=0, locked=True),
+        )
+
+        result = CliRunner().invoke(main, ["test", "--project-dir", str(tmp_path), "--flush"])
+
+        assert result.exit_code == 0
+        assert "AgentChute queue: wrote test event" in result.output
+        assert "queue is locked by another flusher" in result.output
+
+    def test_policy_template_simulation_matches_cached_policy(self, tmp_path, monkeypatch) -> None:
+        policy_dir = tmp_path / "policy"
+        queue_dir = tmp_path / "queue"
+        policy_dir.mkdir()
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(policy_dir))
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(queue_dir))
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_secret")
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\nagentchute:\n  enabled: true\n"
+        )
+        (policy_dir / "policy.json").write_text(json.dumps({
+            "version": 1,
+            "updated_at": "2026-05-19T12:00:00Z",
+            "rules": [{
+                "id": "org-block-forbidden-domain",
+                "enabled": True,
+                "event": "PreToolUse",
+                "tool": "Bash",
+                "severity": "error",
+                "match": {
+                    "field": "command",
+                    "operator": "contains",
+                    "value": "internal-forbidden.example",
+                },
+                "message": "Blocked company-forbidden domain fetch.",
+            }],
+        }))
+        runner = CliRunner()
+
+        result = runner.invoke(
+            main,
+            [
+                "test-policy",
+                "block-company-domain",
+                "--project-dir",
+                str(tmp_path),
+                "--no-refresh",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Safe policy simulation" in result.output
+        assert "Matched: org-block-forbidden-domain (error)" in result.output
+        assert "AgentChute queue: wrote policy simulation" in result.output
+        queued = json.loads((queue_dir / "queue.jsonl").read_text().splitlines()[0])
+        assert queued["event"]["policy"] == {
+            "cached": True,
+            "version": 1,
+            "updated_at": "2026-05-19T12:00:00Z",
+            "error": None,
+        }
+
+        status = runner.invoke(main, ["policy", "status"])
+        explain = runner.invoke(main, ["policy", "explain"])
+        assert "Updated: 2026-05-19T12:00:00Z" in status.output
+        assert "Updated: 2026-05-19T12:00:00Z" in explain.output
+
+    def test_policy_template_unknown_name_errors(self) -> None:
+        result = CliRunner().invoke(main, ["test-policy", "unknown-template", "--no-refresh"])
+
+        assert result.exit_code != 0
+        assert "Unknown policy test" in result.output
+
+    def test_policy_template_refresh_ok_and_locked_flush(self, tmp_path, monkeypatch) -> None:
+        from agentlint.agentchute.policy import PolicyRefreshResult
+        from agentlint.agentchute.queue import FlushResult
+
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path / "policy"))
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_secret")
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\nagentchute:\n  enabled: true\n"
+        )
+        monkeypatch.setattr(
+            "agentlint.agentchute.policy.refresh_policy",
+            lambda: PolicyRefreshResult(ok=True, version=9),
+        )
+        monkeypatch.setattr(
+            "agentlint.agentchute.queue.flush_queue",
+            lambda max_events=10: FlushResult(delivered=0, failed=0, locked=True),
+        )
+
+        result = CliRunner().invoke(
+            main,
+            ["test-policy", "block-company-domain", "--project-dir", str(tmp_path), "--flush"],
+        )
+
+        assert result.exit_code == 0
+        assert "Policy refresh: cached v9" in result.output
+        assert "queue is locked by another flusher" in result.output
+
+        monkeypatch.setattr(
+            "agentlint.agentchute.queue.flush_queue",
+            lambda max_events=10: FlushResult(delivered=1, failed=0),
+        )
+        delivered = CliRunner().invoke(
+            main,
+            ["test-policy", "block-company-domain", "--project-dir", str(tmp_path), "--flush"],
+        )
+        assert delivered.exit_code == 0
+        assert "AgentChute upload: delivered 1, failed 0" in delivered.output
+
+    def test_policy_template_refresh_skipped_and_no_match_without_policy(self, tmp_path, monkeypatch) -> None:
+        from agentlint.agentchute.policy import PolicyRefreshResult
+        from agentlint.agentchute.queue import FlushResult
+
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path / "policy"))
+        monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+        monkeypatch.delenv("AGENTCHUTE_ENABLED", raising=False)
+        monkeypatch.setattr(
+            "agentlint.agentchute.policy.refresh_policy",
+            lambda: PolicyRefreshResult(ok=False, error="offline"),
+        )
+        monkeypatch.setattr(
+            "agentlint.agentchute.queue.flush_queue",
+            lambda max_events=10: FlushResult(delivered=0, failed=0, aborted_reason="no client"),
+        )
+
+        result = CliRunner().invoke(
+            main,
+            ["test-policy", "block-company-domain", "--project-dir", str(tmp_path), "--flush"],
+        )
+
+        assert result.exit_code == 0
+        assert "Policy refresh: skipped (offline)" in result.output
+        assert "Matched: none" in result.output
+        assert "AgentChute queue: skipped" in result.output
+        assert "AgentChute upload: skipped (no client)" in result.output
+
+    def test_ci_setup_rejects_unsupported_provider(self, tmp_path) -> None:
+        result = CliRunner().invoke(main, ["ci-setup", "gitlab", "--project-dir", str(tmp_path)])
+
+        assert result.exit_code != 0
+        assert "Only github is supported today" in result.output
+
+    def test_ci_setup_writes_github_workflow(self, tmp_path) -> None:
+        runner = CliRunner()
+
+        result = runner.invoke(main, ["ci-setup", "github", "--project-dir", str(tmp_path)])
+
+        workflow = tmp_path / ".github" / "workflows" / "agentlint.yml"
+        assert result.exit_code == 0
+        assert workflow.exists()
+        assert "uvx agentlint ci --format text" in workflow.read_text()
+
+    def test_ci_setup_dry_run_does_not_write_workflow(self, tmp_path) -> None:
+        runner = CliRunner()
+
+        result = runner.invoke(
+            main,
+            ["ci-setup", "github", "--project-dir", str(tmp_path), "--dry-run"],
+        )
+
+        assert result.exit_code == 0
+        assert "name: AgentLint" in result.output
+        assert not (tmp_path / ".github").exists()
+
+    def test_env_install_show_doctor_and_remove(self, tmp_path, monkeypatch) -> None:
+        profile = tmp_path / ".zshrc"
+        monkeypatch.setenv("AGENTLINT_SHELL_PROFILE", str(profile))
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_1234567890")
+        runner = CliRunner()
+
+        install = runner.invoke(
+            main,
+            [
+                "env",
+                "install",
+                "--team-key",
+                "ac_team_test_1234567890",
+                "--api-url",
+                "http://localhost:8000",
+            ],
+        )
+        show = runner.invoke(main, ["env", "show"])
+        doctor = runner.invoke(main, ["env", "doctor"])
+        remove = runner.invoke(main, ["env", "remove"])
+
+        assert install.exit_code == 0
+        assert "Saved AgentChute env vars" in install.output
+        assert "AGENTCHUTE_LICENSE_KEY=ac_team_...7890" in show.output
+        assert "Managed profile block: present" in doctor.output
+        assert remove.exit_code == 0
+        assert "Removed AgentChute env block" in remove.output
+        assert "agentlint agentchute" not in profile.read_text()
+
+    def test_env_remove_missing_profile_is_noop(self, tmp_path) -> None:
+        missing = tmp_path / ".missing-profile"
+
+        result = CliRunner().invoke(main, ["env", "remove", "--profile", str(missing)])
+
+        assert result.exit_code == 0
+        assert "No profile found" in result.output
+
+    def test_login_persists_key_and_enables_existing_config(self, tmp_path, monkeypatch) -> None:
+        profile = tmp_path / ".zshrc"
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+        monkeypatch.setenv("AGENTLINT_SHELL_PROFILE", str(profile))
+        monkeypatch.setattr("webbrowser.open", lambda _url: True)
+        runner = CliRunner()
+
+        result = runner.invoke(
+            main,
+            [
+                "login",
+                "--manual",
+                "--project-dir",
+                str(tmp_path),
+                "--dashboard-url",
+                "http://localhost:3001/dashboard/settings/license",
+                "--api-url",
+                "http://localhost:8000",
+            ],
+            input="ac_team_test_secret\n",
+        )
+
+        assert result.exit_code == 0
+        assert "Paired. Env vars saved" in result.output
+        assert "AGENTCHUTE_LICENSE_KEY=ac_team_test_secret" in profile.read_text()
+        assert "agentchute:" in (tmp_path / "agentlint.yml").read_text()
+
+    def test_login_pairs_through_dashboard(self, tmp_path, monkeypatch) -> None:
+        profile = tmp_path / ".zshrc"
+        monkeypatch.setenv("AGENTLINT_SHELL_PROFILE", str(profile))
+        opened: list[str] = []
+        monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url) or True)
+        monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+        class Response:
+            def __init__(self, body: dict):
+                self.body = body
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return self.body
+
+        with patch(
+            "requests.post",
+            return_value=Response(
+                {
+                    "pairing_id": "pair_123",
+                    "user_code": "ABC-123",
+                    "verification_url": "http://localhost:3001/dashboard/settings/license?pair=ABC-123",
+                    "expires_at": "2026-05-15T12:00:00Z",
+                }
+            ),
+        ) as post, patch(
+            "requests.get",
+            return_value=Response(
+                {
+                    "status": "approved",
+                    "full_key": "ac_team_from_pairing",
+                    "api_url": "http://localhost:8000/v1",
+                    "expires_at": "2026-05-15T12:00:00Z",
+                }
+            ),
+        ) as get:
+            result = CliRunner().invoke(
+                main,
+                [
+                    "login",
+                    "--project-dir",
+                    str(tmp_path),
+                    "--api-url",
+                    "http://localhost:8000/v1",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "Pairing code: ABC-123" in result.output
+        assert "Waiting for dashboard approval" in result.output
+        assert opened == ["http://localhost:3001/dashboard/settings/license?pair=ABC-123"]
+        assert post.call_args.kwargs["json"]["machine_label"] == f"AgentLint CLI ({tmp_path.name})"
+        assert get.call_args.args[0] == "http://localhost:8000/v1/dashboard/cli-pairing/pair_123"
+        assert "AGENTCHUTE_LICENSE_KEY=ac_team_from_pairing" in profile.read_text()
+
+    def test_login_pairing_expired_falls_back_to_manual(self, tmp_path, monkeypatch) -> None:
+        profile = tmp_path / ".zshrc"
+        monkeypatch.setenv("AGENTLINT_SHELL_PROFILE", str(profile))
+        opened: list[str] = []
+        monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url) or True)
+
+        class Response:
+            def __init__(self, body: dict):
+                self.body = body
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return self.body
+
+        with patch(
+            "requests.post",
+            return_value=Response(
+                {
+                    "pairing_id": "pair_123",
+                    "user_code": "ABC-123",
+                    "verification_url": "http://localhost:3001/pair",
+                }
+            ),
+        ), patch(
+            "requests.get",
+            return_value=Response({"status": "expired"}),
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "login",
+                    "--project-dir",
+                    str(tmp_path),
+                    "--api-url",
+                    "http://localhost:8000/v1",
+                ],
+                input="ac_team_manual_after_expiry\n",
+            )
+
+        assert result.exit_code == 0
+        assert "Dashboard pairing unavailable" in result.output
+        assert "AGENTCHUTE_LICENSE_KEY=ac_team_manual_after_expiry" in profile.read_text()
+
+    def test_login_pairing_timeout_falls_back_to_manual(self, tmp_path, monkeypatch) -> None:
+        profile = tmp_path / ".zshrc"
+        monkeypatch.setenv("AGENTLINT_SHELL_PROFILE", str(profile))
+        monkeypatch.setattr("webbrowser.open", lambda _url: True)
+        monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+        class Response:
+            def __init__(self, body: dict):
+                self.body = body
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return self.body
+
+        times = iter([0, 1, 601])
+        monkeypatch.setattr("time.time", lambda: next(times))
+        with patch(
+            "requests.post",
+            return_value=Response({"pairing_id": "pair_123", "user_code": "ABC-123"}),
+        ), patch(
+            "requests.get",
+            return_value=Response({"status": "pending"}),
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "login",
+                    "--project-dir",
+                    str(tmp_path),
+                    "--api-url",
+                    "http://localhost:8000/v1",
+                ],
+                input="ac_team_manual_after_timeout\n",
+            )
+
+        assert result.exit_code == 0
+        assert "Pairing timed out" in result.output
+        assert "AGENTCHUTE_LICENSE_KEY=ac_team_manual_after_timeout" in profile.read_text()
+
+    def test_queue_status_and_inspect(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path / "queue"))
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_secret")
+        from agentlint.agentchute.queue import enqueue_event
+
+        enqueue_event(
+            {
+                "event": "AgentLintTest",
+                "tool_name": "agentlint",
+                "violations": [{"rule_id": "no-secrets"}],
+            },
+            session_key="session-1",
+            config=type("Cfg", (), {"agentchute": {"enabled": True}})(),
+        )
+        runner = CliRunner()
+
+        status_result = runner.invoke(main, ["queue", "status"])
+        inspect_result = runner.invoke(main, ["queue", "inspect", "--last", "1"])
+
+        assert status_result.exit_code == 0
+        assert "Pending: 1" in status_result.output
+        assert inspect_result.exit_code == 0
+        assert "AgentLintTest agentlint session=session-1 violations=1" in inspect_result.output
+
+    def test_queue_inspect_empty_and_poison_lines(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path / "queue"))
+        runner = CliRunner()
+
+        empty = runner.invoke(main, ["queue", "inspect"])
+        assert empty.exit_code == 0
+        assert "Queue is empty" in empty.output
+
+        queue_dir = tmp_path / "queue"
+        queue_dir.mkdir()
+        (queue_dir / "queue.jsonl").write_text("not-json\n")
+
+        poison = runner.invoke(main, ["queue", "inspect"])
+        assert poison.exit_code == 0
+        assert "poison line: invalid JSON" in poison.output
+
+    def test_queue_flush_command_delegates_to_flush_helper(self, monkeypatch) -> None:
+        import agentlint.cli
+
+        calls: list[tuple[int | None, bool, bool]] = []
+        monkeypatch.setattr(
+            agentlint.cli,
+            "_flush_agentchute_queue",
+            lambda max_events, dry_run, background: calls.append((max_events, dry_run, background)),
+        )
+
+        result = CliRunner().invoke(main, ["queue", "flush", "--max-events", "7"])
+
+        assert result.exit_code == 0
+        assert calls == [(7, False, False)]
+
+    def test_status_reports_cached_policy_retry_and_error(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_secret")
+        monkeypatch.setattr(
+            "agentlint.agentchute.queue.queue_status",
+            lambda: {
+                "queue_path": str(tmp_path / "queue.jsonl"),
+                "pending": 2,
+                "queued": 3,
+                "delivered_cursor": 1,
+                "failures": 1,
+                "next_attempt_at": 123.0,
+            },
+        )
+        monkeypatch.setattr(
+            "agentlint.agentchute.policy.policy_status",
+            lambda: {
+                "cached": True,
+                "version": 12,
+                "updated_at": None,
+                "error": "stale cache",
+            },
+        )
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
+
+        result = CliRunner().invoke(main, ["status", "--project-dir", str(tmp_path)])
+
+        assert result.exit_code == 0
+        assert "Retry scheduled: 123.0" in result.output
+        assert "Cloud policy: v12 updated unknown (error: stale cache)" in result.output
+
+    def test_policy_refresh_reports_failure(self, monkeypatch) -> None:
+        from agentlint.agentchute.policy import PolicyRefreshResult
+
+        monkeypatch.setattr(
+            "agentlint.agentchute.policy.refresh_policy",
+            lambda: PolicyRefreshResult(ok=False, error="offline"),
+        )
+
+        result = CliRunner().invoke(main, ["policy", "refresh"])
+
+        assert result.exit_code == 2
+        assert "Policy refresh failed: offline" in result.output
+
+    def test_policy_refresh_success_and_explain_cache_error(self, tmp_path, monkeypatch) -> None:
+        from agentlint.agentchute.policy import PolicyRefreshResult
+
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path / "policy"))
+        monkeypatch.setattr(
+            "agentlint.agentchute.policy.refresh_policy",
+            lambda: PolicyRefreshResult(ok=True, version=12),
+        )
+        refresh = CliRunner().invoke(main, ["policy", "refresh"])
+        assert refresh.exit_code == 0
+        assert "Policy cached: version 12" in refresh.output
+
+        policy_dir = tmp_path / "policy"
+        policy_dir.mkdir(exist_ok=True)
+        (policy_dir / "policy-meta.json").write_text(json.dumps({"error": "invalid cache"}))
+        explain = CliRunner().invoke(main, ["policy", "explain"])
+        assert explain.exit_code == 1
+        assert "Policy error: invalid cache" in explain.output
+
+        status = CliRunner().invoke(main, ["policy", "status"])
+        assert status.exit_code == 0
+        assert "Error: invalid cache" in status.output
+
 
 class TestDoctorCommand:
-    def test_doctor_all_checks_pass(self, tmp_path) -> None:
+    def test_doctor_all_checks_pass(self, tmp_path, monkeypatch) -> None:
         # Create config and hooks so checks pass
+        monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+        monkeypatch.delenv("AGENTCHUTE_ENABLED", raising=False)
         (tmp_path / "agentlint.yml").write_text("stack: auto\n")
         settings_dir = tmp_path / ".claude"
         settings_dir.mkdir()
@@ -646,6 +1550,45 @@ class TestDoctorCommand:
         assert result.exit_code == 0
         assert "All checks passed" in result.output
 
+    def test_doctor_fix_repairs_config_hooks_policy_and_reports_io_errors(self, tmp_path, monkeypatch) -> None:
+        import agentlint.cli
+        from agentlint.agentchute.policy import PolicyRefreshResult
+        from agentlint.agentchute import queue
+
+        monkeypatch.setenv("CODEX_SESSION_ID", "session")
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_secret")
+        monkeypatch.setattr(agentlint.cli, "resolve_command", lambda: "/new/path/agentlint")
+        monkeypatch.setattr(agentlint.cli, "_enable_codex_hooks", lambda: None)
+        monkeypatch.setattr(
+            "agentlint.agentchute.policy.refresh_policy",
+            lambda: PolicyRefreshResult(ok=True, version=99),
+        )
+        monkeypatch.setattr(os, "access", lambda _path, _mode: False)
+
+        class BadQueueRoot:
+            def mkdir(self, parents=False, exist_ok=False):
+                raise OSError("readonly")
+
+            def __str__(self) -> str:
+                return "/readonly/agentchute"
+
+        monkeypatch.setattr(queue, "_queue_root", lambda: BadQueueRoot())
+        stale_hook = tmp_path / ".claude" / "settings.json"
+        stale_hook.parent.mkdir()
+        stale_hook.write_text('{"command": "/old/path/agentlint check"}')
+
+        result = CliRunner().invoke(main, ["doctor", "--project-dir", str(tmp_path), "--fix"])
+
+        assert result.exit_code == 0
+        assert "Fix: created agentlint.yml" in result.output
+        assert "Fix: reinstalled claude hooks" in result.output
+        assert "Fix: installed codex hooks" in result.output
+        assert "Fix: Codex hooks feature enabled" in result.output
+        assert "Cloud policy: refreshed v99" in result.output
+        assert "Session cache:" in result.output
+        assert "is not writable" in result.output
+        assert "AgentChute queue: /readonly/agentchute is not writable" in result.output
+
     def test_doctor_warns_missing_config(self, tmp_path) -> None:
         runner = CliRunner()
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
@@ -656,6 +1599,15 @@ class TestDoctorCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
         assert "not installed" in result.output
+
+    def test_doctor_warns_agentchute_enabled_without_license_key(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+        (tmp_path / "agentlint.yml").write_text("agentchute:\n  enabled: true\n")
+
+        result = CliRunner().invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+
+        assert result.exit_code == 0
+        assert "AgentChute env: AGENTCHUTE_LICENSE_KEY not set" in result.output
 
     def test_doctor_checks_python_version(self, tmp_path) -> None:
         runner = CliRunner()
@@ -2014,21 +2966,22 @@ class TestSetupPlatformSubcommands:
         assert result.exit_code == 0
         assert "Installed AgentLint hooks for codex" in result.output
         assert "Enabled Codex hooks" in result.output
-        assert "codex_hooks = true" in result.output
+        assert "hooks = true" in result.output
         assert "Restart Codex" in result.output
 
         hooks_file = tmp_path / ".codex" / "hooks.json"
         assert hooks_file.exists()
         config_file = tmp_path / "home" / ".codex" / "config.toml"
         config = tomllib.loads(config_file.read_text())
-        assert config["features"]["codex_hooks"] is True
+        assert config["features"]["hooks"] is True
+        assert "codex_hooks" not in config["features"]
 
     def test_setup_codex_reports_existing_global_hooks(self, tmp_path, monkeypatch) -> None:
         home = tmp_path / "home"
         monkeypatch.setenv("HOME", str(home))
         config_file = home / ".codex" / "config.toml"
         config_file.parent.mkdir(parents=True)
-        config_file.write_text("[features]\ncodex_hooks = true\n", encoding="utf-8")
+        config_file.write_text("[features]\nhooks = true\n", encoding="utf-8")
 
         runner = CliRunner()
         result = runner.invoke(main, ["setup", "codex", "--project-dir", str(tmp_path)])
@@ -2063,7 +3016,8 @@ class TestSetupPlatformSubcommands:
         assert result.exit_code == 0
 
         config = tomllib.loads(config_file.read_text())
-        assert config["features"]["codex_hooks"] is True
+        assert config["features"]["hooks"] is True
+        assert "codex_hooks" not in config["features"]
         assert config["tui"]["model_availability_nux"] == {"gpt-5.5": 4}
 
     def test_codex_hooks_enabled_reads_features_only(self, tmp_path, monkeypatch) -> None:
@@ -2080,6 +3034,9 @@ class TestSetupPlatformSubcommands:
         config_file.write_text('features = "not-a-table"\n', encoding="utf-8")
         assert _codex_hooks_enabled() is False
 
+        config_file.write_text("[features]\ncodex_hooks = true\n", encoding="utf-8")
+        assert _codex_hooks_enabled() is False
+
         config_file.write_text("[features]\nhooks = true\n", encoding="utf-8")
         assert _codex_hooks_enabled() is True
 
@@ -2091,7 +3048,9 @@ class TestSetupPlatformSubcommands:
 
         config_file.write_text("[features]\ncodex_hooks = false\n", encoding="utf-8")
         _enable_codex_hooks()
-        assert tomllib.loads(config_file.read_text())["features"]["codex_hooks"] is True
+        config = tomllib.loads(config_file.read_text())
+        assert config["features"]["hooks"] is True
+        assert "codex_hooks" not in config["features"]
 
         config_file.write_text("[features]\nhooks = false\n", encoding="utf-8")
         _enable_codex_hooks()
@@ -2100,7 +3059,7 @@ class TestSetupPlatformSubcommands:
         config_file.write_text('model = "gpt-5.5"\n', encoding="utf-8")
         _enable_codex_hooks()
         text = config_file.read_text()
-        assert '\n\n[features]\ncodex_hooks = true\n' in text
+        assert '\n\n[features]\nhooks = true\n' in text
 
     def test_setup_default_is_claude(self, tmp_path) -> None:
         """Backward compat: agentlint setup without platform defaults to claude."""
