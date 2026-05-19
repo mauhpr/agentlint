@@ -37,7 +37,7 @@ ENV_AGENTCHUTE_API_URL = "AGENTCHUTE_API_URL"
 
 # Default API URL for the paid AgentChute product. Override per-deployment
 # with AGENTCHUTE_API_URL.
-DEFAULT_API_URL = "https://api.agentchute.io/v1"
+DEFAULT_API_URL = "https://api.agentchute.com/v1"
 
 
 def is_agentchute_enabled(config: Any | None = None) -> bool:

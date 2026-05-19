@@ -21,12 +21,14 @@ updates `~/.codex/config.toml` for you by adding the flag under `[features]`:
 
 ```toml
 [features]
-codex_hooks = true
+hooks = true
 ```
 
-Do not append `codex_hooks = true` to the end of `config.toml` manually. TOML
+Do not append `hooks = true` to the end of `config.toml` manually. TOML
 assigns bare keys to the most recent table, so appending after a section such as
 `[tui.model_availability_nux]` can make Codex fail to load its config.
+AgentLint also removes legacy or misplaced `codex_hooks` keys when it repairs
+Codex setup.
 
 Restart Codex from the terminal where your AgentLint/AgentChute environment
 variables are set:
@@ -99,10 +101,11 @@ Removes only AgentLint hooks; preserves any other custom hooks you have configur
 - Bash tool calls should always trigger PreToolUse hooks
 
 **No events in AgentChute?**
-- Ensure `codex_hooks = true` is present under `[features]` in `~/.codex/config.toml`
+- Ensure `hooks = true` is present under `[features]` in `~/.codex/config.toml`
 - Start a fresh Codex session after running `agentlint setup codex`
 - Launch Codex from the same terminal where `AGENTCHUTE_API_URL`, `AGENTCHUTE_LICENSE_KEY`, and `AGENTCHUTE_ENABLED` are exported
-- Run `agentlint agentchute status` and `agentlint sync` from the project root
+- Run `agentlint agentchute status` from the project root
+- If events are queued, run `agentlint agentchute flush` as a support/debug step
 
 **Need full file-write coverage?**
 - Consider using AgentLint's MCP server alongside hooks for pre-validation

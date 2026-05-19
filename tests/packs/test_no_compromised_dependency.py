@@ -129,7 +129,7 @@ class TestHappyPath:
         assert violations[0].rule_id == "no-compromised-dependency"
         assert "evilpackage" in violations[0].message
         assert violations[0].severity.value == "error"
-        assert "incidents@agentchute.io" in violations[0].suggestion
+        assert "incidents@agentchute.com" in violations[0].suggestion
 
     def test_blocks_pip_install_of_deny_listed_package(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_xxx")

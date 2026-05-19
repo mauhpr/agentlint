@@ -146,7 +146,7 @@ class NoCompromisedDependency(Rule):
                         suggestion=(
                             "Verify the package source and version. If you "
                             "believe this is a false positive, report it at "
-                            "incidents@agentchute.io. To override locally, "
+                            "incidents@agentchute.com. To override locally, "
                             "use AgentLint's inline-ignore directive."
                         ),
                     )

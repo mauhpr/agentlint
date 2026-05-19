@@ -124,6 +124,7 @@ def test_validate_policy_reports_shape_errors():
                 "bad",
                 {
                     "id": "",
+                    "tool": "Any",
                     "severity": "critical",
                     "event": "Nope",
                     "match": {
@@ -139,6 +140,7 @@ def test_validate_policy_reports_shape_errors():
 
     assert "rules[0] must be an object" in errors
     assert "rules[1].id is required" in errors
+    assert "rules[1].tool must be omitted to match any tool" in errors
     assert "rules[1].severity is invalid" in errors
     assert "rules[1].event is invalid" in errors
     assert "rules[1].match.operator is unsupported" in errors
@@ -556,3 +558,18 @@ def test_sync_reset_cursor(tmp_path, monkeypatch):
     sync.reset_cursor()
 
     assert not cursor.exists()
+
+
+def test_missing_required_packs_ignores_id_only_local_pack():
+    from agentlint.agentchute.policy import missing_required_packs
+
+    policy = {
+        "version": 1,
+        "required_packs": [
+            {"id": "agentchute-compromised-packages"},
+            {"name": ""},
+        ],
+        "rules": [],
+    }
+
+    assert missing_required_packs(policy) == []

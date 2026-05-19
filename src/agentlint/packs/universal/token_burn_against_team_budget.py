@@ -154,7 +154,7 @@ class TokenBurnAgainstTeamBudget(Rule):
                 "Pause non-critical agent work, switch to manual coding, "
                 "or contact your engineering lead. Budget refreshes at the "
                 "start of next billing cycle. Configure budget at "
-                "app.agentchute.io/dashboard/billing."
+                "app.agentchute.com/dashboard/billing."
             )
         else:
             message = (
@@ -163,7 +163,7 @@ class TokenBurnAgainstTeamBudget(Rule):
             )
             suggestion = (
                 "Consider deferring non-critical agent tasks. View detailed "
-                "spend at app.agentchute.io/dashboard."
+                "spend at app.agentchute.com/dashboard."
             )
 
         return Violation(

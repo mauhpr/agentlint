@@ -1,7 +1,7 @@
 """Codex CLI adapter for AgentLint.
 
 OpenAI Codex CLI provides a native hooks system with 6 lifecycle events.
-Configuration is done via JSON in ~/.codex/hooks.json (requires codex_hooks = true in config.toml).
+Configuration is done via JSON in ~/.codex/hooks.json (requires hooks = true under [features]).
 
 Reference: https://developers.openai.com/codex/hooks
 """
