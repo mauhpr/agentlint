@@ -16,7 +16,7 @@ Architecture overview: [docs/architecture.md](docs/architecture.md)
 
 ## Vision
 
-The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 76 rules that run locally in milliseconds.
+The short-term problem is code quality: secrets, broken tests, force-pushes, debug artifacts. AgentLint solves that today with 77 rules that run locally in milliseconds.
 
 The longer-term question is harder: **what does it mean for an agent to operate safely on real infrastructure?** When an agent can run `gcloud`, `kubectl`, `terraform`, or `iptables`, the blast radius is no longer a bad commit — it's a production outage or a deleted database.
 
@@ -24,7 +24,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 ## What it catches
 
-AgentLint ships with 76 rules across 8 packs and normalizes tool events across supported AI coding agents. The 23 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
+AgentLint ships with 77 rules across 8 packs and normalizes tool events across supported AI coding agents. The 24 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
 
 **v2.4.0 highlights:** AgentChute local-first onboarding with `agentlint onboard`, dashboard pairing through `agentlint login`, `doctor --fix`, `status`, `test`, `test-policy`, policy cache diagnostics, durable queue inspection/flush commands, automatic background event upload, and the production `api.agentchute.com` default. Previous: safer Codex hook enablement, sync dry-run diagnostics, FastAPI-aware `no-unnecessary-async`, grouped text CI findings, repo-local accepted patterns through per-rule `ignore_paths`, AgentChute sync support from the default `pip install agentlint` package, hybrid cloud feeds, privacy-safe event queueing, multi-platform adapter architecture, unified `AgentEvent` taxonomy, `NormalizedTool` cross-platform mappings, MCP server, global config defaults, warning suppression, auto-suppress, `diff_only` mode, and `auto-fix` mode.
 
@@ -52,6 +52,7 @@ AgentLint ships with 76 rules across 8 packs and normalizes tool events across s
 | `no-compromised-dependency` | ERROR | Blocks installs of packages on AgentChute's compromised-package feed |
 | `no-vulnerable-version-install` | ERROR | Blocks pinned installs of versions known vulnerable in GHSA data |
 | `no-vulnerable-import` | WARNING | Warns when importing packages with active GHSA advisories |
+| `no-nvd-critical-cve-install` | ERROR | Blocks explicit pinned installs or container pulls that exactly match critical NVD CPE records |
 | `token-burn-against-team-budget` | WARNING | Warns when AgentChute reports team-level budget pressure |
 
 **ERROR** rules block the agent's action. **WARNING** rules inject advice into the agent's context. **INFO** rules appear in the session report.

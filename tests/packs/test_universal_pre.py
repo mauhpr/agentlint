@@ -1300,7 +1300,7 @@ class TestPackLoader:
         from agentlint.packs import load_rules
 
         rules = load_rules(["universal"])
-        assert len(rules) == 23  # 22 prior + no-vulnerable-import (Phase 19B, GHSA hybrid)
+        assert len(rules) == 24  # includes NVD critical-CVE hybrid rule
         ids = {r.id for r in rules}
         assert "no-secrets" in ids
         assert "no-env-commit" in ids

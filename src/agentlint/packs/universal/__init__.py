@@ -3,6 +3,9 @@ from agentlint.packs.universal.cicd_pipeline_guard import CicdPipelineGuard
 from agentlint.packs.universal.cli_integration import CliIntegration
 from agentlint.packs.universal.dependency_hygiene import DependencyHygiene
 from agentlint.packs.universal.no_compromised_dependency import NoCompromisedDependency
+from agentlint.packs.universal.no_nvd_critical_cve_install import (
+    NoNvdCriticalCveInstall,
+)
 from agentlint.packs.universal.no_vulnerable_import import NoVulnerableImport
 from agentlint.packs.universal.no_vulnerable_version_install import (
     NoVulnerableVersionInstall,
@@ -39,6 +42,7 @@ RULES = [
     NoCompromisedDependency(),  # hybrid rule — uses cloud_feed deny list
     NoVulnerableVersionInstall(),  # hybrid rule — GHSA version-range filter
     NoVulnerableImport(),  # hybrid rule — GHSA import-time advisory warning
+    NoNvdCriticalCveInstall(),  # hybrid rule — NVD critical CVE CPE exact match
     NoTestWeakening(),
     GitCheckpoint(),  # disabled by default — opt in via config
     CicdPipelineGuard(),
