@@ -1,5 +1,30 @@
 # Changelog
 
+## v2.5.0 (2026-05-23) — Local-First NVD CVE Enforcement
+
+This release aligns AgentLint with AgentChute's NVD ingestion work. AgentLint
+can now enforce critical NVD intelligence locally from the cached AgentChute
+feed while preserving the invariant that hook evaluation never depends on the
+network.
+
+### Added
+
+- Added `no-nvd-critical-cve-install`, a universal hybrid rule that consumes the
+  cached AgentChute `nvd-cves` feed with `allow_network=False`.
+- Blocks exact CPE product+version matches for CVEs with `CRITICAL` severity or
+  CISA KEV metadata when agents run pinned package installs or container pulls.
+- Added coverage for npm/yarn/pnpm, pip, cargo, apt/apt-get, and Docker
+  artifact extraction plus malformed/stale feed fallback behavior.
+
+### Compatibility
+
+- AgentChute remains optional. If no license, cache, or feed is available, the
+  rule self-degrades to no-op.
+- Enforcement is intentionally exact-match only for v1 to avoid broad package
+  name false positives from CPE data.
+
+---
+
 ## v2.4.0 (2026-05-19) — AgentChute Local-First Onboarding
 
 This release aligns AgentLint with the AgentChute pilot experience: local-first
