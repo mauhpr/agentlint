@@ -536,6 +536,16 @@ class TestSessionReportCumulativeViolations:
         report = reporter.format_session_report(files_changed=0, session_state=session_state)
         assert "Session totals" not in report
 
+    def test_session_summary_metrics_stay_on_one_line(self) -> None:
+        reporter = Reporter(violations=[], rules_evaluated=7)
+        report = reporter.format_session_report(files_changed=0, session_state={})
+
+        assert (
+            "Files changed: 0  |  Rules evaluated: 7  |  Passed: 7  |  "
+            "Warnings: 0  |  Blocked: 0"
+        ) in report
+        assert "Rules evaluated: 7\nPassed:" not in report
+
     def test_report_backward_compat_no_session_state(self) -> None:
         """Old callers passing session_state=None should still work."""
         violations = [_make_violation(severity=Severity.ERROR, message="Blocked")]

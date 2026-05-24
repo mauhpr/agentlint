@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.5.1 (2026-05-24) — Stop Hook Report Formatting
+
+This patch release keeps the Stop hook session summary readable in coding-agent
+UIs that flatten hook output.
+
+- Keeps the session metrics on one line so reports render as
+  `Rules evaluated: 7  |  Passed: 4` instead of `Rules evaluated: 7Passed: 4`.
+- Adds regression coverage for the compact session report header.
+
+---
+
 ## v2.5.0 (2026-05-23) — Local-First NVD CVE Enforcement
 
 This release aligns AgentLint with AgentChute's NVD ingestion work. AgentLint

@@ -246,7 +246,8 @@ class Reporter:
 
         lines = [
             "AgentLint Session Report",
-            f"Files changed: {files_changed}  |  Rules evaluated: {self.rules_evaluated}",
+            f"Files changed: {files_changed}  |  "
+            f"Rules evaluated: {self.rules_evaluated}  |  "
             f"Passed: {self.rules_evaluated - len(self.violations)}  |  "
             f"Warnings: {len(warnings)}  |  Blocked: {len(errors)}",
         ]
