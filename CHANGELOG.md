@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.5.2 (2026-05-25) — AgentChute Credential Persistence
+
+This patch release fixes the first-run AgentChute pairing flow so users can run
+`agentlint login`, `agentlint onboard --yes`, and `agentlint test --flush` in
+the same terminal without manually sourcing their shell profile.
+
+- Adds an AgentLint-owned local AgentChute credentials file with `0600`
+  permissions, while keeping environment variables as the highest-precedence
+  override for CI and manual setups.
+- Teaches AgentChute clients, feeds, policy refresh, `status`, `doctor`,
+  `env`, `login`, and `onboard` to resolve credentials consistently from env
+  vars first and the local credentials file second.
+- Keeps shell-profile persistence for future terminals, but makes the current
+  CLI process usable immediately after dashboard pairing.
+- Adds regression coverage so tests never read the developer's real local
+  AgentChute credentials.
+
+---
+
 ## v2.5.1 (2026-05-24) — Stop Hook Report Formatting
 
 This patch release keeps the Stop hook session summary readable in coding-agent

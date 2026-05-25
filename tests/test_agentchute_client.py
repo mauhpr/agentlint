@@ -372,6 +372,59 @@ def test_client_from_env_normalizes_default_url(monkeypatch):
     assert client.license_key == "ac_team_test_x"
 
 
+def test_client_from_local_credentials_without_shell_env(monkeypatch):
+    from agentlint.agentchute.client import AgentChuteClient
+    from agentlint.agentchute.settings import save_local_credentials
+
+    monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+    monkeypatch.delenv("AGENTCHUTE_API_URL", raising=False)
+    save_local_credentials(
+        api_url="https://stored.example/v1",
+        license_key="ac_team_stored",
+        enabled=True,
+    )
+
+    client = AgentChuteClient.from_env()
+
+    assert client is not None
+    assert client.api_url == "https://stored.example/v1"
+    assert client.license_key == "ac_team_stored"
+
+
+def test_env_overrides_local_credentials(monkeypatch):
+    from agentlint.agentchute.client import AgentChuteClient
+    from agentlint.agentchute.settings import save_local_credentials
+
+    save_local_credentials(
+        api_url="https://stored.example/v1",
+        license_key="ac_team_stored",
+        enabled=True,
+    )
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_env")
+    monkeypatch.setenv("AGENTCHUTE_API_URL", "https://env.example/v1")
+
+    client = AgentChuteClient.from_env()
+
+    assert client is not None
+    assert client.api_url == "https://env.example/v1"
+    assert client.license_key == "ac_team_env"
+
+
+def test_local_credentials_enable_agentchute(monkeypatch):
+    from agentlint.agentchute import is_agentchute_enabled
+    from agentlint.agentchute.settings import save_local_credentials
+
+    monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+    monkeypatch.delenv("AGENTCHUTE_ENABLED", raising=False)
+    save_local_credentials(
+        api_url="https://stored.example/v1",
+        license_key="ac_team_stored",
+        enabled=True,
+    )
+
+    assert is_agentchute_enabled(None) is True
+
+
 def test_client_post_event_handles_status_codes(monkeypatch, caplog):
     from agentlint.agentchute.client import AgentChuteClient
 

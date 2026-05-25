@@ -12,11 +12,10 @@ from pathlib import Path
 from typing import Any
 
 from agentlint.agentchute.client import (
-    DEFAULT_API_URL,
-    ENV_AGENTCHUTE_API_URL,
-    ENV_AGENTCHUTE_LICENSE_KEY,
     _CONNECT_TIMEOUT_S,
     _READ_TIMEOUT_S,
+    get_api_url,
+    get_license_key,
 )
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
@@ -73,11 +72,11 @@ class PolicyRefreshResult:
 
 
 def refresh_policy() -> PolicyRefreshResult:
-    license_key = os.environ.get(ENV_AGENTCHUTE_LICENSE_KEY)
+    license_key = get_license_key()
     if not license_key:
         return PolicyRefreshResult(ok=False, error="AGENTCHUTE_LICENSE_KEY not set")
 
-    api_url = os.environ.get(ENV_AGENTCHUTE_API_URL, DEFAULT_API_URL).rstrip("/")
+    api_url = get_api_url()
     meta = _read_meta()
     headers = {
         "Authorization": f"Bearer {license_key}",

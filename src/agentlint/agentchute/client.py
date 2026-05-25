@@ -18,10 +18,29 @@ Design constraints:
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from dataclasses import dataclass
 from typing import Any
+
+from agentlint.agentchute.settings import (
+    DEFAULT_API_URL,
+    ENV_AGENTCHUTE_API_URL,
+    ENV_AGENTCHUTE_ENABLED,
+    ENV_AGENTCHUTE_LICENSE_KEY,
+    get_api_url,
+    get_license_key,
+    is_agentchute_enabled,
+)
+
+__all__ = [
+    "DEFAULT_API_URL",
+    "ENV_AGENTCHUTE_API_URL",
+    "ENV_AGENTCHUTE_ENABLED",
+    "ENV_AGENTCHUTE_LICENSE_KEY",
+    "AgentChuteClient",
+    "is_agentchute_enabled",
+    "post_event_async",
+]
 
 logger = logging.getLogger("agentlint.agentchute.client")
 
@@ -29,48 +48,6 @@ logger = logging.getLogger("agentlint.agentchute.client")
 # to drop the event and keep the agent moving, not block on a socket.
 _CONNECT_TIMEOUT_S = 1.0
 _READ_TIMEOUT_S = 2.0
-
-# Public AgentChute env vars.
-ENV_AGENTCHUTE_ENABLED = "AGENTCHUTE_ENABLED"
-ENV_AGENTCHUTE_LICENSE_KEY = "AGENTCHUTE_LICENSE_KEY"
-ENV_AGENTCHUTE_API_URL = "AGENTCHUTE_API_URL"
-
-# Default API URL for the paid AgentChute product. Override per-deployment
-# with AGENTCHUTE_API_URL.
-DEFAULT_API_URL = "https://api.agentchute.com/v1"
-
-
-def is_agentchute_enabled(config: Any | None = None) -> bool:
-    """Return True if AgentChute sync should be active for this run.
-
-    Checks (in order):
-      1. Env var ``AGENTCHUTE_ENABLED``.
-      2. ``agentchute.enabled: true``.
-
-    BOTH paths additionally require a license key to be
-    set. Without a license key there's nowhere to send events, so the
-    feature is silently disabled.
-
-    The ``config`` argument is optional so callers without a config object
-    (e.g., the standalone ``agentlint sync`` command) can still gate on
-    the env var alone.
-    """
-    if not os.environ.get(ENV_AGENTCHUTE_LICENSE_KEY):
-        return False
-
-    env_value = os.environ.get(ENV_AGENTCHUTE_ENABLED, "").strip().lower()
-    if env_value in ("1", "true", "yes", "on"):
-        return True
-    if env_value in ("0", "false", "no", "off"):
-        return False
-
-    if config is not None:
-        agentchute_cfg = getattr(config, "agentchute", None)
-        if isinstance(agentchute_cfg, dict) and "enabled" in agentchute_cfg:
-            return bool(agentchute_cfg.get("enabled", False))
-
-    return False
-
 
 @dataclass
 class AgentChuteClient:
@@ -84,14 +61,11 @@ class AgentChuteClient:
 
     @classmethod
     def from_env(cls) -> "AgentChuteClient | None":
-        """Build a client from environment variables, or None if either
-        the URL or the license key is missing."""
-        license_key = os.environ.get(ENV_AGENTCHUTE_LICENSE_KEY)
+        """Build a client from env vars or local AgentChute credentials."""
+        license_key = get_license_key()
         if not license_key:
             return None
-        api_url = os.environ.get(ENV_AGENTCHUTE_API_URL, DEFAULT_API_URL)
-        api_url = api_url.rstrip("/")
-        return cls(api_url=api_url, license_key=license_key)
+        return cls(api_url=get_api_url(), license_key=license_key)
 
     def post_event(self, event: dict) -> bool:
         """Synchronous POST. Returns True on 2xx, False on any failure

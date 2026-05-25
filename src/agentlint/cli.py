@@ -40,7 +40,6 @@ from agentlint.adapters.openai_agents import OpenAIAgentsAdapter
 from agentlint.formats.claude_hooks import ClaudeHookFormatter
 from agentlint.formats.cursor_hooks import CursorHookFormatter
 from agentlint.models import AgentEvent, to_hook_event
-from agentlint.setup import merge_hooks, read_settings, remove_hooks, settings_path, write_settings
 from agentlint.utils.git import get_changed_files, get_diff_files
 
 logger = logging.getLogger("agentlint")
@@ -905,9 +904,9 @@ agentchute:
     click.echo(f"Created {config_path}")
     click.echo(f"Detected packs: {', '.join(packs)}")
     if team_key:
-        from agentlint.agentchute.client import DEFAULT_API_URL, ENV_AGENTCHUTE_API_URL
+        from agentlint.agentchute.settings import get_api_url
 
-        api_url = os.environ.get(ENV_AGENTCHUTE_API_URL, DEFAULT_API_URL)
+        api_url = get_api_url()
         click.echo("")
         click.echo("AgentChute enabled. Add these env vars to your shell or AI tool settings:")
         click.echo(f"export AGENTCHUTE_API_URL={api_url}")
@@ -924,7 +923,7 @@ agentchute:
 def report(project_dir: str | None, summary: bool, output_format: str, adapter: str | None):
     """Generate session summary report (for Stop event)."""
     project_dir = _resolve_project_dir(project_dir)
-    adapter_obj = _resolve_adapter(adapter)
+    _resolve_adapter(adapter)
 
     # Only consume stdin if not in --summary mode (Stop hook pipes JSON)
     if not summary:
@@ -1090,11 +1089,17 @@ def onboard(
     dry_run: bool,
 ):
     """Guided setup: update, configure AgentChute, install hooks, and smoke test."""
-    from agentlint.agentchute.client import DEFAULT_API_URL
+    from agentlint.agentchute.settings import (
+        get_api_url,
+        get_license_key,
+        local_credentials_path,
+        save_local_credentials,
+    )
 
     project_dir = _resolve_project_dir(project_dir)
     selected = _resolve_onboard_platforms(platforms, project_dir)
-    api_url = api_url or os.environ.get("AGENTCHUTE_API_URL") or DEFAULT_API_URL
+    api_url = api_url or get_api_url()
+    existing_key = get_license_key()
 
     click.echo("AgentLint onboarding")
     click.echo(f"Project: {project_dir}")
@@ -1113,8 +1118,15 @@ def onboard(
             if result.returncode != 0:
                 raise click.ClickException("AgentLint update failed")
 
+    if team_key is None and existing_key:
+        team_key = existing_key
+
     if team_key is None and not yes and not dry_run:
-        team_key = click.prompt("AgentChute license key", default=os.environ.get("AGENTCHUTE_LICENSE_KEY", ""), hide_input=True)
+        team_key = click.prompt(
+            "AgentChute license key",
+            default=existing_key or "",
+            hide_input=True,
+        )
         team_key = team_key.strip() or None
 
     config_path = Path(project_dir) / "agentlint.yml"
@@ -1130,12 +1142,19 @@ def onboard(
 
     if team_key:
         if dry_run:
+            click.echo(f"Would persist AgentChute credentials to {local_credentials_path()}")
             click.echo(f"Would persist AgentChute env vars to {_default_shell_profile()}")
         else:
+            credentials_path = save_local_credentials(
+                api_url=api_url,
+                license_key=team_key,
+                enabled=True,
+            )
             profile = _persist_agentchute_env(api_url=api_url, team_key=team_key)
             os.environ["AGENTCHUTE_API_URL"] = api_url
             os.environ["AGENTCHUTE_LICENSE_KEY"] = team_key
             os.environ["AGENTCHUTE_ENABLED"] = "true"
+            click.echo(f"Saved AgentChute credentials to {credentials_path}")
             click.echo(f"Saved AgentChute env vars to {profile}")
 
     for platform in selected:
@@ -1380,36 +1399,58 @@ def env_group():
 @click.option("--profile", default=None, help="Shell profile to update")
 def env_install(team_key: str, api_url: str | None, profile: str | None):
     """Persist AgentChute env vars into the shell profile."""
-    from agentlint.agentchute.client import DEFAULT_API_URL
+    from agentlint.agentchute.settings import get_api_url, save_local_credentials
 
+    resolved_api_url = api_url or get_api_url()
+    credentials_path = save_local_credentials(
+        api_url=resolved_api_url,
+        license_key=team_key,
+        enabled=True,
+    )
     path = _persist_agentchute_env(
-        api_url=api_url or os.environ.get("AGENTCHUTE_API_URL") or DEFAULT_API_URL,
+        api_url=resolved_api_url,
         team_key=team_key,
         profile=Path(profile).expanduser() if profile else None,
     )
+    os.environ["AGENTCHUTE_API_URL"] = resolved_api_url
+    os.environ["AGENTCHUTE_LICENSE_KEY"] = team_key
+    os.environ["AGENTCHUTE_ENABLED"] = "true"
+    click.echo(f"Saved AgentChute credentials to {credentials_path}")
     click.echo(f"Saved AgentChute env vars to {path}")
-    click.echo("Open a new terminal or run: source " + str(path))
+    click.echo("This terminal can use AgentChute immediately.")
+    click.echo("Future terminals can also load env vars with: source " + str(path))
 
 
 @env_group.command("show")
 def env_show():
     """Show AgentChute env status without revealing secrets."""
-    from agentlint.agentchute.client import DEFAULT_API_URL
+    from agentlint.agentchute.settings import (
+        get_api_url,
+        get_enabled_value,
+        get_license_key,
+        local_credentials_path,
+    )
 
-    key = os.environ.get("AGENTCHUTE_LICENSE_KEY", "")
+    key = get_license_key() or ""
     masked = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else "missing"
-    click.echo(f"AGENTCHUTE_API_URL={os.environ.get('AGENTCHUTE_API_URL', DEFAULT_API_URL)}")
+    click.echo(f"AGENTCHUTE_API_URL={get_api_url()}")
     click.echo(f"AGENTCHUTE_LICENSE_KEY={masked}")
-    click.echo(f"AGENTCHUTE_ENABLED={os.environ.get('AGENTCHUTE_ENABLED', 'unset')}")
+    click.echo(f"AGENTCHUTE_ENABLED={str(get_enabled_value()).lower()}")
+    click.echo(f"Credential file: {local_credentials_path()}")
     click.echo(f"Shell profile: {_default_shell_profile()}")
 
 
 @env_group.command("doctor")
 def env_doctor():
     """Check whether AgentChute env vars are available in this shell/profile."""
+    from agentlint.agentchute.settings import get_license_key, local_credentials_path
+
     profile = _default_shell_profile()
     text = profile.read_text() if profile.exists() else ""
+    credentials_path = local_credentials_path()
     click.echo(f"Current shell key: {'set' if os.environ.get('AGENTCHUTE_LICENSE_KEY') else 'missing'}")
+    click.echo(f"Credential file: {'present' if credentials_path.exists() else 'missing'} ({credentials_path})")
+    click.echo(f"Resolved key: {'set' if get_license_key() else 'missing'}")
     click.echo(f"Managed profile block: {'present' if _AGENTCHUTE_ENV_BEGIN in text else 'missing'} ({profile})")
 
 
@@ -1437,10 +1478,10 @@ def env_remove(profile: str | None):
 @click.option("--manual", is_flag=True, help="Paste a license key instead of using dashboard pairing")
 def login(dashboard_url: str | None, api_url: str | None, project_dir: str | None, manual: bool):
     """Pair this machine with AgentChute through the dashboard."""
-    from agentlint.agentchute.client import DEFAULT_API_URL
+    from agentlint.agentchute.settings import get_api_url, save_local_credentials
 
     project_dir = _resolve_project_dir(project_dir)
-    api_url = api_url or os.environ.get("AGENTCHUTE_API_URL") or DEFAULT_API_URL
+    api_url = api_url or get_api_url()
     dashboard_url = dashboard_url or (
         "http://localhost:3001/dashboard/settings/license"
         if "localhost" in api_url
@@ -1491,11 +1532,21 @@ def login(dashboard_url: str | None, api_url: str | None, project_dir: str | Non
         webbrowser.open(dashboard_url)
         team_key = click.prompt("Paste the AgentChute license key", hide_input=True)
 
+    credentials_path = save_local_credentials(
+        api_url=api_url,
+        license_key=team_key,
+        enabled=True,
+    )
     profile = _persist_agentchute_env(api_url=api_url, team_key=team_key)
+    os.environ["AGENTCHUTE_API_URL"] = api_url
+    os.environ["AGENTCHUTE_LICENSE_KEY"] = team_key
+    os.environ["AGENTCHUTE_ENABLED"] = "true"
     config_path = Path(project_dir) / "agentlint.yml"
     if config_path.exists():
         _ensure_agentchute_enabled_config(config_path)
-    click.echo(f"Paired. Env vars saved to {profile}")
+    click.echo(f"Paired. AgentChute credentials saved to {credentials_path}")
+    click.echo(f"Shell env vars saved to {profile}")
+    click.echo("This terminal can use AgentChute immediately.")
 
 
 @main.group("queue")
@@ -1601,11 +1652,11 @@ def list_rules(pack: str | None, project_dir: str | None):
 def status(project_dir: str | None):
     """Show AgentLint health for the current project."""
     from importlib.metadata import version as get_version
-    from agentlint.agentchute.client import (
-        DEFAULT_API_URL,
-        ENV_AGENTCHUTE_API_URL,
-        ENV_AGENTCHUTE_ENABLED,
-        ENV_AGENTCHUTE_LICENSE_KEY,
+    from agentlint.agentchute.settings import (
+        get_api_url,
+        get_enabled_value,
+        get_license_key,
+        local_credentials_path,
     )
     from agentlint.agentchute.policy import policy_status
     from agentlint.agentchute.queue import queue_status
@@ -1618,6 +1669,7 @@ def status(project_dir: str | None):
     install_kind, update_cmd = _detect_update_command()
     config_path = Path(project_dir) / "agentlint.yml"
     config_ok = config_path.exists()
+    config = load_config(project_dir)
 
     click.echo(f"AgentLint v{ver}")
     click.echo(f"Install: {install_kind} ({' '.join(update_cmd)})")
@@ -1632,16 +1684,17 @@ def status(project_dir: str | None):
         detected_note = " detected" if platform in detected else ""
         click.echo(f"  {marker} {platform:<8} {state}{detected_note}{suffix}")
 
-    env_enabled = os.environ.get(ENV_AGENTCHUTE_ENABLED, "")
-    key = os.environ.get(ENV_AGENTCHUTE_LICENSE_KEY, "")
-    api_url = os.environ.get(ENV_AGENTCHUTE_API_URL, DEFAULT_API_URL)
+    env_enabled = get_enabled_value(config)
+    key = get_license_key()
+    api_url = get_api_url()
     queue = queue_status()
     policy = policy_status()
 
     click.echo("AgentChute:")
-    click.echo(f"  Enabled: {env_enabled or 'config/default'}")
+    click.echo(f"  Enabled: {str(env_enabled).lower()}")
     click.echo(f"  API: {api_url}")
     click.echo(f"  Key: {'set' if key else 'missing'}")
+    click.echo(f"  Credential file: {local_credentials_path()}")
     click.echo(f"  Events queued: {queue['pending']} pending / {queue['queued']} total")
     if queue.get("next_attempt_at"):
         click.echo(f"  Retry scheduled: {queue['next_attempt_at']}")
@@ -1652,7 +1705,6 @@ def status(project_dir: str | None):
         policy_line += f" (error: {policy['error']})"
     click.echo(f"  Cloud policy: {policy_line}")
 
-    config = load_config(project_dir)
     rules = load_project_rules(config, project_dir)
     click.echo(f"Rules: {len(rules)} active | Severity: {config.severity} | Packs: {', '.join(config.packs)}")
     if config.projects:
@@ -1735,7 +1787,7 @@ def doctor(project_dir: str | None, fix: bool):
     else:
         issues.append(f"Session cache: {cache_dir} is not writable")
 
-    from agentlint.agentchute.client import ENV_AGENTCHUTE_LICENSE_KEY
+    from agentlint.agentchute.settings import get_license_key, local_credentials_path
     from agentlint.agentchute.policy import refresh_policy
     from agentlint.agentchute.queue import _queue_root
     queue_root = _queue_root()
@@ -1745,12 +1797,17 @@ def doctor(project_dir: str | None, fix: bool):
     except OSError:
         issues.append(f"AgentChute queue: {queue_root} is not writable")
 
+    credentials_path = local_credentials_path()
+    if credentials_path.exists():
+        checks_ok.append(f"AgentChute credentials: {credentials_path} (present)")
+
     agentchute_cfg = getattr(config, "agentchute", None)
+    license_key = get_license_key()
     agentchute_configured = bool(
-        os.environ.get(ENV_AGENTCHUTE_LICENSE_KEY)
+        license_key
         or (isinstance(agentchute_cfg, dict) and agentchute_cfg.get("enabled"))
     )
-    if os.environ.get(ENV_AGENTCHUTE_LICENSE_KEY):
+    if license_key:
         policy_result = refresh_policy()
         if policy_result.ok:
             checks_ok.append(f"Cloud policy: refreshed v{policy_result.version}")

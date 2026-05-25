@@ -78,11 +78,9 @@ def _extract_fetch_urls(command: str) -> list[str]:
     return cleaned
 
 
-# Process-level memoization. The (urls, sentinel) pair acts as a
-# cache key — when the feed refreshes, the urls tuple is different and
-# the cache invalidates. Sentinel-by-id avoids re-indexing if the OSS
-# returns the same list object across calls.
-_index_cache: tuple[int, dict[str, list[str]]] | None = None
+# Process-level memoization. Keep the source list object itself so Python cannot
+# reuse a stale object id after an old feed list is garbage-collected.
+_index_cache: tuple[list[str], dict[str, list[str]]] | None = None
 
 
 def _build_index(urls: list[str]) -> dict[str, list[str]]:
@@ -110,9 +108,8 @@ def _matches_denylist(url: str, urls: list[str]) -> str | None:
     global _index_cache
     if not urls:
         return None
-    sentinel = id(urls)
-    if _index_cache is None or _index_cache[0] != sentinel:
-        _index_cache = (sentinel, _build_index(urls))
+    if _index_cache is None or _index_cache[0] is not urls:
+        _index_cache = (urls, _build_index(urls))
     index = _index_cache[1]
 
     try:

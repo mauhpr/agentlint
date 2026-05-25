@@ -66,11 +66,10 @@ from pathlib import Path
 from typing import Any
 
 from agentlint.agentchute.client import (
-    DEFAULT_API_URL,
-    ENV_AGENTCHUTE_API_URL,
-    ENV_AGENTCHUTE_LICENSE_KEY,
     _CONNECT_TIMEOUT_S,
     _READ_TIMEOUT_S,
+    get_api_url,
+    get_license_key,
 )
 
 logger = logging.getLogger("agentlint.agentchute.feeds")
@@ -166,10 +165,10 @@ def _fetch_feed_remote(feed_name: str, etag: str | None) -> tuple[Any, str | Non
     """Make the actual HTTP call. Returns (data, new_etag, ttl) on 200,
     None on 304/error/missing-license. Logs at DEBUG so failures are
     silent in normal CLI output (the rule still works with defaults)."""
-    license_key = os.environ.get(ENV_AGENTCHUTE_LICENSE_KEY)
+    license_key = get_license_key()
     if not license_key:
         return None
-    api_url = os.environ.get(ENV_AGENTCHUTE_API_URL, DEFAULT_API_URL).rstrip("/")
+    api_url = get_api_url()
 
     try:
         import requests  # type: ignore
@@ -250,7 +249,7 @@ def get(feed_name: str, default: Any = None, *, allow_network: bool = True) -> A
            and return. On failure, return ``default``.
     """
     # Opt-in gate. Without a license key, no cache path runs.
-    if not os.environ.get(ENV_AGENTCHUTE_LICENSE_KEY):
+    if not get_license_key():
         return default
 
     cached = _read_cache(feed_name)
