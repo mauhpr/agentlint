@@ -89,6 +89,24 @@ def enqueue_event(event: dict, *, session_key: str, config: Any | None = None) -
     return event_id
 
 
+def mark_existing_events_delivered() -> int:
+    """Advance delivery to the current queue tail without deleting events.
+
+    This is used when AgentChute is first paired, or when the local license key
+    changes. Local history can predate the cloud workspace and should not be
+    uploaded as new team activity.
+    """
+    lines = _read_lines()
+    total = len(lines)
+    cursor = int(_load_json(_cursor_path(), {"offset": 0}).get("offset", 0))
+    if cursor >= total:
+        _clear_retry()
+        return 0
+    _save_json(_cursor_path(), {"offset": total})
+    _clear_retry()
+    return total - cursor
+
+
 def trigger_background_flush(config: Any | None = None) -> None:
     """Start a detached flusher process if AgentChute is enabled.
 

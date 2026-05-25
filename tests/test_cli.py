@@ -19,7 +19,7 @@ class TestMainCommand:
         result = runner.invoke(main, ["--version"])
 
         assert result.exit_code == 0
-        assert result.output.strip() == "agentlint 2.5.2"
+        assert result.output.strip() == "agentlint 2.5.3"
 
 
 class TestCheckCommand:
@@ -1106,6 +1106,48 @@ class TestMagicalUxCommands:
         explain = runner.invoke(main, ["policy", "explain"])
         assert "Updated: 2026-05-19T12:00:00Z" in status.output
         assert "Updated: 2026-05-19T12:00:00Z" in explain.output
+        assert "Rule IDs: org-block-forbidden-domain" in explain.output
+
+    def test_curl_pipe_policy_template_matches_cached_policy(self, tmp_path, monkeypatch) -> None:
+        policy_dir = tmp_path / "policy"
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(policy_dir))
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path / "queue"))
+        monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_secret")
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\nagentchute:\n  enabled: true\n"
+        )
+        policy_dir.mkdir()
+        (policy_dir / "policy.json").write_text(json.dumps({
+            "version": 1,
+            "updated_at": "2026-05-19T12:00:00Z",
+            "rules": [{
+                "id": "org-block-curl-pipe-sh",
+                "enabled": True,
+                "event": "PreToolUse",
+                "tool": "Bash",
+                "severity": "error",
+                "match": {
+                    "field": "command",
+                    "operator": "contains",
+                    "value": "| sh",
+                },
+                "message": "Blocked curl piped to shell.",
+            }],
+        }))
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "test-policy",
+                "block-curl-sh",
+                "--project-dir",
+                str(tmp_path),
+                "--no-refresh",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Matched: org-block-curl-pipe-sh (error)" in result.output
 
     def test_policy_template_unknown_name_errors(self) -> None:
         result = CliRunner().invoke(main, ["test-policy", "unknown-template", "--no-refresh"])
@@ -1248,8 +1290,17 @@ class TestMagicalUxCommands:
 
     def test_login_persists_key_and_enables_existing_config(self, tmp_path, monkeypatch) -> None:
         profile = tmp_path / ".zshrc"
+        queue_dir = tmp_path / "queue"
+        queue_dir.mkdir()
+        (queue_dir / "queue.jsonl").write_text(
+            json.dumps({"event_id": "old-1", "event": {}}) + "\n"
+            + json.dumps({"event_id": "old-2", "event": {}}) + "\n",
+            encoding="utf-8",
+        )
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
         monkeypatch.setenv("AGENTLINT_SHELL_PROFILE", str(profile))
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(queue_dir))
+        monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
         monkeypatch.setattr("webbrowser.open", lambda _url: True)
         runner = CliRunner()
 
@@ -1265,18 +1316,20 @@ class TestMagicalUxCommands:
                 "--api-url",
                 "http://localhost:8000",
             ],
-            input="ac_team_test_secret\n",
+            input="ac_team_login_baseline\n",
         )
 
         assert result.exit_code == 0
         assert "Paired. AgentChute credentials saved" in result.output
         assert "Shell env vars saved" in result.output
         assert "This terminal can use AgentChute immediately." in result.output
-        assert "AGENTCHUTE_LICENSE_KEY=ac_team_test_secret" in profile.read_text()
+        assert "AgentChute queue: skipped 2 pre-pairing event(s)" in result.output
+        assert json.loads((queue_dir / "cursor.json").read_text())["offset"] == 2
+        assert "AGENTCHUTE_LICENSE_KEY=ac_team_login_baseline" in profile.read_text()
         assert "agentchute:" in (tmp_path / "agentlint.yml").read_text()
         from agentlint.agentchute.settings import load_local_credentials
 
-        assert load_local_credentials()["license_key"] == "ac_team_test_secret"
+        assert load_local_credentials()["license_key"] == "ac_team_login_baseline"
 
     def test_login_pairs_through_dashboard(self, tmp_path, monkeypatch) -> None:
         profile = tmp_path / ".zshrc"
@@ -1464,17 +1517,57 @@ class TestMagicalUxCommands:
     def test_queue_flush_command_delegates_to_flush_helper(self, monkeypatch) -> None:
         import agentlint.cli
 
-        calls: list[tuple[int | None, bool, bool]] = []
+        calls: list[dict] = []
         monkeypatch.setattr(
             agentlint.cli,
             "_flush_agentchute_queue",
-            lambda max_events, dry_run, background: calls.append((max_events, dry_run, background)),
+            lambda **kwargs: calls.append(kwargs),
         )
 
-        result = CliRunner().invoke(main, ["queue", "flush", "--max-events", "7"])
+        result = CliRunner().invoke(
+            main,
+            ["queue", "flush", "--max-events", "7", "--batch-size", "3", "--time-budget", "1.5"],
+        )
 
         assert result.exit_code == 0
-        assert calls == [(7, False, False)]
+        assert calls == [{
+            "max_events": 7,
+            "batch_size": 3,
+            "time_budget": 1.5,
+            "dry_run": False,
+            "background": False,
+        }]
+
+    def test_queue_discard_pending_advances_cursor(self, tmp_path, monkeypatch) -> None:
+        queue_dir = tmp_path / "queue"
+        queue_dir.mkdir()
+        (queue_dir / "queue.jsonl").write_text(
+            json.dumps({"event_id": "old-1", "event": {}}) + "\n"
+            + json.dumps({"event_id": "old-2", "event": {}}) + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(queue_dir))
+
+        result = CliRunner().invoke(main, ["queue", "discard-pending", "--yes"])
+
+        assert result.exit_code == 0
+        assert "AgentChute queue: discarded 2 pending event(s)" in result.output
+        assert json.loads((queue_dir / "cursor.json").read_text())["offset"] == 2
+
+    def test_queue_discard_pending_can_cancel(self, tmp_path, monkeypatch) -> None:
+        queue_dir = tmp_path / "queue"
+        queue_dir.mkdir()
+        (queue_dir / "queue.jsonl").write_text(
+            json.dumps({"event_id": "old-1", "event": {}}) + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(queue_dir))
+
+        result = CliRunner().invoke(main, ["queue", "discard-pending"], input="n\n")
+
+        assert result.exit_code == 0
+        assert "AgentChute queue unchanged." in result.output
+        assert not (queue_dir / "cursor.json").exists()
 
     def test_status_reports_cached_policy_retry_and_error(self, tmp_path, monkeypatch) -> None:
         monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")

@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.5.3 (2026-05-25) — AgentChute Queue Baseline
+
+This patch release fixes AgentChute onboarding for existing AgentLint users
+with local event history.
+
+- Fixes `agentlint queue flush`, which could crash because the CLI wrapper did
+  not pass the newer queue batch/time-budget arguments.
+- Baselines the local AgentChute queue when a machine is paired with a new
+  license key, so pre-pairing local history is not uploaded as fresh dashboard
+  activity.
+- Adds `agentlint queue discard-pending --yes` for support cases where a user
+  intentionally wants to advance the local queue cursor without uploading
+  pending events.
+- Improves `agentlint policy explain` by listing active rule IDs, making policy
+  template debugging easier.
+- Adds regression coverage for the `block-curl-sh` policy template simulation.
+
+---
+
 ## v2.5.2 (2026-05-25) — AgentChute Credential Persistence
 
 This patch release fixes the first-run AgentChute pairing flow so users can run

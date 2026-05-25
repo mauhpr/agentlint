@@ -91,6 +91,26 @@ def _agentchute_policy_metadata() -> dict:
     }
 
 
+def _baseline_agentchute_queue_if_new_key(previous_key: str | None, next_key: str) -> int:
+    if previous_key == next_key:
+        return 0
+    try:
+        from agentlint.agentchute.queue import mark_existing_events_delivered
+
+        return mark_existing_events_delivered()
+    except Exception:
+        logger.debug("Failed to baseline AgentChute queue", exc_info=True)
+        return 0
+
+
+def _echo_queue_baseline(skipped: int) -> None:
+    if skipped:
+        click.echo(
+            f"AgentChute queue: skipped {skipped} pre-pairing event(s); "
+            "future events will upload normally"
+        )
+
+
 def _codex_hooks_enabled() -> bool:
     """Return whether current Codex native hooks are enabled in config.toml."""
     config_path = Path.home() / ".codex" / "config.toml"
@@ -1145,6 +1165,7 @@ def onboard(
             click.echo(f"Would persist AgentChute credentials to {local_credentials_path()}")
             click.echo(f"Would persist AgentChute env vars to {_default_shell_profile()}")
         else:
+            skipped = _baseline_agentchute_queue_if_new_key(existing_key, team_key)
             credentials_path = save_local_credentials(
                 api_url=api_url,
                 license_key=team_key,
@@ -1156,6 +1177,7 @@ def onboard(
             os.environ["AGENTCHUTE_ENABLED"] = "true"
             click.echo(f"Saved AgentChute credentials to {credentials_path}")
             click.echo(f"Saved AgentChute env vars to {profile}")
+            _echo_queue_baseline(skipped)
 
     for platform in selected:
         state, path = _hook_status(platform, project_dir)
@@ -1399,9 +1421,10 @@ def env_group():
 @click.option("--profile", default=None, help="Shell profile to update")
 def env_install(team_key: str, api_url: str | None, profile: str | None):
     """Persist AgentChute env vars into the shell profile."""
-    from agentlint.agentchute.settings import get_api_url, save_local_credentials
+    from agentlint.agentchute.settings import get_api_url, get_license_key, save_local_credentials
 
     resolved_api_url = api_url or get_api_url()
+    skipped = _baseline_agentchute_queue_if_new_key(get_license_key(), team_key)
     credentials_path = save_local_credentials(
         api_url=resolved_api_url,
         license_key=team_key,
@@ -1417,6 +1440,7 @@ def env_install(team_key: str, api_url: str | None, profile: str | None):
     os.environ["AGENTCHUTE_ENABLED"] = "true"
     click.echo(f"Saved AgentChute credentials to {credentials_path}")
     click.echo(f"Saved AgentChute env vars to {path}")
+    _echo_queue_baseline(skipped)
     click.echo("This terminal can use AgentChute immediately.")
     click.echo("Future terminals can also load env vars with: source " + str(path))
 
@@ -1478,10 +1502,11 @@ def env_remove(profile: str | None):
 @click.option("--manual", is_flag=True, help="Paste a license key instead of using dashboard pairing")
 def login(dashboard_url: str | None, api_url: str | None, project_dir: str | None, manual: bool):
     """Pair this machine with AgentChute through the dashboard."""
-    from agentlint.agentchute.settings import get_api_url, save_local_credentials
+    from agentlint.agentchute.settings import get_api_url, get_license_key, save_local_credentials
 
     project_dir = _resolve_project_dir(project_dir)
     api_url = api_url or get_api_url()
+    existing_key = get_license_key()
     dashboard_url = dashboard_url or (
         "http://localhost:3001/dashboard/settings/license"
         if "localhost" in api_url
@@ -1532,6 +1557,7 @@ def login(dashboard_url: str | None, api_url: str | None, project_dir: str | Non
         webbrowser.open(dashboard_url)
         team_key = click.prompt("Paste the AgentChute license key", hide_input=True)
 
+    skipped = _baseline_agentchute_queue_if_new_key(existing_key, team_key)
     credentials_path = save_local_credentials(
         api_url=api_url,
         license_key=team_key,
@@ -1546,6 +1572,7 @@ def login(dashboard_url: str | None, api_url: str | None, project_dir: str | Non
         _ensure_agentchute_enabled_config(config_path)
     click.echo(f"Paired. AgentChute credentials saved to {credentials_path}")
     click.echo(f"Shell env vars saved to {profile}")
+    _echo_queue_baseline(skipped)
     click.echo("This terminal can use AgentChute immediately.")
 
 
@@ -1569,9 +1596,41 @@ def queue_status_command():
 
 @queue_group.command("flush")
 @click.option("--max-events", default=None, type=int, help="Maximum events to flush")
-def queue_flush_command(max_events: int | None):
+@click.option("--batch-size", default=50, type=int, help="Maximum events per API batch")
+@click.option("--time-budget", default=3.0, type=float, help="Maximum seconds to spend flushing")
+def queue_flush_command(max_events: int | None, batch_size: int, time_budget: float):
     """Flush queued AgentChute events now."""
-    _flush_agentchute_queue(max_events=max_events, dry_run=False, background=False)
+    _flush_agentchute_queue(
+        max_events=max_events,
+        batch_size=batch_size,
+        time_budget=time_budget,
+        dry_run=False,
+        background=False,
+    )
+
+
+@queue_group.command("discard-pending")
+@click.option("--yes", is_flag=True, help="Skip confirmation")
+def queue_discard_pending_command(yes: bool):
+    """Mark pending AgentChute events delivered without uploading them."""
+    from agentlint.agentchute.queue import mark_existing_events_delivered, queue_status
+
+    status_data = queue_status()
+    pending = int(status_data.get("pending", 0) or 0)
+    if pending <= 0:
+        click.echo("AgentChute queue: no pending events.")
+        return
+    if not yes and not click.confirm(
+        f"Discard {pending} pending AgentChute event(s) without uploading?",
+        default=False,
+    ):
+        click.echo("AgentChute queue unchanged.")
+        return
+    skipped = mark_existing_events_delivered()
+    click.echo(
+        f"AgentChute queue: discarded {skipped} pending event(s); "
+        "future events will upload normally"
+    )
 
 
 @queue_group.command("inspect")
@@ -2325,6 +2384,7 @@ def policy_explain_command(output_format: str):
     rules = [rule for rule in policy.get("rules") or [] if isinstance(rule, dict)]
     active_rules = [rule for rule in rules if rule.get("enabled", True) is not False]
     locked_rules = [rule for rule in active_rules if rule.get("locked") is True]
+    active_rule_ids = [str(rule.get("id")) for rule in active_rules if rule.get("id")]
     packs = required_packs(policy)
     missing = missing_required_packs(policy)
     cloud_feeds = [
@@ -2339,6 +2399,7 @@ def policy_explain_command(output_format: str):
             "updated_at": policy.get("updated_at"),
             "organization_id": policy.get("organization_id"),
             "rules": len(active_rules),
+            "rule_ids": active_rule_ids,
             "locked_rules": len(locked_rules),
             "required_packs": len(packs),
             "cloud_feeds": cloud_feeds,
@@ -2353,6 +2414,8 @@ def policy_explain_command(output_format: str):
     if policy.get("updated_at"):
         click.echo(f"Updated: {policy['updated_at']}")
     click.echo(f"Rules: {len(active_rules)} active, {len(locked_rules)} locked")
+    if active_rule_ids:
+        click.echo(f"Rule IDs: {', '.join(active_rule_ids[:10])}")
     click.echo(f"Required packs: {len(packs)}")
     if cloud_feeds:
         click.echo(f"Cloud feeds: {', '.join(cloud_feeds)}")

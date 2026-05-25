@@ -258,6 +258,36 @@ def test_queue_enqueue_flush_dry_run_and_status(tmp_path, monkeypatch):
     assert not (tmp_path / "flush.lock").exists()
 
 
+def test_queue_mark_existing_events_delivered_preserves_future_pending(tmp_path, monkeypatch):
+    from agentlint.agentchute import queue
+
+    monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path))
+    (tmp_path / "queue.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps({"event_id": "old-1", "event": {"n": 1}}),
+                json.dumps({"event_id": "old-2", "event": {"n": 2}}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    queue._save_json(tmp_path / "retry.json", {"failures": 2, "next_attempt_at": 123})
+
+    skipped = queue.mark_existing_events_delivered()
+
+    assert skipped == 2
+    assert queue.queue_status()["pending"] == 0
+    assert json.loads((tmp_path / "cursor.json").read_text())["offset"] == 2
+    assert not (tmp_path / "retry.json").exists()
+    assert queue.mark_existing_events_delivered() == 0
+
+    with open(tmp_path / "queue.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"event_id": "new-1", "event": {"n": 3}}) + "\n")
+
+    assert queue.queue_status()["pending"] == 1
+
+
 def test_queue_flush_dry_run_counts_limited_poison_entries(tmp_path, monkeypatch):
     from agentlint.agentchute import queue
 
