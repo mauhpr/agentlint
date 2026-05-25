@@ -1610,6 +1610,25 @@ class TestDoctorCommand:
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
         assert "not installed" in result.output
 
+    def test_doctor_reports_local_agentchute_credentials(self, tmp_path, monkeypatch) -> None:
+        from agentlint.agentchute.settings import save_local_credentials
+
+        monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+        monkeypatch.delenv("AGENTCHUTE_ENABLED", raising=False)
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+        save_local_credentials(
+            api_url="https://api.agentchute.com/v1",
+            license_key="ac_team_stored",
+            enabled=True,
+        )
+
+        result = CliRunner().invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+
+        assert result.exit_code == 0
+        assert "AgentChute credentials:" in result.output
+        assert "(present)" in result.output
+
+
     def test_doctor_warns_agentchute_enabled_without_license_key(self, tmp_path, monkeypatch) -> None:
         monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
         (tmp_path / "agentlint.yml").write_text("agentchute:\n  enabled: true\n")
