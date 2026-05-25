@@ -1569,6 +1569,29 @@ class TestMagicalUxCommands:
         assert "AgentChute queue unchanged." in result.output
         assert not (queue_dir / "cursor.json").exists()
 
+    def test_queue_discard_pending_reports_empty_queue(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path / "queue"))
+
+        result = CliRunner().invoke(main, ["queue", "discard-pending", "--yes"])
+
+        assert result.exit_code == 0
+        assert "AgentChute queue: no pending events." in result.output
+
+    def test_queue_baseline_failure_is_non_fatal(self, monkeypatch) -> None:
+        import agentlint.agentchute.queue
+        import agentlint.cli
+
+        def fail_baseline() -> int:
+            raise OSError("queue locked")
+
+        monkeypatch.setattr(
+            agentlint.agentchute.queue,
+            "mark_existing_events_delivered",
+            fail_baseline,
+        )
+
+        assert agentlint.cli._baseline_agentchute_queue_if_new_key("old-key", "new-key") == 0
+
     def test_status_reports_cached_policy_retry_and_error(self, tmp_path, monkeypatch) -> None:
         monkeypatch.setenv("AGENTCHUTE_ENABLED", "true")
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_secret")
