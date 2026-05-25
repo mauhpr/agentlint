@@ -372,6 +372,143 @@ def test_client_from_env_normalizes_default_url(monkeypatch):
     assert client.license_key == "ac_team_test_x"
 
 
+def test_client_from_local_credentials_without_shell_env(monkeypatch):
+    from agentlint.agentchute.client import AgentChuteClient
+    from agentlint.agentchute.settings import save_local_credentials
+
+    monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+    monkeypatch.delenv("AGENTCHUTE_API_URL", raising=False)
+    save_local_credentials(
+        api_url="https://stored.example/v1",
+        license_key="ac_team_stored",
+        enabled=True,
+    )
+
+    client = AgentChuteClient.from_env()
+
+    assert client is not None
+    assert client.api_url == "https://stored.example/v1"
+    assert client.license_key == "ac_team_stored"
+
+
+def test_env_overrides_local_credentials(monkeypatch):
+    from agentlint.agentchute.client import AgentChuteClient
+    from agentlint.agentchute.settings import save_local_credentials
+
+    save_local_credentials(
+        api_url="https://stored.example/v1",
+        license_key="ac_team_stored",
+        enabled=True,
+    )
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_env")
+    monkeypatch.setenv("AGENTCHUTE_API_URL", "https://env.example/v1")
+
+    client = AgentChuteClient.from_env()
+
+    assert client is not None
+    assert client.api_url == "https://env.example/v1"
+    assert client.license_key == "ac_team_env"
+
+
+def test_local_credentials_enable_agentchute(monkeypatch):
+    from agentlint.agentchute import is_agentchute_enabled
+    from agentlint.agentchute.settings import save_local_credentials
+
+    monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+    monkeypatch.delenv("AGENTCHUTE_ENABLED", raising=False)
+    save_local_credentials(
+        api_url="https://stored.example/v1",
+        license_key="ac_team_stored",
+        enabled=True,
+    )
+
+    assert is_agentchute_enabled(None) is True
+
+
+def test_local_credentials_path_uses_xdg_config_home(tmp_path, monkeypatch):
+    from agentlint.agentchute.settings import (
+        ENV_AGENTCHUTE_CREDENTIALS_FILE,
+        local_credentials_path,
+    )
+
+    monkeypatch.delenv(ENV_AGENTCHUTE_CREDENTIALS_FILE, raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    assert local_credentials_path() == tmp_path / "xdg" / "agentlint" / "agentchute.json"
+
+
+def test_load_local_credentials_ignores_invalid_files(tmp_path, monkeypatch):
+    from agentlint.agentchute.settings import (
+        ENV_AGENTCHUTE_CREDENTIALS_FILE,
+        load_local_credentials,
+    )
+
+    credentials_file = tmp_path / "agentchute.json"
+    monkeypatch.setenv(ENV_AGENTCHUTE_CREDENTIALS_FILE, str(credentials_file))
+
+    credentials_file.write_text("not-json", encoding="utf-8")
+    assert load_local_credentials() == {}
+
+    credentials_file.write_text('["not", "a", "mapping"]', encoding="utf-8")
+    assert load_local_credentials() == {}
+
+
+def test_local_credentials_defaults_and_config_fallback(tmp_path, monkeypatch):
+    from agentlint.agentchute.settings import (
+        ENV_AGENTCHUTE_CREDENTIALS_FILE,
+        get_api_url,
+        get_enabled_value,
+        has_agentchute_credentials,
+        load_local_credentials,
+    )
+
+    credentials_file = tmp_path / "missing.json"
+    monkeypatch.setenv(ENV_AGENTCHUTE_CREDENTIALS_FILE, str(credentials_file))
+    monkeypatch.delenv("AGENTCHUTE_API_URL", raising=False)
+    monkeypatch.delenv("AGENTCHUTE_ENABLED", raising=False)
+    monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+
+    class Config:
+        agentchute = {"enabled": True}
+
+    assert load_local_credentials() == {}
+    assert get_api_url() == "https://api.agentchute.com/v1"
+    assert get_enabled_value(Config()) is True
+    assert has_agentchute_credentials() is False
+
+
+def test_save_local_credentials_tolerates_chmod_failure(tmp_path, monkeypatch):
+    from agentlint.agentchute.settings import (
+        ENV_AGENTCHUTE_CREDENTIALS_FILE,
+        load_local_credentials,
+        save_local_credentials,
+    )
+
+    credentials_file = tmp_path / "agentchute.json"
+    monkeypatch.setenv(ENV_AGENTCHUTE_CREDENTIALS_FILE, str(credentials_file))
+    monkeypatch.setattr(
+        "pathlib.Path.chmod",
+        lambda _self, _mode: (_ for _ in ()).throw(OSError("chmod")),
+    )
+
+    assert save_local_credentials(api_url="https://api.example/v1/", license_key="ac_team_x")
+    assert load_local_credentials()["api_url"] == "https://api.example/v1"
+
+
+def test_enabled_value_ignores_invalid_boolean_values(tmp_path, monkeypatch):
+    from agentlint.agentchute.settings import (
+        ENV_AGENTCHUTE_CREDENTIALS_FILE,
+        get_enabled_value,
+    )
+
+    credentials_file = tmp_path / "agentchute.json"
+    credentials_file.write_text('{"enabled": "maybe"}', encoding="utf-8")
+    monkeypatch.setenv(ENV_AGENTCHUTE_CREDENTIALS_FILE, str(credentials_file))
+    monkeypatch.setenv("AGENTCHUTE_ENABLED", "definitely")
+
+    assert get_enabled_value() is False
+
+
 def test_client_post_event_handles_status_codes(monkeypatch, caplog):
     from agentlint.agentchute.client import AgentChuteClient
 

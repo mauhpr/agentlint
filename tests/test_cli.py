@@ -19,7 +19,7 @@ class TestMainCommand:
         result = runner.invoke(main, ["--version"])
 
         assert result.exit_code == 0
-        assert result.output.strip() == "agentlint 2.5.1"
+        assert result.output.strip() == "agentlint 2.5.2"
 
 
 class TestCheckCommand:
@@ -913,6 +913,7 @@ class TestMagicalUxCommands:
         assert "AgentLint onboarding" in result.output
         assert "Coding agents: claude" in result.output
         assert "Would create/update" in result.output
+        assert "Would persist AgentChute credentials" in result.output
         assert "Would persist AgentChute env vars" in result.output
         assert "claude:" in result.output
         assert not profile.exists()
@@ -950,6 +951,7 @@ class TestMagicalUxCommands:
         )
 
         assert result.exit_code == 0
+        assert "Saved AgentChute credentials" in result.output
         assert "Saved AgentChute env vars" in result.output
         assert "Local rule smoke:" in result.output
         assert opened == ["https://app.agentchute.com/dashboard"]
@@ -1226,9 +1228,12 @@ class TestMagicalUxCommands:
         remove = runner.invoke(main, ["env", "remove"])
 
         assert install.exit_code == 0
+        assert "Saved AgentChute credentials" in install.output
         assert "Saved AgentChute env vars" in install.output
         assert "AGENTCHUTE_LICENSE_KEY=ac_team_...7890" in show.output
+        assert "Credential file:" in show.output
         assert "Managed profile block: present" in doctor.output
+        assert "Resolved key: set" in doctor.output
         assert remove.exit_code == 0
         assert "Removed AgentChute env block" in remove.output
         assert "agentlint agentchute" not in profile.read_text()
@@ -1264,9 +1269,14 @@ class TestMagicalUxCommands:
         )
 
         assert result.exit_code == 0
-        assert "Paired. Env vars saved" in result.output
+        assert "Paired. AgentChute credentials saved" in result.output
+        assert "Shell env vars saved" in result.output
+        assert "This terminal can use AgentChute immediately." in result.output
         assert "AGENTCHUTE_LICENSE_KEY=ac_team_test_secret" in profile.read_text()
         assert "agentchute:" in (tmp_path / "agentlint.yml").read_text()
+        from agentlint.agentchute.settings import load_local_credentials
+
+        assert load_local_credentials()["license_key"] == "ac_team_test_secret"
 
     def test_login_pairs_through_dashboard(self, tmp_path, monkeypatch) -> None:
         profile = tmp_path / ".zshrc"
@@ -1599,6 +1609,25 @@ class TestDoctorCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
         assert "not installed" in result.output
+
+    def test_doctor_reports_local_agentchute_credentials(self, tmp_path, monkeypatch) -> None:
+        from agentlint.agentchute.settings import save_local_credentials
+
+        monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
+        monkeypatch.delenv("AGENTCHUTE_ENABLED", raising=False)
+        (tmp_path / "agentlint.yml").write_text("stack: auto\n")
+        save_local_credentials(
+            api_url="https://api.agentchute.com/v1",
+            license_key="ac_team_stored",
+            enabled=True,
+        )
+
+        result = CliRunner().invoke(main, ["doctor", "--project-dir", str(tmp_path)])
+
+        assert result.exit_code == 0
+        assert "AgentChute credentials:" in result.output
+        assert "(present)" in result.output
+
 
     def test_doctor_warns_agentchute_enabled_without_license_key(self, tmp_path, monkeypatch) -> None:
         monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
@@ -2241,7 +2270,7 @@ class TestRecordingIntegration:
         assert "AgentLint" in result.output
 
 
-class TestSuppressCommand:
+class TestSuppressCommandAdvanced:
     def test_suppress_adds_to_session(self, monkeypatch, tmp_path):
         monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
         monkeypatch.setenv("CLAUDE_SESSION_ID", "test-suppress")
