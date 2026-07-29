@@ -86,11 +86,7 @@ class NoLeakedSecretPattern(Rule):
         if context.tool_name not in _FILE_TOOLS:
             return []
 
-        content = (
-            context.tool_input.get("new_string")
-            or context.tool_input.get("content")
-            or ""
-        )
+        content = context.tool_input.get("new_string") or context.tool_input.get("content") or ""
         if not content:
             return []
 
@@ -142,10 +138,7 @@ class NoLeakedSecretPattern(Rule):
             # are sensitive even in lint output. Mention only the rule
             # and a redacted match indicator.
             redacted = match.group(0)
-            if len(redacted) > 8:
-                redacted = redacted[:4] + "…" + redacted[-4:]
-            else:
-                redacted = "***"
+            redacted = redacted[:4] + "…" + redacted[-4:] if len(redacted) > 8 else "***"
 
             violations.append(
                 Violation(

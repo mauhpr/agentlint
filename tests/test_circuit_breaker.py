@@ -1,19 +1,19 @@
 """Tests for circuit breaker module."""
+
 from __future__ import annotations
 
 import time
 
 from agentlint.circuit_breaker import (
+    _CB_NEVER_DEGRADE,
     CircuitBreakerConfig,
     CircuitBreakerState,
-    _CB_NEVER_DEGRADE,
     _downgrade_severity,
     _get_cb_config,
     _get_rule_state,
     apply_circuit_breaker,
 )
 from agentlint.models import Severity, Violation
-
 
 # --- CircuitBreakerState tests ---
 
@@ -92,16 +92,18 @@ class TestApplyCircuitBreaker:
 
     def test_degrades_after_threshold(self) -> None:
         """After 3 fires, ERROR degrades to WARNING."""
-        session: dict = {"circuit_breaker": {
-            "test-rule": {
-                "fire_count": 2,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 60,
-                "last_fire_ts": time.time() - 30,
-                "state": "active",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "test-rule": {
+                    "fire_count": 2,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 60,
+                    "last_fire_ts": time.time() - 30,
+                    "state": "active",
+                    "transitions": [],
+                },
+            }
+        }
         violations = [self._make_violation()]
         result = apply_circuit_breaker(violations, session, {})
         assert len(result) == 1
@@ -110,16 +112,18 @@ class TestApplyCircuitBreaker:
 
     def test_passive_after_threshold(self) -> None:
         """After 6 fires, ERROR degrades to INFO."""
-        session: dict = {"circuit_breaker": {
-            "test-rule": {
-                "fire_count": 5,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 300,
-                "last_fire_ts": time.time() - 30,
-                "state": "degraded",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "test-rule": {
+                    "fire_count": 5,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 300,
+                    "last_fire_ts": time.time() - 30,
+                    "state": "degraded",
+                    "transitions": [],
+                },
+            }
+        }
         violations = [self._make_violation()]
         result = apply_circuit_breaker(violations, session, {})
         assert len(result) == 1
@@ -128,16 +132,18 @@ class TestApplyCircuitBreaker:
 
     def test_open_after_threshold(self) -> None:
         """After 10 fires, violations are suppressed entirely."""
-        session: dict = {"circuit_breaker": {
-            "test-rule": {
-                "fire_count": 9,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 600,
-                "last_fire_ts": time.time() - 30,
-                "state": "passive",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "test-rule": {
+                    "fire_count": 9,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 600,
+                    "last_fire_ts": time.time() - 30,
+                    "state": "passive",
+                    "transitions": [],
+                },
+            }
+        }
         violations = [self._make_violation()]
         result = apply_circuit_breaker(violations, session, {})
         assert len(result) == 0
@@ -146,16 +152,18 @@ class TestApplyCircuitBreaker:
     def test_clean_evaluations_reset(self) -> None:
         """Clean evaluations (no violations for a tracked rule) increment
         clean_count and eventually reset the circuit breaker."""
-        session: dict = {"circuit_breaker": {
-            "test-rule": {
-                "fire_count": 4,
-                "clean_count": 4,
-                "first_fire_ts": time.time() - 300,
-                "last_fire_ts": time.time() - 60,
-                "state": "degraded",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "test-rule": {
+                    "fire_count": 4,
+                    "clean_count": 4,
+                    "first_fire_ts": time.time() - 300,
+                    "last_fire_ts": time.time() - 60,
+                    "state": "degraded",
+                    "transitions": [],
+                },
+            }
+        }
         # No violations means a clean evaluation — pass empty list
         result = apply_circuit_breaker([], session, {})
         cb_data = session["circuit_breaker"]["test-rule"]
@@ -183,7 +191,7 @@ class TestApplyCircuitBreaker:
         session: dict = {}
         violations = [self._make_violation(rule_id="no-secrets")]
         # Fire 20 times — should always stay ERROR
-        for i in range(20):
+        for _i in range(20):
             result = apply_circuit_breaker(violations, session, {})
             assert len(result) == 1
             assert result[0].severity == Severity.ERROR
@@ -253,16 +261,18 @@ class TestApplyCircuitBreaker:
     def test_time_based_reset(self) -> None:
         """Circuit breaker resets after reset_after_minutes even without
         clean evaluations."""
-        session: dict = {"circuit_breaker": {
-            "test-rule": {
-                "fire_count": 5,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 3600,  # 1 hour ago
-                "last_fire_ts": time.time() - 3600,
-                "state": "degraded",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "test-rule": {
+                    "fire_count": 5,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 3600,  # 1 hour ago
+                    "last_fire_ts": time.time() - 3600,
+                    "state": "degraded",
+                    "transitions": [],
+                },
+            }
+        }
         violations = [self._make_violation()]
         result = apply_circuit_breaker(violations, session, {})
         # Should have reset, so this is fire_count=1 → ACTIVE → ERROR
@@ -287,16 +297,18 @@ class TestApplyCircuitBreaker:
 
     def test_mixed_severity_violations(self) -> None:
         """When a rule emits both ERROR and WARNING, only ERROR is affected."""
-        session: dict = {"circuit_breaker": {
-            "test-rule": {
-                "fire_count": 2,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 60,
-                "last_fire_ts": time.time() - 30,
-                "state": "active",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "test-rule": {
+                    "fire_count": 2,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 60,
+                    "last_fire_ts": time.time() - 30,
+                    "state": "active",
+                    "transitions": [],
+                },
+            }
+        }
         violations = [
             self._make_violation(severity=Severity.ERROR, message="error one"),
             self._make_violation(severity=Severity.WARNING, message="warn one"),
@@ -313,16 +325,18 @@ class TestApplyCircuitBreaker:
 
     def test_transitions_recorded(self) -> None:
         """State transitions are recorded in the transitions list."""
-        session: dict = {"circuit_breaker": {
-            "test-rule": {
-                "fire_count": 2,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 60,
-                "last_fire_ts": time.time() - 30,
-                "state": "active",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "test-rule": {
+                    "fire_count": 2,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 60,
+                    "last_fire_ts": time.time() - 30,
+                    "state": "active",
+                    "transitions": [],
+                },
+            }
+        }
         violations = [self._make_violation()]
         apply_circuit_breaker(violations, session, {})
         transitions = session["circuit_breaker"]["test-rule"]["transitions"]
@@ -399,7 +413,9 @@ class TestDowngradeSeverity:
         assert _downgrade_severity(Severity.ERROR, CircuitBreakerState.OPEN) is None
 
     def test_warning_unchanged_in_degraded(self) -> None:
-        assert _downgrade_severity(Severity.WARNING, CircuitBreakerState.DEGRADED) == Severity.WARNING
+        assert (
+            _downgrade_severity(Severity.WARNING, CircuitBreakerState.DEGRADED) == Severity.WARNING
+        )
 
     def test_info_unchanged_in_degraded(self) -> None:
         assert _downgrade_severity(Severity.INFO, CircuitBreakerState.DEGRADED) == Severity.INFO
@@ -419,16 +435,18 @@ class TestCircuitBreakerEdgeCases:
 
     def test_corrupted_state_recovers(self) -> None:
         """Invalid state string in session JSON doesn't crash — defaults to ACTIVE."""
-        session: dict = {"circuit_breaker": {
-            "test-rule": {
-                "fire_count": 2,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 60,
-                "last_fire_ts": time.time() - 30,
-                "state": "garbage_invalid_state",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "test-rule": {
+                    "fire_count": 2,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 60,
+                    "last_fire_ts": time.time() - 30,
+                    "state": "garbage_invalid_state",
+                    "transitions": [],
+                },
+            }
+        }
         violations = [self._make_violation()]
         # Should not raise — recovers to ACTIVE
         result = apply_circuit_breaker(violations, session, {})
@@ -440,16 +458,18 @@ class TestCircuitBreakerEdgeCases:
 
     def test_missing_fire_count_key_recovers(self) -> None:
         """Missing 'fire_count' key in cb_data doesn't crash."""
-        session: dict = {"circuit_breaker": {
-            "test-rule": {
-                # fire_count intentionally missing
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 60,
-                "last_fire_ts": time.time() - 30,
-                "state": "active",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "test-rule": {
+                    # fire_count intentionally missing
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 60,
+                    "last_fire_ts": time.time() - 30,
+                    "state": "active",
+                    "transitions": [],
+                },
+            }
+        }
         violations = [self._make_violation()]
         # Should not raise — .get() defaults to 0
         result = apply_circuit_breaker(violations, session, {})
@@ -461,11 +481,13 @@ class TestCircuitBreakerEdgeCases:
         """degraded_after=0 means every fire is immediately degraded."""
         session: dict = {}
         rules_config = {
-            "test-rule": {"circuit_breaker": {
-                "degraded_after": 0,
-                "passive_after": 0,
-                "open_after": 1,
-            }},
+            "test-rule": {
+                "circuit_breaker": {
+                    "degraded_after": 0,
+                    "passive_after": 0,
+                    "open_after": 1,
+                }
+            },
         }
         violations = [self._make_violation()]
         # First fire: fire_count=1 >= open_after=1 → OPEN → suppressed
@@ -492,16 +514,18 @@ class TestCircuitBreakerEdgeCases:
 
     def test_degraded_violation_message_includes_context(self) -> None:
         """When a violation is degraded, the message includes CB context."""
-        session: dict = {"circuit_breaker": {
-            "test-rule": {
-                "fire_count": 2,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 60,
-                "last_fire_ts": time.time() - 30,
-                "state": "active",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "test-rule": {
+                    "fire_count": 2,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 60,
+                    "last_fire_ts": time.time() - 30,
+                    "state": "active",
+                    "transitions": [],
+                },
+            }
+        }
         violations = [self._make_violation(message="original msg")]
         result = apply_circuit_breaker(violations, session, {})
         assert len(result) == 1
@@ -530,16 +554,18 @@ class TestCircuitBreakerNeverDegradeConfig:
     def test_user_rule_added_to_never_degrade(self) -> None:
         # Rule has fired 12 times — would normally be OPEN. With config,
         # it should pass through as ERROR untouched.
-        session: dict = {"circuit_breaker": {
-            "my-rule": {
-                "fire_count": 12,
-                "clean_count": 0,
-                "first_fire_ts": time.time(),
-                "last_fire_ts": time.time(),
-                "state": "active",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "my-rule": {
+                    "fire_count": 12,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time(),
+                    "last_fire_ts": time.time(),
+                    "state": "active",
+                    "transitions": [],
+                },
+            }
+        }
         config = {
             "_circuit_breaker_global": {"never_degrade": ["my-rule"]},
         }
@@ -549,16 +575,18 @@ class TestCircuitBreakerNeverDegradeConfig:
         assert result[0].severity == Severity.ERROR
 
     def test_default_security_rules_still_protected(self) -> None:
-        session: dict = {"circuit_breaker": {
-            "no-secrets": {
-                "fire_count": 12,
-                "clean_count": 0,
-                "first_fire_ts": time.time(),
-                "last_fire_ts": time.time(),
-                "state": "active",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "no-secrets": {
+                    "fire_count": 12,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time(),
+                    "last_fire_ts": time.time(),
+                    "state": "active",
+                    "transitions": [],
+                },
+            }
+        }
         # Even when user supplies an unrelated never_degrade list, the
         # built-in security set must still apply.
         config = {
@@ -569,16 +597,18 @@ class TestCircuitBreakerNeverDegradeConfig:
         assert result[0].severity == Severity.ERROR
 
     def test_unprotected_rule_still_degrades(self) -> None:
-        session: dict = {"circuit_breaker": {
-            "noisy-rule": {
-                "fire_count": 2,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 60,
-                "last_fire_ts": time.time() - 30,
-                "state": "active",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "noisy-rule": {
+                    "fire_count": 2,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 60,
+                    "last_fire_ts": time.time() - 30,
+                    "state": "active",
+                    "transitions": [],
+                },
+            }
+        }
         config = {"_circuit_breaker_global": {"never_degrade": ["my-rule"]}}
         violations = [self._make_violation("noisy-rule")]
         result = apply_circuit_breaker(violations, session, config)
@@ -598,16 +628,18 @@ class TestCircuitBreakerOpenNotice:
 
     def test_open_state_pushes_notice(self) -> None:
         # Pre-seed at fire_count=9 so the next fire crosses into OPEN (>=10).
-        session: dict = {"circuit_breaker": {
-            "noisy-rule": {
-                "fire_count": 9,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 600,
-                "last_fire_ts": time.time() - 60,
-                "state": "passive",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "noisy-rule": {
+                    "fire_count": 9,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 600,
+                    "last_fire_ts": time.time() - 60,
+                    "state": "passive",
+                    "transitions": [],
+                },
+            }
+        }
         violations = [self._make_violation()]
         result = apply_circuit_breaker(violations, session, {})
         # OPEN suppresses the violation entirely.
@@ -620,16 +652,18 @@ class TestCircuitBreakerOpenNotice:
         assert "agentlint:ignore" in notices[0]["message"]
 
     def test_open_notice_only_emitted_once_per_rule(self) -> None:
-        session: dict = {"circuit_breaker": {
-            "noisy-rule": {
-                "fire_count": 9,
-                "clean_count": 0,
-                "first_fire_ts": time.time() - 600,
-                "last_fire_ts": time.time() - 60,
-                "state": "passive",
-                "transitions": [],
-            },
-        }}
+        session: dict = {
+            "circuit_breaker": {
+                "noisy-rule": {
+                    "fire_count": 9,
+                    "clean_count": 0,
+                    "first_fire_ts": time.time() - 600,
+                    "last_fire_ts": time.time() - 60,
+                    "state": "passive",
+                    "transitions": [],
+                },
+            }
+        }
         # First call crosses into OPEN, second is already-open.
         apply_circuit_breaker([self._make_violation()], session, {})
         apply_circuit_breaker([self._make_violation()], session, {})

@@ -14,6 +14,7 @@ Usage:
         guardrails=[adapter.as_guardrail()],
     )
 """
+
 from __future__ import annotations
 
 import os
@@ -22,9 +23,15 @@ from typing import Any
 from agentlint.adapters.base import AgentAdapter
 from agentlint.config import load_config
 from agentlint.engine import Engine
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext, Severity, to_hook_event
+from agentlint.models import (
+    AgentEvent,
+    HookEvent,
+    NormalizedTool,
+    RuleContext,
+    Severity,
+    to_hook_event,
+)
 from agentlint.packs import load_project_rules
-
 
 # Mapping from OpenAI Agents SDK event names to generic AgentEvent
 _OPENAI_EVENT_MAP: dict[str, AgentEvent] = {
@@ -62,6 +69,7 @@ class OpenAIAgentsAdapter(AgentAdapter):
     @property
     def formatter(self):
         from agentlint.formats.plain_json import PlainJsonFormatter
+
         return PlainJsonFormatter()
 
     def resolve_project_dir(self) -> str:
@@ -82,8 +90,8 @@ class OpenAIAgentsAdapter(AgentAdapter):
     def translate_event(self, native_event: str) -> AgentEvent:
         try:
             return _OPENAI_EVENT_MAP[native_event]
-        except KeyError:
-            raise ValueError(f"Unknown OpenAI Agents event: {native_event}")
+        except KeyError as exc:
+            raise ValueError(f"Unknown OpenAI Agents event: {native_event}") from exc
 
     def normalize_tool_name(self, native_tool: str) -> str:
         return _OPENAI_TOOL_MAP.get(native_tool, NormalizedTool.UNKNOWN).value
@@ -119,6 +127,7 @@ class OpenAIAgentsAdapter(AgentAdapter):
         Prints a setup code snippet instead.
         """
         import click
+
         click.echo("OpenAI Agents SDK uses guardrails, not hooks.")
         click.echo("Add the guardrail to your agent definition:")
         click.echo("""

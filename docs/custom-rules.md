@@ -47,13 +47,15 @@ class NoRawSQL(Rule):
         sql_keywords = ["execute(", "raw_sql(", "cursor.execute("]
         for keyword in sql_keywords:
             if keyword in content:
-                return [Violation(
-                    rule_id=self.id,
-                    message=f"Raw SQL detected ({keyword}). Use the ORM.",
-                    severity=self.severity,
-                    file_path=context.file_path,
-                    suggestion="Use Model.objects or the query builder instead.",
-                )]
+                return [
+                    Violation(
+                        rule_id=self.id,
+                        message=f"Raw SQL detected ({keyword}). Use the ORM.",
+                        severity=self.severity,
+                        file_path=context.file_path,
+                        suggestion="Use Model.objects or the query builder instead.",
+                    )
+                ]
         return []
 ```
 

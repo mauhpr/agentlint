@@ -1,4 +1,5 @@
 """Rule: block file writes via Bash that bypass Write/Edit guardrails."""
+
 from __future__ import annotations
 
 import re
@@ -89,18 +90,12 @@ def _path_allowed(
 
     if is_safe_path(path, extra_prefixes=safe_path_prefixes):
         return True
-    for pattern in allow_paths:
-        if fnmatch(path, pattern):
-            return True
-    return False
+    return any(fnmatch(path, pattern) for pattern in allow_paths)
 
 
 def _command_allowed(command: str, allow_patterns: list[str]) -> bool:
     """Return True if command matches any allow_patterns regex."""
-    for pattern in allow_patterns:
-        if re.search(pattern, command):
-            return True
-    return False
+    return any(re.search(pattern, command) for pattern in allow_patterns)
 
 
 class NoBashFileWrite(Rule):
@@ -123,6 +118,7 @@ class NoBashFileWrite(Rule):
         # Strip quoted string arguments to avoid false positives on content
         # like: gh pr create --body "... cat > file ..."
         from agentlint.utils.bash import KNOWN_CLI_TOOLS, get_command_binary, strip_string_args
+
         stripped = strip_string_args(command)
 
         # Skip known cloud/infra CLI tools — their subcommands (cp, mv)
@@ -142,7 +138,9 @@ class NoBashFileWrite(Rule):
         strict_mode: bool = get_rule_setting(context.config, self.id, "strict_mode", False)
 
         # Merge default safe patterns unless strict mode is on.
-        effective_patterns = allow_patterns if strict_mode else _DEFAULT_SAFE_PATTERNS + allow_patterns
+        effective_patterns = (
+            allow_patterns if strict_mode else _DEFAULT_SAFE_PATTERNS + allow_patterns
+        )
 
         # Check if the entire command is whitelisted.
         if effective_patterns and _command_allowed(command, effective_patterns):
@@ -173,8 +171,7 @@ class NoBashFileWrite(Rule):
                 #   prefix (/tmp/, /var/folders/, ...).
                 # Skip the violation if every target satisfies one of these.
                 if target_paths and all(
-                    _path_allowed(p, allow_paths, safe_path_prefixes)
-                    for p in target_paths
+                    _path_allowed(p, allow_paths, safe_path_prefixes) for p in target_paths
                 ):
                     continue
 

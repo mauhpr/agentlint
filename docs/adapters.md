@@ -10,6 +10,7 @@ Create a class that inherits from `AgentAdapter`:
 from agentlint.adapters.base import AgentAdapter
 from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext
 
+
 class MyFrameworkAdapter(AgentAdapter):
     @property
     def platform_name(self) -> str:
@@ -18,6 +19,7 @@ class MyFrameworkAdapter(AgentAdapter):
     @property
     def formatter(self):
         from agentlint.formats.plain_json import PlainJsonFormatter
+
         return PlainJsonFormatter()
 
     def resolve_project_dir(self) -> str:
@@ -82,6 +84,7 @@ You can also write custom formatters:
 ```python
 from agentlint.formats.base import OutputFormatter
 from agentlint.models import AgentEvent, Severity, Violation
+
 
 class MyFormatter(OutputFormatter):
     def exit_code(self, violations, event=""):

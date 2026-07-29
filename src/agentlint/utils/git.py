@@ -1,4 +1,5 @@
 """Git utilities for AgentLint."""
+
 from __future__ import annotations
 
 import logging
@@ -60,9 +61,7 @@ def get_diff_files(project_dir: str, diff_range: str | None = None) -> list[str]
             timeout=10,
         )
         if result.returncode == 0:
-            return sorted(
-                str(root / f) for f in result.stdout.strip().split("\n") if f
-            )
+            return sorted(str(root / f) for f in result.stdout.strip().split("\n") if f)
         logger.warning("git diff failed (exit %d): %s", result.returncode, result.stderr.strip())
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass

@@ -1,4 +1,5 @@
 """Tests for shared adapter utilities and auto-detection."""
+
 from __future__ import annotations
 
 import json
@@ -24,7 +25,9 @@ class TestResolveCommand:
         return patch("agentlint.adapters._utils.shutil.which", return_value=None)
 
     def test_step1_which_succeeds(self) -> None:
-        with patch("agentlint.adapters._utils.shutil.which", return_value="/usr/local/bin/agentlint"):
+        with patch(
+            "agentlint.adapters._utils.shutil.which", return_value="/usr/local/bin/agentlint"
+        ):
             result = resolve_command()
         assert result == "/usr/local/bin/agentlint"
 
@@ -40,7 +43,10 @@ class TestResolveCommand:
 
     def test_step5_python_m_fallback(self, tmp_path, monkeypatch) -> None:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        with self._no_which(), patch("agentlint.adapters._utils.sysconfig.get_path", return_value=None):
+        with (
+            self._no_which(),
+            patch("agentlint.adapters._utils.sysconfig.get_path", return_value=None),
+        ):
             result = resolve_command()
         assert "python" in result and "-m agentlint" in result
 
@@ -97,7 +103,11 @@ class TestIsAgentlintNestedEntry:
         assert is_agentlint_nested_entry(entry) is False
 
     def test_rejects_wrapper_command(self) -> None:
-        entry = {"hooks": [{"type": "command", "command": "/home/user/.local/bin/agentlint-wrapper check"}]}
+        entry = {
+            "hooks": [
+                {"type": "command", "command": "/home/user/.local/bin/agentlint-wrapper check"}
+            ]
+        }
         assert is_agentlint_nested_entry(entry) is False
 
     def test_rejects_third_party_entry(self) -> None:
@@ -153,7 +163,9 @@ class TestClaudeAdapter:
         from agentlint.models import AgentEvent
 
         adapter = ClaudeAdapter()
-        ctx = adapter.build_rule_context(AgentEvent.PRE_TOOL_USE, {"event": "PreToolUse"}, "/tmp", {})
+        ctx = adapter.build_rule_context(
+            AgentEvent.PRE_TOOL_USE, {"event": "PreToolUse"}, "/tmp", {}
+        )
         assert ctx.tool_input == {}
         assert ctx.tool_name == ""
 
@@ -166,11 +178,27 @@ class TestClaudeAdapter:
             "hooks": {
                 "PreToolUse": [
                     {"matcher": "Bash", "hooks": [{"command": "echo hello"}]},
-                    {"matcher": "Write", "hooks": [{"command": "agentlint check --event PreToolUse --adapter claude", "_agentlint": "v2"}]},
+                    {
+                        "matcher": "Write",
+                        "hooks": [
+                            {
+                                "command": "agentlint check --event PreToolUse --adapter claude",
+                                "_agentlint": "v2",
+                            }
+                        ],
+                    },
                 ],
                 "PostToolUse": [
-                    {"matcher": "Write", "hooks": [{"command": "agentlint check --event PostToolUse --adapter claude", "_agentlint": "v2"}]},
-                ]
+                    {
+                        "matcher": "Write",
+                        "hooks": [
+                            {
+                                "command": "agentlint check --event PostToolUse --adapter claude",
+                                "_agentlint": "v2",
+                            }
+                        ],
+                    },
+                ],
             }
         }
         settings_file.write_text(json.dumps(existing))
@@ -238,7 +266,18 @@ class TestAdapterRegistry:
     def test_get_adapter_all_platforms(self) -> None:
         from agentlint.adapters import get_adapter
 
-        for name in ("claude", "cursor", "kimi", "grok", "gemini", "codex", "continue", "openai", "mcp", "generic"):
+        for name in (
+            "claude",
+            "cursor",
+            "kimi",
+            "grok",
+            "gemini",
+            "codex",
+            "continue",
+            "openai",
+            "mcp",
+            "generic",
+        ):
             adapter = get_adapter(name)
             assert isinstance(adapter, AgentAdapter)
             assert adapter.platform_name == name

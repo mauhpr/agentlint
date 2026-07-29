@@ -1,7 +1,8 @@
 """Tests for quality pack PreToolUse rules."""
+
 from __future__ import annotations
 
-from agentlint.models import HookEvent, RuleContext, Severity
+from agentlint.models import HookEvent, RuleContext
 from agentlint.packs.quality.commit_message_format import CommitMessageFormat
 from agentlint.packs.quality.no_error_handling_removal import NoErrorHandlingRemoval
 
@@ -134,7 +135,19 @@ EOF
 
     def test_all_conventional_types(self):
         """All standard types should be accepted."""
-        for type_ in ("feat", "fix", "chore", "docs", "refactor", "test", "ci", "style", "perf", "build", "revert"):
+        for type_ in (
+            "feat",
+            "fix",
+            "chore",
+            "docs",
+            "refactor",
+            "test",
+            "ci",
+            "style",
+            "perf",
+            "build",
+            "revert",
+        ):
             ctx = _ctx(tool_input={"command": f'git commit -m "{type_}: something"'})
             assert self.rule.evaluate(ctx) == [], f"Type '{type_}' should be valid"
 

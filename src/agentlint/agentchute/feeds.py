@@ -89,11 +89,7 @@ def _feeds_dir() -> Path:
 
     Reads ``AGENTLINT_FEEDS_DIR`` lazily so tests can isolate via
     ``monkeypatch.setenv``."""
-    return Path(
-        os.environ.get(
-            "AGENTLINT_FEEDS_DIR", "~/.cache/agentlint/feeds"
-        )
-    ).expanduser()
+    return Path(os.environ.get("AGENTLINT_FEEDS_DIR", "~/.cache/agentlint/feeds")).expanduser()
 
 
 def _data_path(feed_name: str) -> Path:
@@ -109,6 +105,7 @@ def _meta_path(feed_name: str) -> Path:
 @dataclass
 class _CachedFeed:
     """In-memory representation of one feed's persisted state."""
+
     data: Any
     fetched_at: float
     etag: str | None
@@ -147,16 +144,19 @@ def _write_cache(feed_name: str, data: Any, etag: str | None, ttl: int) -> None:
     if len(serialized.encode("utf-8")) > _MAX_FEED_BYTES:
         logger.warning(
             "agentlint.agentchute.feeds: feed '%s' exceeds %d bytes — refusing to cache",
-            feed_name, _MAX_FEED_BYTES,
+            feed_name,
+            _MAX_FEED_BYTES,
         )
         return
     _data_path(feed_name).write_text(serialized, encoding="utf-8")
     _meta_path(feed_name).write_text(
-        json.dumps({
-            "fetched_at": time.time(),
-            "etag": etag,
-            "ttl": ttl,
-        }),
+        json.dumps(
+            {
+                "fetched_at": time.time(),
+                "etag": etag,
+                "ttl": ttl,
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -199,9 +199,7 @@ def _fetch_feed_remote(feed_name: str, etag: str | None) -> tuple[Any, str | Non
         logger.debug("agentlint.agentchute.feeds: %s 304 Not Modified", feed_name)
         return None
     if response.status_code != 200:
-        logger.debug(
-            "agentlint.agentchute.feeds: %s returned %d", feed_name, response.status_code
-        )
+        logger.debug("agentlint.agentchute.feeds: %s returned %d", feed_name, response.status_code)
         return None
 
     try:
@@ -277,8 +275,8 @@ def get(feed_name: str, default: Any = None, *, allow_network: bool = True) -> A
     # better to use yesterday's deny list than no deny list.
     if cached is not None:
         logger.debug(
-            "agentlint.agentchute.feeds: serving stale cache for '%s' "
-            "(remote unreachable)", feed_name,
+            "agentlint.agentchute.feeds: serving stale cache for '%s' (remote unreachable)",
+            feed_name,
         )
         return cached.data
 

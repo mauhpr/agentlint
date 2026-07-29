@@ -1,13 +1,13 @@
 """Tests for the Continue.dev CLI adapter."""
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
 from agentlint.adapters.continue_dev import ContinueAdapter, _build_hooks, _settings_path
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext
+from agentlint.models import AgentEvent, HookEvent, NormalizedTool
 
 
 class TestEventTranslation:
@@ -91,8 +91,13 @@ class TestSettingsPath:
 
 class TestBuildHooks:
     EXPECTED_EVENTS = {
-        "PreToolUse", "PostToolUse", "UserPromptSubmit",
-        "SubagentStart", "SubagentStop", "Notification", "Stop",
+        "PreToolUse",
+        "PostToolUse",
+        "UserPromptSubmit",
+        "SubagentStart",
+        "SubagentStop",
+        "Notification",
+        "Stop",
     }
 
     def test_builds_all_events(self) -> None:
@@ -132,7 +137,10 @@ class TestInstallHooks:
         existing = {
             "hooks": {
                 "PreToolUse": [
-                    {"matcher": "Bash|Edit|Write", "hooks": [{"type": "command", "command": "echo hello"}]}
+                    {
+                        "matcher": "Bash|Edit|Write",
+                        "hooks": [{"type": "command", "command": "echo hello"}],
+                    }
                 ]
             }
         }
@@ -163,8 +171,19 @@ class TestUninstallHooks:
         existing = {
             "hooks": {
                 "PreToolUse": [
-                    {"matcher": "Bash|Edit|Write", "hooks": [{"type": "command", "command": "echo hello"}]},
-                    {"matcher": "Bash|Edit|Write", "hooks": [{"type": "command", "command": "agentlint check --event PreToolUse --adapter continue"}]},
+                    {
+                        "matcher": "Bash|Edit|Write",
+                        "hooks": [{"type": "command", "command": "echo hello"}],
+                    },
+                    {
+                        "matcher": "Bash|Edit|Write",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "agentlint check --event PreToolUse --adapter continue",
+                            }
+                        ],
+                    },
                 ]
             }
         }
@@ -181,6 +200,7 @@ class TestUninstallHooks:
 class TestFormatter:
     def test_uses_claude_formatter(self) -> None:
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
+
         adapter = ContinueAdapter()
         assert isinstance(adapter.formatter, ClaudeHookFormatter)
 

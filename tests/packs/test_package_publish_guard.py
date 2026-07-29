@@ -1,4 +1,5 @@
 """Tests for package-publish-guard rule."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity

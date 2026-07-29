@@ -13,6 +13,7 @@ boundary warning was added in v1.10.0 in response to user feedback that
 mid-session is the wrong moment for the nudge — at commit time the
 agent is about to publish the work, which is the natural decision point.
 """
+
 from __future__ import annotations
 
 import re
@@ -33,9 +34,24 @@ _GIT_COMMIT_RE = re.compile(r"\bgit\s+commit\b")
 _DEFAULT_THRESHOLD = 15
 
 _DEFAULT_CODE_EXTENSIONS = {
-    ".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".rb",
-    ".java", ".kt", ".swift", ".c", ".cpp", ".h", ".cs", ".ex",
-    ".vue", ".svelte",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".rs",
+    ".go",
+    ".rb",
+    ".java",
+    ".kt",
+    ".swift",
+    ".c",
+    ".cpp",
+    ".h",
+    ".cs",
+    ".ex",
+    ".vue",
+    ".svelte",
 }
 
 

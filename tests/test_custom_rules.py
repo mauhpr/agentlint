@@ -1,4 +1,5 @@
 """Tests for custom rules directory loading."""
+
 from __future__ import annotations
 
 from agentlint.packs import load_custom_rules

@@ -1,4 +1,5 @@
 """Rule: warn on ad-hoc dependency installation commands."""
+
 from __future__ import annotations
 
 import re
@@ -14,7 +15,8 @@ _PIP_REQUIREMENTS_RE = re.compile(r"\bpip3?\s+install\s+-r\s+", re.IGNORECASE)
 
 # npm install <package> — but allow bare `npm install` and `npm ci`.
 _NPM_INSTALL_PKG_RE = re.compile(
-    r"\bnpm\s+install\s+(?!-)[a-zA-Z@]", re.IGNORECASE,
+    r"\bnpm\s+install\s+(?!-)[a-zA-Z@]",
+    re.IGNORECASE,
 )
 
 
@@ -38,11 +40,16 @@ class DependencyHygiene(Rule):
         # Strip quoted string arguments to avoid false positives on content
         # like: gh pr create --body "... pip install ..."
         from agentlint.utils.bash import strip_string_args
+
         stripped = strip_string_args(command)
 
         violations: list[Violation] = []
 
-        if _PIP_INSTALL_RE.search(stripped) and not _PIP_LOCAL_DEV_RE.search(stripped) and not _PIP_REQUIREMENTS_RE.search(stripped):
+        if (
+            _PIP_INSTALL_RE.search(stripped)
+            and not _PIP_LOCAL_DEV_RE.search(stripped)
+            and not _PIP_REQUIREMENTS_RE.search(stripped)
+        ):
             violations.append(
                 Violation(
                     rule_id=self.id,

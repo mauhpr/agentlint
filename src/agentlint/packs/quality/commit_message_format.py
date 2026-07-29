@@ -1,4 +1,5 @@
 """Rule: validate commit message format in git commit commands."""
+
 from __future__ import annotations
 
 import re

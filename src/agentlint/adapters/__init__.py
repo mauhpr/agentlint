@@ -3,6 +3,7 @@
 Each adapter translates a specific agent framework's events, tool names,
 session identifiers, and output expectations into AgentLint's generic core.
 """
+
 from __future__ import annotations
 
 from agentlint.adapters.base import AgentAdapter

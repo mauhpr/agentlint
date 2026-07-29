@@ -1,4 +1,5 @@
 """Shared helpers for SEO pack rules."""
+
 from __future__ import annotations
 
 _SEO_EXTENSIONS = {".tsx", ".jsx", ".vue", ".svelte", ".html"}

@@ -1,4 +1,5 @@
 """Core models for AgentLint."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -8,6 +9,7 @@ from enum import Enum
 
 class Severity(Enum):
     """Rule violation severity levels."""
+
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
@@ -23,6 +25,7 @@ class AgentEvent(Enum):
     Normalized taxonomy that abstracts across Claude Code, Cursor, OpenAI
     Agents SDK, MCP hosts, and custom agent frameworks.
     """
+
     PRE_TOOL_USE = "pre_tool_use"
     POST_TOOL_USE = "post_tool_use"
     POST_TOOL_FAILURE = "post_tool_failure"
@@ -56,6 +59,7 @@ class HookEvent(Enum):
     For backward compatibility, the string values match the original
     Claude Code hook event names. New code should prefer AgentEvent.
     """
+
     PRE_TOOL_USE = "PreToolUse"
     POST_TOOL_USE = "PostToolUse"
     STOP = "Stop"
@@ -124,8 +128,8 @@ def to_hook_event(event: AgentEvent | HookEvent | str) -> HookEvent:
         raise ValueError(f"No HookEvent mapping for string: {event}")
     try:
         return _AGENT_EVENT_TO_HOOK_EVENT[event]
-    except KeyError:
-        raise ValueError(f"No HookEvent mapping for {event}")
+    except KeyError as exc:
+        raise ValueError(f"No HookEvent mapping for {event}") from exc
 
 
 def to_agent_event(event: HookEvent | AgentEvent) -> AgentEvent:
@@ -134,8 +138,8 @@ def to_agent_event(event: HookEvent | AgentEvent) -> AgentEvent:
         return event
     try:
         return _HOOK_EVENT_TO_AGENT_EVENT[event]
-    except KeyError:
-        raise ValueError(f"No AgentEvent mapping for {event}")
+    except KeyError as exc:
+        raise ValueError(f"No AgentEvent mapping for {event}") from exc
 
 
 class NormalizedTool(Enum):
@@ -144,6 +148,7 @@ class NormalizedTool(Enum):
     Adapters map vendor-specific tool names to this taxonomy so that
     rules can be written once and work everywhere.
     """
+
     FILE_WRITE = "file_write"
     FILE_EDIT = "file_edit"
     SHELL = "shell"
@@ -242,6 +247,7 @@ _PLATFORM_TOOL_MAPS: dict[str, dict[str, NormalizedTool]] = {
 @dataclass
 class Violation:
     """A single rule violation."""
+
     rule_id: str
     message: str
     severity: Severity
@@ -263,6 +269,7 @@ class Violation:
 @dataclass
 class RuleContext:
     """Context passed to rules during evaluation."""
+
     event: HookEvent
     tool_name: str
     tool_input: dict
@@ -271,17 +278,17 @@ class RuleContext:
     config: dict = field(default_factory=dict)
     session_state: dict = field(default_factory=dict)
     # v0.4.0 — additional context for new hook events
-    prompt: str | None = None              # UserPromptSubmit
-    subagent_output: str | None = None     # SubagentStop
-    notification_type: str | None = None   # Notification
-    compact_source: str | None = None      # PreCompact (manual/auto)
-    file_content_before: str | None = None # PostToolUse diff support
+    prompt: str | None = None  # UserPromptSubmit
+    subagent_output: str | None = None  # SubagentStop
+    notification_type: str | None = None  # Notification
+    compact_source: str | None = None  # PreCompact (manual/auto)
+    file_content_before: str | None = None  # PostToolUse diff support
     # v0.8.0 — subagent context fields
     agent_transcript_path: str | None = None  # SubagentStop — path to JSONL transcript
-    agent_type: str | None = None             # SubagentStart/SubagentStop — agent type name
-    agent_id: str | None = None               # SubagentStart/SubagentStop — unique ID
+    agent_type: str | None = None  # SubagentStart/SubagentStop — agent type name
+    agent_id: str | None = None  # SubagentStart/SubagentStop — unique ID
     # v2.0.0 — agent-agnostic platform identification
-    agent_platform: str = "unknown"           # "claude", "cursor", "openai", "mcp", etc.
+    agent_platform: str = "unknown"  # "claude", "cursor", "openai", "mcp", etc.
 
     @property
     def file_path(self) -> str | None:
@@ -304,6 +311,7 @@ class RuleContext:
 
 class Rule(ABC):
     """Base class for all AgentLint rules."""
+
     id: str
     description: str
     severity: Severity

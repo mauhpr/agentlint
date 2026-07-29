@@ -1,4 +1,5 @@
 """Rule: detect wildcard imports (from module import *)."""
+
 from __future__ import annotations
 
 import os

@@ -1,7 +1,8 @@
 """Tests for session state persistence."""
+
 from __future__ import annotations
 
-from agentlint.session import cleanup_session, load_session, save_session, _session_path
+from agentlint.session import _session_path, cleanup_session, load_session, save_session
 
 
 class TestSessionPersistence:

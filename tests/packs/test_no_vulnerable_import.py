@@ -166,14 +166,16 @@ class TestHappyPath:
 
     def test_warns_on_vulnerable_import(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "ecosystem": "npm",
-            "package": "lodash",
-            "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
-            "ghsa_id": "GHSA-29mw-wpgm-hmr9",
-            "severity": "HIGH",
-            "summary": "Prototype pollution in lodash",
-        })
+        feed = self._feed(
+            {
+                "ecosystem": "npm",
+                "package": "lodash",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
+                "ghsa_id": "GHSA-29mw-wpgm-hmr9",
+                "severity": "HIGH",
+                "summary": "Prototype pollution in lodash",
+            }
+        )
         with self._patch(feed):
             v = self.rule.evaluate(_ctx("import x from 'lodash';", file_path="/a.js"))
         assert len(v) == 1
@@ -208,46 +210,52 @@ class TestHappyPath:
 
     def test_unrelated_imports_not_flagged(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "ecosystem": "npm",
-            "package": "lodash",
-            "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
-            "ghsa_id": "GHSA-x",
-            "severity": "HIGH",
-        })
+        feed = self._feed(
+            {
+                "ecosystem": "npm",
+                "package": "lodash",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
+                "ghsa_id": "GHSA-x",
+                "severity": "HIGH",
+            }
+        )
         with self._patch(feed):
             v = self.rule.evaluate(_ctx("import x from 'react';", file_path="/a.tsx"))
         assert v == []
 
     def test_works_for_edit_tool(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "ecosystem": "PyPI",
-            "package": "requests",
-            "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
-            "ghsa_id": "GHSA-9wx4-h78v-vm56",
-            "severity": "MEDIUM",
-        })
+        feed = self._feed(
+            {
+                "ecosystem": "PyPI",
+                "package": "requests",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
+                "ghsa_id": "GHSA-9wx4-h78v-vm56",
+                "severity": "MEDIUM",
+            }
+        )
         with self._patch(feed):
-            v = self.rule.evaluate(
-                _ctx("import requests", tool="Edit", file_path="/x.py")
-            )
+            v = self.rule.evaluate(_ctx("import requests", tool="Edit", file_path="/x.py"))
         assert len(v) == 1
         assert "requests" in v[0].message
 
     def test_one_violation_per_package_per_file(self, monkeypatch):
         # Same package imported twice in one file → one violation
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "ecosystem": "npm",
-            "package": "lodash",
-            "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
-            "ghsa_id": "GHSA-x",
-            "severity": "HIGH",
-        })
+        feed = self._feed(
+            {
+                "ecosystem": "npm",
+                "package": "lodash",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
+                "ghsa_id": "GHSA-x",
+                "severity": "HIGH",
+            }
+        )
         with self._patch(feed):
-            v = self.rule.evaluate(_ctx(
-                "import _ from 'lodash';\nimport y from 'lodash/fp';",
-                file_path="/a.js",
-            ))
+            v = self.rule.evaluate(
+                _ctx(
+                    "import _ from 'lodash';\nimport y from 'lodash/fp';",
+                    file_path="/a.js",
+                )
+            )
         assert len(v) == 1

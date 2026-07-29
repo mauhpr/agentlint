@@ -1,6 +1,8 @@
 """AgentLint CLI entry point."""
+
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -17,29 +19,41 @@ from typing import Any
 import click
 
 from agentlint import __version__
-from agentlint.agents_md import find_agents_md, generate_config, map_to_config, merge_with_existing, parse_agents_md
-from agentlint.config import load_config
-from agentlint.detector import detect_stack
-from agentlint.engine import Engine
-from agentlint.models import HookEvent, RuleContext, Severity
-from agentlint.packs import PACK_MODULES, load_custom_rules, load_installed_rules, load_project_rules, load_rules
-from agentlint.reporter import Reporter
-from agentlint.session import cleanup_session, load_session, save_session
-from agentlint.adapters._utils import resolve_command
 from agentlint.adapters import get_adapter
+from agentlint.adapters._utils import resolve_command
 from agentlint.adapters.claude import ClaudeAdapter
 from agentlint.adapters.codex import CodexAdapter
 from agentlint.adapters.continue_dev import ContinueAdapter
 from agentlint.adapters.cursor import CursorAdapter
-from agentlint.adapters.generic import GenericAdapter
 from agentlint.adapters.gemini import GeminiAdapter
+from agentlint.adapters.generic import GenericAdapter
 from agentlint.adapters.grok import GrokAdapter
 from agentlint.adapters.kimi import KimiAdapter
 from agentlint.adapters.mcp import MCPAdapter
 from agentlint.adapters.openai_agents import OpenAIAgentsAdapter
+from agentlint.agents_md import (
+    find_agents_md,
+    generate_config,
+    map_to_config,
+    merge_with_existing,
+    parse_agents_md,
+)
+from agentlint.cli_queue import register_queue_commands
+from agentlint.config import load_config
+from agentlint.detector import detect_stack
+from agentlint.engine import Engine
 from agentlint.formats.claude_hooks import ClaudeHookFormatter
 from agentlint.formats.cursor_hooks import CursorHookFormatter
-from agentlint.models import AgentEvent, to_hook_event
+from agentlint.models import AgentEvent, HookEvent, RuleContext, Severity, to_hook_event
+from agentlint.packs import (
+    PACK_MODULES,
+    load_custom_rules,
+    load_installed_rules,
+    load_project_rules,
+    load_rules,
+)
+from agentlint.reporter import Reporter
+from agentlint.session import cleanup_session, load_session, save_session
 from agentlint.utils.git import get_changed_files, get_diff_files
 
 logger = logging.getLogger("agentlint")
@@ -79,6 +93,7 @@ def _agentchute_policy_metadata() -> dict:
     """Return safe cached-policy metadata for AgentChute event visibility."""
     try:
         from agentlint.agentchute.policy import policy_status
+
         status = policy_status()
     except Exception:
         logger.debug("Failed to read AgentChute policy status", exc_info=True)
@@ -292,7 +307,13 @@ def _ensure_agentchute_enabled_config(config_path: Path) -> None:
             if not saw_enabled:
                 output.append("  enabled: true")
             in_agentchute = False
-        elif in_agentchute and stripped and not stripped.startswith("#") and not saw_enabled and not stripped.startswith("enabled:"):
+        elif (
+            in_agentchute
+            and stripped
+            and not stripped.startswith("#")
+            and not saw_enabled
+            and not stripped.startswith("enabled:")
+        ):
             output.append("  enabled: true")
             saw_enabled = True
         if in_agentchute and stripped.startswith("enabled:"):
@@ -467,10 +488,21 @@ def main():
 
 
 @main.command()
-@click.option("--event", required=True, help="Hook event type (e.g. PreToolUse, PostToolUse, UserPromptSubmit)")
+@click.option(
+    "--event",
+    required=True,
+    help="Hook event type (e.g. PreToolUse, PostToolUse, UserPromptSubmit)",
+)
 @click.option("--project-dir", default=None, help="Project directory")
-@click.option("--adapter", default=None, help="Agent adapter (claude, cursor). Auto-detected if not set.")
-@click.option("--format", "output_format", default=None, help="Output format override (claude_hooks, cursor_hooks)")
+@click.option(
+    "--adapter", default=None, help="Agent adapter (claude, cursor). Auto-detected if not set."
+)
+@click.option(
+    "--format",
+    "output_format",
+    default=None,
+    help="Output format override (claude_hooks, cursor_hooks)",
+)
 def check(event: str, project_dir: str | None, adapter: str | None, output_format: str | None):
     """Evaluate rules against a tool call from stdin."""
     adapter_obj = _resolve_adapter(adapter)
@@ -494,6 +526,7 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
     rules = load_project_rules(config, project_dir)
     try:
         from agentlint.agentchute.policy import missing_required_packs
+
         missing_packs = missing_required_packs()
         for name in missing_packs:
             click.echo(
@@ -634,6 +667,7 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
     # Apply inline ignore directives (# agentlint:ignore-file, etc.).
     # Pass file_path + session_state so reasons surface in the summary.
     from agentlint.filters import filter_inline_ignores
+
     result.violations = filter_inline_ignores(
         result.violations,
         context.file_content,
@@ -642,13 +676,16 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
     )
 
     # Track cumulative violation counts for session summary
-    vlog = session_state.setdefault("violation_log", {
-        "total_evaluations": 0,
-        "total_blocked": 0,
-        "total_warnings": 0,
-        "total_info": 0,
-        "rule_violations": {},
-    })
+    vlog = session_state.setdefault(
+        "violation_log",
+        {
+            "total_evaluations": 0,
+            "total_blocked": 0,
+            "total_warnings": 0,
+            "total_info": 0,
+            "rule_violations": {},
+        },
+    )
     vlog["total_evaluations"] += 1
     for v in result.violations:
         if v.severity == Severity.ERROR:
@@ -663,8 +700,9 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
     # Record event for product insights (opt-in)
     recording_event = None
     try:
-        from agentlint.recorder import is_recording_enabled
         from agentlint.agentchute import is_agentchute_enabled
+        from agentlint.recorder import is_recording_enabled
+
         # Build the event payload once; reused for the local recording
         # AND the optional AgentChute real-time POST so the two paths see the
         # exact same data. Privacy contract: no raw file content, no raw
@@ -674,17 +712,19 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
         if recording_needed or agentchute_needed:
             from agentlint.recorder import summarize_tool_input
             from agentlint.session import _session_key
+
             recording_event = {
                 "v": 1,
                 "ts": time.time(),
                 "event": event,
                 "tool_name": raw.get("tool_name", ""),
                 "tool_summary": summarize_tool_input(
-                    raw.get("tool_name", ""), tool_input, raw.get("prompt"),
+                    raw.get("tool_name", ""),
+                    tool_input,
+                    raw.get("prompt"),
                 ),
                 "violations": [
-                    {"rule_id": v.rule_id, "severity": v.severity.value}
-                    for v in result.violations
+                    {"rule_id": v.rule_id, "severity": v.severity.value} for v in result.violations
                 ],
                 "rules_evaluated": result.rules_evaluated,
                 "is_blocking": result.is_blocking,
@@ -697,9 +737,11 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
             session_key = _session_key()
             if recording_needed:
                 from agentlint.recorder import append_event
+
                 append_event(recording_event, key=session_key)
             if agentchute_needed:
                 from agentlint.agentchute.queue import enqueue_event, trigger_background_flush
+
                 enqueue_event(recording_event, session_key=session_key, config=config)
                 trigger_background_flush(config=config)
     except Exception:
@@ -742,6 +784,7 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
     rules = load_project_rules(config, project_dir)
     try:
         from agentlint.agentchute.policy import missing_required_packs
+
         missing_packs = missing_required_packs()
     except Exception:
         missing_packs = []
@@ -818,14 +861,20 @@ def ci(diff: str | None, project_dir: str | None, output_format: str):
     infos = [v for v in all_violations if v.severity == Severity.INFO]
 
     if output_format == "json":
-        click.echo(json.dumps({
-            "violations": [v.to_dict() for v in all_violations],
-            "files_scanned": len(changed_files),
-            "rules_evaluated": total_evaluated,
-        }))
+        click.echo(
+            json.dumps(
+                {
+                    "violations": [v.to_dict() for v in all_violations],
+                    "files_scanned": len(changed_files),
+                    "rules_evaluated": total_evaluated,
+                }
+            )
+        )
     else:
         if not all_violations:
-            click.echo(f"Clean — {len(changed_files)} files scanned, {total_evaluated} rules evaluated.")
+            click.echo(
+                f"Clean — {len(changed_files)} files scanned, {total_evaluated} rules evaluated."
+            )
         else:
             for group in _group_ci_violations(all_violations):
                 if len(group) == 1:
@@ -937,9 +986,16 @@ agentchute:
 @main.command()
 @click.option("--project-dir", default=None, help="Project directory")
 @click.option("--summary", is_flag=True, help="Show cumulative session summary dashboard")
-@click.option("--format", "output_format", default="text", type=click.Choice(["text", "json"]),
-              help="Output format (only applies with --summary)")
-@click.option("--adapter", default=None, help="Agent adapter (claude, cursor). Auto-detected if not set.")
+@click.option(
+    "--format",
+    "output_format",
+    default="text",
+    type=click.Choice(["text", "json"]),
+    help="Output format (only applies with --summary)",
+)
+@click.option(
+    "--adapter", default=None, help="Agent adapter (claude, cursor). Auto-detected if not set."
+)
 def report(project_dir: str | None, summary: bool, output_format: str, adapter: str | None):
     """Generate session summary report (for Stop event)."""
     project_dir = _resolve_project_dir(project_dir)
@@ -947,10 +1003,8 @@ def report(project_dir: str | None, summary: bool, output_format: str, adapter: 
 
     # Only consume stdin if not in --summary mode (Stop hook pipes JSON)
     if not summary:
-        try:
+        with contextlib.suppress(json.JSONDecodeError, EOFError):
             json.load(sys.stdin)
-        except (json.JSONDecodeError, EOFError):
-            pass
 
     # Load session and populate changed_files
     # Combine: files tracked during the session + git diff (for any we missed)
@@ -963,10 +1017,12 @@ def report(project_dir: str | None, summary: bool, output_format: str, adapter: 
     # --summary: show cumulative dashboard and exit
     if summary:
         reporter = Reporter(violations=[], rules_evaluated=0)
-        click.echo(reporter.format_session_summary(
-            session_state=session_state,
-            output_format=output_format,
-        ))
+        click.echo(
+            reporter.format_session_summary(
+                session_state=session_state,
+                output_format=output_format,
+            )
+        )
         return
 
     # Evaluate Stop rules to collect end-of-session violations
@@ -997,20 +1053,21 @@ def report(project_dir: str | None, summary: bool, output_format: str, adapter: 
 
     # Record final summary entry
     try:
-        from agentlint.recorder import is_recording_enabled
         from agentlint.agentchute import is_agentchute_enabled
+        from agentlint.recorder import is_recording_enabled
+
         recording_needed = is_recording_enabled(config)
         agentchute_needed = is_agentchute_enabled(config)
         if recording_needed or agentchute_needed:
             from agentlint.session import _session_key
+
             entry = {
                 "v": 1,
                 "ts": time.time(),
                 "event": "Stop",
                 "tool_name": "",
                 "violations": [
-                    {"rule_id": v.rule_id, "severity": v.severity.value}
-                    for v in result.violations
+                    {"rule_id": v.rule_id, "severity": v.severity.value} for v in result.violations
                 ],
                 "rules_evaluated": result.rules_evaluated,
                 "is_blocking": result.is_blocking,
@@ -1020,9 +1077,11 @@ def report(project_dir: str | None, summary: bool, output_format: str, adapter: 
             session_key = _session_key()
             if recording_needed:
                 from agentlint.recorder import append_event
+
                 append_event(entry, key=session_key)
             if agentchute_needed:
                 from agentlint.agentchute.queue import enqueue_event, trigger_background_flush
+
                 enqueue_event(entry, session_key=session_key, config=config)
                 trigger_background_flush(config=config)
     except Exception:
@@ -1036,7 +1095,11 @@ def report(project_dir: str | None, summary: bool, output_format: str, adapter: 
 @click.argument("platform", required=False, default="claude")
 @click.option("--global", "scope", flag_value="user", help="Install to user settings")
 @click.option(
-    "--project", "scope", flag_value="project", default=True, help="Install to project settings (default)"
+    "--project",
+    "scope",
+    flag_value="project",
+    default=True,
+    help="Install to project settings (default)",
 )
 @click.option("--project-dir", default=None, help="Project directory")
 @click.option("--dry-run", is_flag=True, help="Show what would be written without modifying files")
@@ -1064,7 +1127,9 @@ def setup(platform: str, scope: str, project_dir: str | None, dry_run: bool):
             config_path = _enable_codex_hooks()
             click.echo(f"Enabled Codex hooks in {config_path}.")
             click.echo("Set [features].hooks = true.")
-        click.echo("Restart Codex from the terminal where your AgentLint/AgentChute env vars are set.")
+        click.echo(
+            "Restart Codex from the terminal where your AgentLint/AgentChute env vars are set."
+        )
 
     # Also create agentlint.yml if it doesn't exist
     config_path = os.path.join(project_dir, "agentlint.yml")
@@ -1074,7 +1139,9 @@ def setup(platform: str, scope: str, project_dir: str | None, dry_run: bool):
 
 
 @main.command()
-@click.option("--dry-run", is_flag=True, help="Print the detected update command without running it")
+@click.option(
+    "--dry-run", is_flag=True, help="Print the detected update command without running it"
+)
 def update(dry_run: bool):
     """Update AgentLint using the detected installer."""
     kind, command = _detect_update_command()
@@ -1084,14 +1151,17 @@ def update(dry_run: bool):
         return
     result = subprocess.run(command, check=False)
     if result.returncode != 0:
-        raise click.ClickException(
-            "Installer failed with exit code " + str(result.returncode)
-        )
+        raise click.ClickException("Installer failed with exit code " + str(result.returncode))
 
 
 @main.command()
 @click.option("--project-dir", default=None, help="Project directory")
-@click.option("--platform", "platforms", multiple=True, help="Coding agent to configure. Repeat or use comma list. Use auto/all.")
+@click.option(
+    "--platform",
+    "platforms",
+    multiple=True,
+    help="Coding agent to configure. Repeat or use comma list. Use auto/all.",
+)
 @click.option("--team-key", default=None, help="AgentChute license key")
 @click.option("--api-url", default=None, help="AgentChute API URL")
 @click.option("--no-update", is_flag=True, help="Skip AgentLint self-update")
@@ -1127,12 +1197,7 @@ def onboard(
 
     if not no_update:
         kind, command = _detect_update_command()
-        click.echo(
-            "Installer: "
-            + kind
-            + " -> "
-            + " ".join(shlex.quote(part) for part in command)
-        )
+        click.echo("Installer: " + kind + " -> " + " ".join(shlex.quote(part) for part in command))
         if not dry_run and (yes or click.confirm("Update AgentLint now?", default=False)):
             result = subprocess.run(command, check=False)
             if result.returncode != 0:
@@ -1181,7 +1246,13 @@ def onboard(
 
     for platform in selected:
         state, path = _hook_status(platform, project_dir)
-        action = "repairing" if state == "stale" else "installing" if state == "missing" else "refreshing"
+        action = (
+            "repairing"
+            if state == "stale"
+            else "installing"
+            if state == "missing"
+            else "refreshing"
+        )
         click.echo(f"{platform}: {action} hooks")
         if not dry_run:
             get_adapter(platform).install_hooks(project_dir, scope="project", cmd=resolve_command())
@@ -1196,24 +1267,41 @@ def onboard(
 
     if open_dashboard and not dry_run:
         import webbrowser
-        webbrowser.open("http://localhost:3001/dashboard" if "localhost" in api_url else "https://app.agentchute.com/dashboard")
+
+        webbrowser.open(
+            "http://localhost:3001/dashboard"
+            if "localhost" in api_url
+            else "https://app.agentchute.com/dashboard"
+        )
 
 
 @main.command("setup-agent")
 @click.option("--project-dir", default=None, help="Project directory")
-@click.option("--platform", "platforms", multiple=True, help="Agent to add. Defaults to detected agents.")
-@click.option("--all", "all_platforms", is_flag=True, help="Install hooks for all supported coding agents")
+@click.option(
+    "--platform", "platforms", multiple=True, help="Agent to add. Defaults to detected agents."
+)
+@click.option(
+    "--all", "all_platforms", is_flag=True, help="Install hooks for all supported coding agents"
+)
 @click.option("--yes", is_flag=True, help="Install without confirmation")
-def setup_agent(project_dir: str | None, platforms: tuple[str, ...], all_platforms: bool, yes: bool):
+def setup_agent(
+    project_dir: str | None, platforms: tuple[str, ...], all_platforms: bool, yes: bool
+):
     """Detect and add AgentLint hooks for coding agents."""
     project_dir = _resolve_project_dir(project_dir)
-    selected = list(_HOOK_PLATFORMS) if all_platforms else _resolve_onboard_platforms(platforms or ("auto",), project_dir)
+    selected = (
+        list(_HOOK_PLATFORMS)
+        if all_platforms
+        else _resolve_onboard_platforms(platforms or ("auto",), project_dir)
+    )
     click.echo("Detected coding-agent hook state:")
     for platform in _HOOK_PLATFORMS:
         state, _ = _hook_status(platform, project_dir)
         marker = "✓" if state == "installed" else "!" if state == "stale" else "○"
         click.echo(f"  {marker} {platform:<8} {state}")
-    if not yes and not click.confirm(f"Install/repair hooks for: {', '.join(selected)}?", default=True):
+    if not yes and not click.confirm(
+        f"Install/repair hooks for: {', '.join(selected)}?", default=True
+    ):
         return
     for platform in selected:
         get_adapter(platform).install_hooks(project_dir, scope="project", cmd=resolve_command())
@@ -1224,7 +1312,9 @@ def setup_agent(project_dir: str | None, platforms: tuple[str, ...], all_platfor
 
 @main.command("test")
 @click.option("--project-dir", default=None, help="Project directory")
-@click.option("--flush", is_flag=True, help="Flush the AgentChute queue after enqueueing the test event")
+@click.option(
+    "--flush", is_flag=True, help="Flush the AgentChute queue after enqueueing the test event"
+)
 def agentlint_test(project_dir: str | None, flush: bool):
     """Run a safe local and AgentChute end-to-end smoke test."""
     from agentlint.agentchute.queue import enqueue_event, flush_queue
@@ -1237,20 +1327,27 @@ def agentlint_test(project_dir: str | None, flush: bool):
     context = RuleContext(
         event=HookEvent.PRE_TOOL_USE,
         tool_name="Write",
-        tool_input={"file_path": ".env", "content": "AGENTLINT_TEST_SECRET=sk-test-agentlint-smoke"},
+        tool_input={
+            "file_path": ".env",
+            "content": "AGENTLINT_TEST_SECRET=sk-test-agentlint-smoke",
+        },
         project_dir=project_dir,
         config=config.rules,
     )
     result = engine.evaluate(context)
     blocked = result.is_blocking
-    click.echo(f"Local rule smoke: {'blocked risky fixture' if blocked else 'no block'} ({result.rules_evaluated} rules)")
+    click.echo(
+        f"Local rule smoke: {'blocked risky fixture' if blocked else 'no block'} ({result.rules_evaluated} rules)"
+    )
 
     event = {
         "v": 1,
         "ts": time.time(),
         "event": "AgentLintTest",
         "tool_name": "agentlint",
-        "violations": [{"rule_id": v.rule_id, "severity": v.severity.value} for v in result.violations],
+        "violations": [
+            {"rule_id": v.rule_id, "severity": v.severity.value} for v in result.violations
+        ],
         "rules_evaluated": result.rules_evaluated,
         "is_blocking": blocked,
         "project_dir": project_dir,
@@ -1270,7 +1367,9 @@ def agentlint_test(project_dir: str | None, flush: bool):
         elif flush_result.locked:
             click.echo("AgentChute upload: queue is locked by another flusher")
         else:
-            click.echo(f"AgentChute upload: delivered {flush_result.delivered}, failed {flush_result.failed}")
+            click.echo(
+                f"AgentChute upload: delivered {flush_result.delivered}, failed {flush_result.failed}"
+            )
 
 
 def _policy_test_fixture(template: str) -> tuple[str, str, dict]:
@@ -1302,17 +1401,19 @@ def _policy_test_fixture(template: str) -> tuple[str, str, dict]:
         ),
     }
     if template not in fixtures:
-        raise click.UsageError(
-            "Unknown policy test. Supported: " + ", ".join(sorted(fixtures))
-        )
+        raise click.UsageError("Unknown policy test. Supported: " + ", ".join(sorted(fixtures)))
     return fixtures[template]
 
 
 @main.command("test-policy")
 @click.argument("template")
 @click.option("--project-dir", default=None, help="Project directory")
-@click.option("--flush", is_flag=True, help="Flush the AgentChute queue after enqueueing the test event")
-@click.option("--no-refresh", is_flag=True, help="Use the cached policy without refreshing from AgentChute")
+@click.option(
+    "--flush", is_flag=True, help="Flush the AgentChute queue after enqueueing the test event"
+)
+@click.option(
+    "--no-refresh", is_flag=True, help="Use the cached policy without refreshing from AgentChute"
+)
 def test_policy(template: str, project_dir: str | None, flush: bool, no_refresh: bool):
     """Safely simulate a named org-policy template without running a risky command."""
     from agentlint.agentchute.policy import build_policy_rules, refresh_policy
@@ -1353,7 +1454,9 @@ def test_policy(template: str, project_dir: str | None, flush: bool, no_refresh:
         "event": "PolicySimulation",
         "tool_name": tool_name,
         "tool_input": tool_input,
-        "violations": [{"rule_id": v.rule_id, "severity": v.severity.value} for v in result.violations],
+        "violations": [
+            {"rule_id": v.rule_id, "severity": v.severity.value} for v in result.violations
+        ],
         "rules_evaluated": result.rules_evaluated,
         "is_blocking": result.is_blocking,
         "project_dir": project_dir,
@@ -1374,7 +1477,9 @@ def test_policy(template: str, project_dir: str | None, flush: bool, no_refresh:
         elif flush_result.locked:
             click.echo("AgentChute upload: queue is locked by another flusher")
         else:
-            click.echo(f"AgentChute upload: delivered {flush_result.delivered}, failed {flush_result.failed}")
+            click.echo(
+                f"AgentChute upload: delivered {flush_result.delivered}, failed {flush_result.failed}"
+            )
 
 
 @main.command("ci-setup")
@@ -1472,10 +1577,16 @@ def env_doctor():
     profile = _default_shell_profile()
     text = profile.read_text() if profile.exists() else ""
     credentials_path = local_credentials_path()
-    click.echo(f"Current shell key: {'set' if os.environ.get('AGENTCHUTE_LICENSE_KEY') else 'missing'}")
-    click.echo(f"Credential file: {'present' if credentials_path.exists() else 'missing'} ({credentials_path})")
+    click.echo(
+        f"Current shell key: {'set' if os.environ.get('AGENTCHUTE_LICENSE_KEY') else 'missing'}"
+    )
+    click.echo(
+        f"Credential file: {'present' if credentials_path.exists() else 'missing'} ({credentials_path})"
+    )
     click.echo(f"Resolved key: {'set' if get_license_key() else 'missing'}")
-    click.echo(f"Managed profile block: {'present' if _AGENTCHUTE_ENV_BEGIN in text else 'missing'} ({profile})")
+    click.echo(
+        f"Managed profile block: {'present' if _AGENTCHUTE_ENV_BEGIN in text else 'missing'} ({profile})"
+    )
 
 
 @env_group.command("remove")
@@ -1499,7 +1610,9 @@ def env_remove(profile: str | None):
 @click.option("--dashboard-url", default=None, help="AgentChute dashboard URL")
 @click.option("--api-url", default=None, help="AgentChute API URL")
 @click.option("--project-dir", default=None, help="Project directory")
-@click.option("--manual", is_flag=True, help="Paste a license key instead of using dashboard pairing")
+@click.option(
+    "--manual", is_flag=True, help="Paste a license key instead of using dashboard pairing"
+)
 def login(dashboard_url: str | None, api_url: str | None, project_dir: str | None, manual: bool):
     """Pair this machine with AgentChute through the dashboard."""
     from agentlint.agentchute.settings import get_api_url, get_license_key, save_local_credentials
@@ -1515,8 +1628,9 @@ def login(dashboard_url: str | None, api_url: str | None, project_dir: str | Non
     team_key: str | None = None
     if not manual:
         try:
-            import requests
             import webbrowser
+
+            import requests
 
             api_base = api_url.rstrip("/")
             response = requests.post(
@@ -1553,6 +1667,7 @@ def login(dashboard_url: str | None, api_url: str | None, project_dir: str | Non
 
     if team_key is None:
         import webbrowser
+
         click.echo(f"Opening {dashboard_url}")
         webbrowser.open(dashboard_url)
         team_key = click.prompt("Paste the AgentChute license key", hide_input=True)
@@ -1576,86 +1691,7 @@ def login(dashboard_url: str | None, api_url: str | None, project_dir: str | Non
     click.echo("This terminal can use AgentChute immediately.")
 
 
-@main.group("queue")
-def queue_group():
-    """Inspect and flush the local AgentChute queue."""
-
-
-@queue_group.command("status")
-def queue_status_command():
-    """Show local AgentChute queue status."""
-    from agentlint.agentchute.queue import queue_status
-
-    status_data = queue_status()
-    click.echo(f"Queue: {status_data['queue_path']}")
-    click.echo(f"Pending: {status_data['pending']}")
-    click.echo(f"Queued total: {status_data['queued']}")
-    click.echo(f"Delivered cursor: {status_data['delivered_cursor']}")
-    click.echo(f"Failures: {status_data['failures']}")
-
-
-@queue_group.command("flush")
-@click.option("--max-events", default=None, type=int, help="Maximum events to flush")
-@click.option("--batch-size", default=50, type=int, help="Maximum events per API batch")
-@click.option("--time-budget", default=3.0, type=float, help="Maximum seconds to spend flushing")
-def queue_flush_command(max_events: int | None, batch_size: int, time_budget: float):
-    """Flush queued AgentChute events now."""
-    _flush_agentchute_queue(
-        max_events=max_events,
-        batch_size=batch_size,
-        time_budget=time_budget,
-        dry_run=False,
-        background=False,
-    )
-
-
-@queue_group.command("discard-pending")
-@click.option("--yes", is_flag=True, help="Skip confirmation")
-def queue_discard_pending_command(yes: bool):
-    """Mark pending AgentChute events delivered without uploading them."""
-    from agentlint.agentchute.queue import mark_existing_events_delivered, queue_status
-
-    status_data = queue_status()
-    pending = int(status_data.get("pending", 0) or 0)
-    if pending <= 0:
-        click.echo("AgentChute queue: no pending events.")
-        return
-    if not yes and not click.confirm(
-        f"Discard {pending} pending AgentChute event(s) without uploading?",
-        default=False,
-    ):
-        click.echo("AgentChute queue unchanged.")
-        return
-    skipped = mark_existing_events_delivered()
-    click.echo(
-        f"AgentChute queue: discarded {skipped} pending event(s); "
-        "future events will upload normally"
-    )
-
-
-@queue_group.command("inspect")
-@click.option("--last", "last_n", default=5, type=int, help="Show the last N queued events")
-def queue_inspect(last_n: int):
-    """Show privacy-safe queued event summaries."""
-    from agentlint.agentchute.queue import _queue_path, _read_lines
-
-    lines = _read_lines()
-    if not lines:
-        click.echo("Queue is empty.")
-        return
-    for raw in lines[-last_n:]:
-        try:
-            item = json.loads(raw)
-        except json.JSONDecodeError:
-            click.echo("poison line: invalid JSON")
-            continue
-        event = item.get("event") or {}
-        click.echo(
-            f"{item.get('line_offset', '?')}: {event.get('event', '?')} "
-            f"{event.get('tool_name', '')} session={item.get('session_key', '')} "
-            f"violations={len(event.get('violations') or [])}"
-        )
-    click.echo(f"Queue file: {_queue_path()}")
+register_queue_commands(main)
 
 
 @main.command("list-rules")
@@ -1665,7 +1701,9 @@ def list_rules(pack: str | None, project_dir: str | None):
     """List all available rules."""
     project_dir = _resolve_project_dir(project_dir)
 
-    builtin_packs = sorted(PACK_MODULES.keys()) if pack is None else [p for p in [pack] if p in PACK_MODULES]
+    builtin_packs = (
+        sorted(PACK_MODULES.keys()) if pack is None else [p for p in [pack] if p in PACK_MODULES]
+    )
     rules = load_rules(builtin_packs)
 
     # Load custom rules
@@ -1681,6 +1719,7 @@ def list_rules(pack: str | None, project_dir: str | None):
         rules.extend(custom)
     if pack is None or pack == "universal":
         from agentlint.agentchute.policy import build_policy_rules
+
         rules.extend(build_policy_rules())
 
     if not rules:
@@ -1711,14 +1750,15 @@ def list_rules(pack: str | None, project_dir: str | None):
 def status(project_dir: str | None):
     """Show AgentLint health for the current project."""
     from importlib.metadata import version as get_version
+
+    from agentlint.agentchute.policy import policy_status
+    from agentlint.agentchute.queue import queue_status
     from agentlint.agentchute.settings import (
         get_api_url,
         get_enabled_value,
         get_license_key,
         local_credentials_path,
     )
-    from agentlint.agentchute.policy import policy_status
-    from agentlint.agentchute.queue import queue_status
 
     project_dir = _resolve_project_dir(project_dir)
     try:
@@ -1765,7 +1805,9 @@ def status(project_dir: str | None):
     click.echo(f"  Cloud policy: {policy_line}")
 
     rules = load_project_rules(config, project_dir)
-    click.echo(f"Rules: {len(rules)} active | Severity: {config.severity} | Packs: {', '.join(config.packs)}")
+    click.echo(
+        f"Rules: {len(rules)} active | Severity: {config.severity} | Packs: {', '.join(config.packs)}"
+    )
     if config.projects:
         click.echo("Projects:")
         for prefix, proj in sorted(config.projects.items()):
@@ -1773,7 +1815,12 @@ def status(project_dir: str | None):
             click.echo(f"  {prefix} → {proj_packs}")
 
     click.echo("")
-    click.echo("Next: agentlint doctor --fix" if not config_ok or any(_hook_status(p, project_dir)[0] in {"missing", "stale"} for p in detected) else "All primary checks look healthy.")
+    click.echo(
+        "Next: agentlint doctor --fix"
+        if not config_ok
+        or any(_hook_status(p, project_dir)[0] in {"missing", "stale"} for p in detected)
+        else "All primary checks look healthy."
+    )
 
 
 @main.command()
@@ -1811,16 +1858,22 @@ def doctor(project_dir: str | None, fix: bool):
         elif hook_state == "stale":
             issues.append(f"Hooks: {platform} points to an old AgentLint binary ({hook_path})")
             if fix:
-                get_adapter(platform).install_hooks(project_dir, scope="project", cmd=resolve_command())
+                get_adapter(platform).install_hooks(
+                    project_dir, scope="project", cmd=resolve_command()
+                )
                 checks_ok.append(f"Fix: reinstalled {platform} hooks")
         elif hook_state == "missing":
             issues.append(f"Hooks: {platform} not installed")
             if fix:
-                get_adapter(platform).install_hooks(project_dir, scope="project", cmd=resolve_command())
+                get_adapter(platform).install_hooks(
+                    project_dir, scope="project", cmd=resolve_command()
+                )
                 checks_ok.append(f"Fix: installed {platform} hooks")
         elif hook_state == "custom":
             checks_ok.append(f"Hooks: {platform} config exists without AgentLint")
-    installed_detected = [p for p in detected_platforms if _hook_status(p, project_dir)[0] == "installed"]
+    installed_detected = [
+        p for p in detected_platforms if _hook_status(p, project_dir)[0] == "installed"
+    ]
     if "claude" in installed_detected and "cursor" in installed_detected:
         checks_ok.append("Hooks: installed for both Claude and Cursor")
 
@@ -1830,6 +1883,7 @@ def doctor(project_dir: str | None, fix: bool):
 
     # Check Python version
     import sys as _sys
+
     py_ver = _sys.version_info
     if py_ver >= (3, 11):
         checks_ok.append(f"Python: {py_ver.major}.{py_ver.minor}.{py_ver.micro} (OK)")
@@ -1838,6 +1892,7 @@ def doctor(project_dir: str | None, fix: bool):
 
     # Check session cache writable
     from agentlint.session import _cache_dir
+
     cache_dir = _cache_dir()
     if cache_dir.exists() and os.access(str(cache_dir), os.W_OK):
         checks_ok.append(f"Session cache: {cache_dir} (writable)")
@@ -1846,9 +1901,10 @@ def doctor(project_dir: str | None, fix: bool):
     else:
         issues.append(f"Session cache: {cache_dir} is not writable")
 
-    from agentlint.agentchute.settings import get_license_key, local_credentials_path
     from agentlint.agentchute.policy import refresh_policy
     from agentlint.agentchute.queue import _queue_root
+    from agentlint.agentchute.settings import get_license_key, local_credentials_path
+
     queue_root = _queue_root()
     try:
         queue_root.mkdir(parents=True, exist_ok=True)
@@ -1863,8 +1919,7 @@ def doctor(project_dir: str | None, fix: bool):
     agentchute_cfg = getattr(config, "agentchute", None)
     license_key = get_license_key()
     agentchute_configured = bool(
-        license_key
-        or (isinstance(agentchute_cfg, dict) and agentchute_cfg.get("enabled"))
+        license_key or (isinstance(agentchute_cfg, dict) and agentchute_cfg.get("enabled"))
     )
     if license_key:
         policy_result = refresh_policy()
@@ -1878,23 +1933,31 @@ def doctor(project_dir: str | None, fix: bool):
     # Check custom rules
     if config.custom_rules_dir:
         from pathlib import Path as _Path
+
         custom_dir = _Path(project_dir) / config.custom_rules_dir
         if custom_dir.is_dir():
             py_files = [f for f in custom_dir.glob("*.py") if not f.name.startswith("_")]
             if py_files:
-                checks_ok.append(f"Custom rules: {len(py_files)} rule file(s) in {config.custom_rules_dir}")
+                checks_ok.append(
+                    f"Custom rules: {len(py_files)} rule file(s) in {config.custom_rules_dir}"
+                )
                 # Check for orphaned packs (rules whose pack isn't in packs: list)
                 custom_rules = load_custom_rules(config.custom_rules_dir, project_dir)
                 orphaned = {r.pack for r in custom_rules} - set(config.packs)
                 for p in sorted(orphaned):
                     issues.append(f"Custom pack '{p}' not in packs: list — rules will be skipped")
             else:
-                issues.append(f"Custom rules: {config.custom_rules_dir} exists but has no .py files")
+                issues.append(
+                    f"Custom rules: {config.custom_rules_dir} exists but has no .py files"
+                )
         else:
-            issues.append(f"Custom rules: {config.custom_rules_dir} configured but directory not found")
+            issues.append(
+                f"Custom rules: {config.custom_rules_dir} configured but directory not found"
+            )
 
     # Check CLI integration commands
     import shutil
+
     cli_config = config.rules.get("cli-integration", {})
     cli_commands = cli_config.get("commands", [])
     if cli_commands:
@@ -1934,12 +1997,16 @@ def doctor(project_dir: str | None, fix: bool):
         for tool, recipes in _TOOL_RECIPES.items():
             if shutil.which(tool):
                 recipe_str = ", ".join(f"`{r}`" for r in recipes)
-                checks_ok.append(f"CLI recipe: {tool} found — consider adding to cli-integration ({recipe_str})")
+                checks_ok.append(
+                    f"CLI recipe: {tool} found — consider adding to cli-integration ({recipe_str})"
+                )
 
     # Check recordings dir writable (when recording is enabled)
     from agentlint.recorder import is_recording_enabled
+
     if is_recording_enabled(config):
         from agentlint.recorder import _recordings_dir
+
         rec_dir = _recordings_dir()
         if rec_dir.exists() and os.access(str(rec_dir), os.W_OK):
             checks_ok.append(f"Recordings dir: {rec_dir} (writable)")
@@ -2031,7 +2098,8 @@ def import_agents_md(project_dir: str | None, dry_run: bool, merge_mode: bool):
     config_path = os.path.join(project_dir, "agentlint.yml")
 
     if merge_mode and os.path.exists(config_path):
-        existing_yaml = open(config_path, encoding="utf-8").read()
+        with open(config_path, encoding="utf-8") as config_file:
+            existing_yaml = config_file.read()
         output = merge_with_existing(existing_yaml, mapped)
     else:
         output = generate_config(mapped)
@@ -2049,7 +2117,11 @@ def import_agents_md(project_dir: str | None, dry_run: bool, merge_mode: bool):
 @click.argument("platform", required=False, default="claude")
 @click.option("--global", "scope", flag_value="user", help="Remove from user settings")
 @click.option(
-    "--project", "scope", flag_value="project", default=True, help="Remove from project settings (default)"
+    "--project",
+    "scope",
+    flag_value="project",
+    default=True,
+    help="Remove from project settings (default)",
 )
 @click.option("--project-dir", default=None, help="Project directory")
 def uninstall(platform: str, scope: str, project_dir: str | None):
@@ -2136,7 +2208,11 @@ def recordings_show(key: str, violations_only: bool):
             detail = f" ? {summary['query'][:80]}"
         elif summary.get("subagent_type"):
             desc = summary.get("description", "")
-            detail = f" [{summary['subagent_type']}] {desc[:60]}" if desc else f" [{summary['subagent_type']}]"
+            detail = (
+                f" [{summary['subagent_type']}] {desc[:60]}"
+                if desc
+                else f" [{summary['subagent_type']}]"
+            )
         elif summary.get("cell_index") is not None:
             detail = f" cell #{summary['cell_index']}"
         click.echo(f"  {dt}  {event_type:<20} {tool:<12}{v_str}{detail}")
@@ -2186,7 +2262,13 @@ def recordings_stats(last_n: int | None):
 
 
 @recordings.command("clear")
-@click.option("--older-than", "older_than_days", default=None, type=int, help="Only delete recordings older than N days")
+@click.option(
+    "--older-than",
+    "older_than_days",
+    default=None,
+    type=int,
+    help="Only delete recordings older than N days",
+)
 @click.confirmation_option(prompt="Delete recording files?")
 def recordings_clear(older_than_days: int | None):
     """Delete recording files."""
@@ -2393,19 +2475,25 @@ def policy_explain_command(output_format: str):
         if pack.get("type") == "cloud_feed" or pack.get("managed_by") == "agentchute"
     ]
     if output_format == "json":
-        click.echo(json.dumps({
-            "cached": True,
-            "version": policy.get("version"),
-            "updated_at": policy.get("updated_at"),
-            "organization_id": policy.get("organization_id"),
-            "rules": len(active_rules),
-            "rule_ids": active_rule_ids,
-            "locked_rules": len(locked_rules),
-            "required_packs": len(packs),
-            "cloud_feeds": cloud_feeds,
-            "missing_required_packs": missing,
-            "hook_behavior": "local-only, no network required",
-        }, indent=2, sort_keys=True))
+        click.echo(
+            json.dumps(
+                {
+                    "cached": True,
+                    "version": policy.get("version"),
+                    "updated_at": policy.get("updated_at"),
+                    "organization_id": policy.get("organization_id"),
+                    "rules": len(active_rules),
+                    "rule_ids": active_rule_ids,
+                    "locked_rules": len(locked_rules),
+                    "required_packs": len(packs),
+                    "cloud_feeds": cloud_feeds,
+                    "missing_required_packs": missing,
+                    "hook_behavior": "local-only, no network required",
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
         return
 
     click.echo(f"Workspace policy: v{policy.get('version', 'unknown')}")

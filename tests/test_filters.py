@@ -1,11 +1,14 @@
 """Comprehensive tests for the inline ignore directive filter."""
+
 from __future__ import annotations
 
 from agentlint.filters import filter_inline_ignores
 from agentlint.models import Severity, Violation
 
 
-def _v(rule_id: str = "test-rule", severity: Severity = Severity.WARNING, line: int | None = None) -> Violation:
+def _v(
+    rule_id: str = "test-rule", severity: Severity = Severity.WARNING, line: int | None = None
+) -> Violation:
     return Violation(rule_id=rule_id, message="test", severity=severity, line=line)
 
 

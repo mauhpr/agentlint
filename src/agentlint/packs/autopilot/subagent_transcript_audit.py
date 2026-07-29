@@ -1,4 +1,5 @@
 """Rule: audit subagent transcripts for dangerous commands after completion."""
+
 from __future__ import annotations
 
 import json
@@ -97,7 +98,9 @@ class SubagentTranscriptAudit(Rule):
         if size > _MAX_TRANSCRIPT_BYTES:
             logger.warning(
                 "Skipping transcript audit: %s is %d bytes (limit %d)",
-                transcript_path, size, _MAX_TRANSCRIPT_BYTES,
+                transcript_path,
+                size,
+                _MAX_TRANSCRIPT_BYTES,
             )
             return []
 
@@ -144,9 +147,11 @@ class SubagentTranscriptAudit(Rule):
     ) -> None:
         """Record audit results in session state for the Stop report."""
         audits = context.session_state.setdefault("subagent_audits", [])
-        audits.append({
-            "agent_type": context.agent_type or "unknown",
-            "agent_id": context.agent_id or "unknown",
-            "commands_count": commands_count,
-            "findings": findings,
-        })
+        audits.append(
+            {
+                "agent_type": context.agent_type or "unknown",
+                "agent_id": context.agent_id or "unknown",
+                "commands_count": commands_count,
+                "findings": findings,
+            }
+        )

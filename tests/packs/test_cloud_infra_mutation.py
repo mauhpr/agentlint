@@ -1,4 +1,5 @@
 """Tests for cloud-infra-mutation rule."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -47,7 +48,9 @@ class TestCloudInfraMutation:
         assert len(violations) == 1
 
     def test_gcloud_forwarding_rule_create(self):
-        ctx = _ctx("gcloud compute forwarding-rules create my-rule --load-balancing-scheme=EXTERNAL")
+        ctx = _ctx(
+            "gcloud compute forwarding-rules create my-rule --load-balancing-scheme=EXTERNAL"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
@@ -57,56 +60,76 @@ class TestCloudInfraMutation:
         assert len(violations) == 1
 
     def test_gcloud_iam_policy_binding(self):
-        ctx = _ctx("gcloud projects add-iam-policy-binding my-project --member=user:test@example.com --role=roles/editor")
+        ctx = _ctx(
+            "gcloud projects add-iam-policy-binding my-project --member=user:test@example.com --role=roles/editor"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     # --- AWS patterns ---
 
     def test_aws_security_group_authorize_ingress(self):
-        ctx = _ctx("aws ec2 authorize-security-group-ingress --group-id sg-123 --protocol tcp --port 22 --cidr 0.0.0.0/0")
+        ctx = _ctx(
+            "aws ec2 authorize-security-group-ingress --group-id sg-123 --protocol tcp --port 22 --cidr 0.0.0.0/0"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_aws_security_group_revoke_egress(self):
-        ctx = _ctx("aws ec2 revoke-security-group-egress --group-id sg-123 --protocol tcp --port 443")
+        ctx = _ctx(
+            "aws ec2 revoke-security-group-egress --group-id sg-123 --protocol tcp --port 443"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_aws_iam_attach_role_policy(self):
-        ctx = _ctx("aws iam attach-role-policy --role-name MyRole --policy-arn arn:aws:iam::aws:policy/AdministratorAccess")
+        ctx = _ctx(
+            "aws iam attach-role-policy --role-name MyRole --policy-arn arn:aws:iam::aws:policy/AdministratorAccess"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_aws_iam_put_user_policy(self):
-        ctx = _ctx("aws iam put-user-policy --user-name myuser --policy-name mypolicy --policy-document file://policy.json")
+        ctx = _ctx(
+            "aws iam put-user-policy --user-name myuser --policy-name mypolicy --policy-document file://policy.json"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_aws_ec2_create_route(self):
-        ctx = _ctx("aws ec2 create-route --route-table-id rtb-123 --destination-cidr-block 0.0.0.0/0 --gateway-id igw-abc")
+        ctx = _ctx(
+            "aws ec2 create-route --route-table-id rtb-123 --destination-cidr-block 0.0.0.0/0 --gateway-id igw-abc"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_aws_elbv2_modify_listener(self):
-        ctx = _ctx("aws elbv2 modify-listener --listener-arn arn:aws:elasticloadbalancing:... --protocol HTTPS")
+        ctx = _ctx(
+            "aws elbv2 modify-listener --listener-arn arn:aws:elasticloadbalancing:... --protocol HTTPS"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     # --- Azure patterns ---
 
     def test_az_nsg_rule_create(self):
-        ctx = _ctx("az network nsg rule create --nsg-name myNSG --name AllowSSH --priority 100 --access Allow")
+        ctx = _ctx(
+            "az network nsg rule create --nsg-name myNSG --name AllowSSH --priority 100 --access Allow"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_az_vnet_create(self):
-        ctx = _ctx("az network vnet create --name myVNet --resource-group myRG --address-prefix 10.0.0.0/16")
+        ctx = _ctx(
+            "az network vnet create --name myVNet --resource-group myRG --address-prefix 10.0.0.0/16"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_az_role_assignment_create(self):
-        ctx = _ctx("az role assignment create --assignee user@example.com --role Contributor --scope /subscriptions/...")
+        ctx = _ctx(
+            "az role assignment create --assignee user@example.com --role Contributor --scope /subscriptions/..."
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 

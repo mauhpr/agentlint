@@ -4,8 +4,10 @@ Each agent session gets a JSON file in ~/.cache/agentlint/sessions/
 so that state survives across separate hook invocations within the
 same session.
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -59,7 +61,5 @@ def save_session(state: dict, key: str | None = None) -> None:
 def cleanup_session(key: str | None = None) -> None:
     """Remove the session file (called on Stop)."""
     path = _session_path(key)
-    try:
+    with contextlib.suppress(OSError):
         path.unlink(missing_ok=True)
-    except OSError:
-        pass

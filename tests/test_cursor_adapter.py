@@ -1,15 +1,14 @@
 """Tests for the Cursor IDE adapter."""
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
-from agentlint.adapters.cursor import CursorAdapter, _build_hooks, _hooks_path
 from agentlint.adapters._utils import is_agentlint_flat_entry
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext
+from agentlint.adapters.cursor import CursorAdapter, _build_hooks, _hooks_path
+from agentlint.models import AgentEvent, HookEvent, NormalizedTool
 
 
 class TestEventTranslation:
@@ -130,9 +129,14 @@ class TestIsAgentlintEntry:
 
 class TestBuildHooks:
     EXPECTED_EVENTS = {
-        "preToolUse", "postToolUse", "beforeShellExecution",
-        "afterFileEdit", "beforeSubmitPrompt", "subagentStart",
-        "subagentStop", "stop",
+        "preToolUse",
+        "postToolUse",
+        "beforeShellExecution",
+        "afterFileEdit",
+        "beforeSubmitPrompt",
+        "subagentStart",
+        "subagentStop",
+        "stop",
     }
 
     def test_builds_all_events(self) -> None:
@@ -178,11 +182,7 @@ class TestInstallHooks:
         hooks_file.parent.mkdir(parents=True)
         existing = {
             "version": 1,
-            "hooks": {
-                "afterFileEdit": [
-                    {"command": "biome format {file.path}"}
-                ]
-            }
+            "hooks": {"afterFileEdit": [{"command": "biome format {file.path}"}]},
         }
         hooks_file.write_text(json.dumps(existing))
 
@@ -222,7 +222,7 @@ class TestUninstallHooks:
                     {"command": "biome format {file.path}"},
                     {"command": "agentlint check --event afterFileEdit --adapter cursor"},
                 ]
-            }
+            },
         }
         hooks_file.write_text(json.dumps(existing))
 
@@ -241,11 +241,13 @@ class TestUninstallHooks:
 
 class TestFormatter:
     def test_exit_code_blocked(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.cursor_hooks import CursorHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = CursorHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         assert formatter.exit_code(violations, AgentEvent.PRE_TOOL_USE) == 2
 
     def test_exit_code_allowed(self) -> None:
@@ -255,11 +257,13 @@ class TestFormatter:
         assert formatter.exit_code([], AgentEvent.PRE_TOOL_USE) == 0
 
     def test_blocking_format(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.cursor_hooks import CursorHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = CursorHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         output = formatter.format(violations, AgentEvent.PRE_TOOL_USE)
         assert output is not None
         data = json.loads(output)
@@ -267,11 +271,13 @@ class TestFormatter:
         assert "agent_message" in data
 
     def test_advisory_format(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.cursor_hooks import CursorHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = CursorHookFormatter()
-        violations = [Violation(rule_id="max-file-size", message="File too large", severity=Severity.WARNING)]
+        violations = [
+            Violation(rule_id="max-file-size", message="File too large", severity=Severity.WARNING)
+        ]
         output = formatter.format(violations, AgentEvent.POST_TOOL_USE)
         assert output is not None
         data = json.loads(output)
@@ -284,22 +290,26 @@ class TestFormatter:
         assert formatter.format([], AgentEvent.PRE_TOOL_USE) is None
 
     def test_format_fallback_for_stop_event(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.cursor_hooks import CursorHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = CursorHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         output = formatter.format(violations, AgentEvent.STOP)
         assert output is not None
         data = json.loads(output)
         assert "additional_context" in data
 
     def test_format_subagent_start(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.cursor_hooks import CursorHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = CursorHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         output = formatter.format_subagent_start(violations)
         assert output is not None
         data = json.loads(output)
@@ -331,9 +341,12 @@ class TestUninstallHooksExtra:
         existing = {
             "version": 1,
             "hooks": {
-                "stop": {"_agentlint": "v2", "command": "agentlint check --event stop --adapter cursor"},
+                "stop": {
+                    "_agentlint": "v2",
+                    "command": "agentlint check --event stop --adapter cursor",
+                },
                 "preToolUse": [{"command": "echo hello"}],
-            }
+            },
         }
         hooks_file.write_text(json.dumps(existing))
         adapter = CursorAdapter()
@@ -346,11 +359,17 @@ class TestUninstallHooksExtra:
 class TestInstallHooksNonList:
     def test_install_handles_non_list_entries(self, tmp_path, monkeypatch) -> None:
         from agentlint.adapters import cursor
+
         original_build = cursor._build_hooks
+
         def fake_build(cmd):
             hooks = original_build(cmd)
-            hooks["hooks"]["stop"] = {"_agentlint": "v2", "command": f"{cmd} check --event stop --adapter cursor"}
+            hooks["hooks"]["stop"] = {
+                "_agentlint": "v2",
+                "command": f"{cmd} check --event stop --adapter cursor",
+            }
             return hooks
+
         monkeypatch.setattr(cursor, "_build_hooks", fake_build)
         adapter = CursorAdapter()
         adapter.install_hooks(str(tmp_path), scope="project")

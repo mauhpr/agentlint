@@ -4,6 +4,7 @@ Blocks Write, Edit, and Read operations on files outside the allowed scope.
 Deny patterns take precedence over allow patterns. If no file-scope config
 is present, the rule is inactive (zero-config = no restrictions).
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,13 +49,15 @@ class FileScope(Rule):
 
         for file_path in paths:
             if not self._is_allowed(file_path, allow, deny, context.project_dir):
-                violations.append(Violation(
-                    rule_id=self.id,
-                    message=f"{deny_message}: {file_path}",
-                    severity=self.severity,
-                    file_path=file_path,
-                    suggestion="Check file-scope allow/deny patterns in agentlint.yml",
-                ))
+                violations.append(
+                    Violation(
+                        rule_id=self.id,
+                        message=f"{deny_message}: {file_path}",
+                        severity=self.severity,
+                        file_path=file_path,
+                        suggestion="Check file-scope allow/deny patterns in agentlint.yml",
+                    )
+                )
 
         return violations
 
@@ -78,7 +81,11 @@ class FileScope(Rule):
         return paths
 
     def _is_allowed(
-        self, file_path: str, allow: list[str], deny: list[str], project_dir: str,
+        self,
+        file_path: str,
+        allow: list[str],
+        deny: list[str],
+        project_dir: str,
     ) -> bool:
         """Check if a file path is allowed. Deny takes precedence."""
         resolved = os.path.realpath(file_path)
@@ -103,8 +110,4 @@ class FileScope(Rule):
             return True
 
         # If allow list exists, file must match at least one pattern
-        for pattern in allow:
-            if any(fnmatch(c, pattern) for c in candidates):
-                return True
-
-        return False
+        return any(any(fnmatch(c, pattern) for c in candidates) for pattern in allow)

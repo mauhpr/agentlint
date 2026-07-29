@@ -97,7 +97,9 @@ class CustomRule(Rule):
     monkeypatch.setattr(packs, "load_installed_rules", lambda: [DummyRule()])
 
     cfg = AgentLintConfig(packs=["universal"], custom_rules_dir="rules")
-    assert [rule.id for rule in packs.load_project_rules(cfg, str(tmp_path), include_policy=False)] == [
+    assert [
+        rule.id for rule in packs.load_project_rules(cfg, str(tmp_path), include_policy=False)
+    ] == [
         "dummy-rule",
         "dummy-rule",
     ]
@@ -119,6 +121,8 @@ def test_load_project_rules_ignores_policy_loader_failures(monkeypatch):
     monkeypatch.setattr(packs, "load_installed_rules", lambda: [])
     import agentlint.agentchute.policy as policy
 
-    monkeypatch.setattr(policy, "build_policy_rules", lambda: (_ for _ in ()).throw(RuntimeError("bad policy")))
+    monkeypatch.setattr(
+        policy, "build_policy_rules", lambda: (_ for _ in ()).throw(RuntimeError("bad policy"))
+    )
 
     assert packs.load_project_rules(AgentLintConfig(packs=["universal"]), "/tmp/project") == []

@@ -10,13 +10,14 @@ Configuration in agentlint.yml:
       headers:
         Authorization: Bearer ${TOKEN}
 """
+
 from __future__ import annotations
 
 import os
 from typing import Any
 
 from agentlint.adapters.base import AgentAdapter
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext, to_hook_event
+from agentlint.models import AgentEvent, NormalizedTool, RuleContext, to_hook_event
 
 
 class GenericAdapter(AgentAdapter):
@@ -32,30 +33,25 @@ class GenericAdapter(AgentAdapter):
     @property
     def formatter(self):
         from agentlint.formats.plain_json import PlainJsonFormatter
+
         return PlainJsonFormatter()
 
     def resolve_project_dir(self) -> str:
-        return (
-            os.environ.get("AGENTLINT_PROJECT_DIR")
-            or os.getcwd()
-        )
+        return os.environ.get("AGENTLINT_PROJECT_DIR") or os.getcwd()
 
     def resolve_session_key(self) -> str:
-        return (
-            os.environ.get("AGENTLINT_SESSION_ID")
-            or f"pid-{os.getppid()}"
-        )
+        return os.environ.get("AGENTLINT_SESSION_ID") or f"pid-{os.getppid()}"
 
     def translate_event(self, native_event: str) -> AgentEvent:
         """Accepts both generic event values and AgentEvent member names."""
         try:
             return AgentEvent.from_string(native_event)
-        except ValueError:
+        except ValueError as exc:
             # Try matching against enum member names for convenience
             for member in AgentEvent:
                 if member.name == native_event:
                     return member
-            raise ValueError(f"Unknown generic event: {native_event}")
+            raise ValueError(f"Unknown generic event: {native_event}") from exc
 
     def normalize_tool_name(self, native_tool: str) -> str:
         """Accepts NormalizedTool values directly."""
@@ -97,6 +93,7 @@ class GenericAdapter(AgentAdapter):
     ) -> None:
         """Generic adapter does not install hooks — print configuration example."""
         import click
+
         click.echo("Generic adapter configured via agentlint.yml:")
         click.echo("""
 generic:

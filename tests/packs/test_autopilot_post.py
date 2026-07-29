@@ -1,4 +1,5 @@
 """Tests for autopilot pack PostToolUse and Stop rules."""
+
 from __future__ import annotations
 
 import time

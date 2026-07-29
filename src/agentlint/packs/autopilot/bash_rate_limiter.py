@@ -1,4 +1,5 @@
 """Rule: circuit-break runaway destructive Bash command loops."""
+
 from __future__ import annotations
 
 import re
@@ -50,10 +51,13 @@ class BashRateLimiter(Rule):
         max_ops = rule_config.get("max_destructive_ops", _DEFAULT_MAX)
         window_secs = rule_config.get("window_seconds", _DEFAULT_WINDOW)
 
-        rl = context.session_state.setdefault("rate_limiter", {
-            "destructive_count": 0,
-            "window_start": time.time(),
-        })
+        rl = context.session_state.setdefault(
+            "rate_limiter",
+            {
+                "destructive_count": 0,
+                "window_start": time.time(),
+            },
+        )
 
         now = time.time()
         # Reset window if expired

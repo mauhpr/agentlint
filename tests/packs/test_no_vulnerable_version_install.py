@@ -48,9 +48,7 @@ class TestExtract:
         assert ("npm", "@types/node", "18.0.0") in out
 
     def test_yarn_pnpm(self):
-        assert ("npm", "react", "17.0.2") in _extract_pinned_installs(
-            "yarn add react@17.0.2"
-        )
+        assert ("npm", "react", "17.0.2") in _extract_pinned_installs("yarn add react@17.0.2")
         assert ("npm", "typescript", "5.0.0") in _extract_pinned_installs(
             "pnpm add typescript@5.0.0"
         )
@@ -61,9 +59,9 @@ class TestExtract:
         ]
 
     def test_cargo_version_flag(self):
-        assert _extract_pinned_installs(
-            "cargo install ripgrep --version 13.0.0"
-        ) == [("crates.io", "ripgrep", "13.0.0")]
+        assert _extract_pinned_installs("cargo install ripgrep --version 13.0.0") == [
+            ("crates.io", "ripgrep", "13.0.0")
+        ]
 
     def test_skips_unpinned(self):
         # An unpinned npm install should NOT be flagged here — that's
@@ -175,15 +173,15 @@ class TestSelfDegrading:
         # Even with a populated feed, unpinned installs aren't flagged here.
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
         feed = {
-            "records": [{
-                "ecosystem": "npm",
-                "package": "lodash",
-                "vulnerable_versions": [
-                    {"events": [{"introduced": "0"}, {"fixed": "5.0.0"}]}
-                ],
-                "ghsa_id": "GHSA-xxxx",
-                "severity": "HIGH",
-            }],
+            "records": [
+                {
+                    "ecosystem": "npm",
+                    "package": "lodash",
+                    "vulnerable_versions": [{"events": [{"introduced": "0"}, {"fixed": "5.0.0"}]}],
+                    "ghsa_id": "GHSA-xxxx",
+                    "severity": "HIGH",
+                }
+            ],
         }
         with patch("agentlint.agentchute.cloud_feed.get", return_value=feed):
             assert self.rule.evaluate(_ctx("npm install lodash")) == []
@@ -203,16 +201,16 @@ class TestHappyPath:
 
     def test_blocks_vulnerable_npm_version(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "ecosystem": "npm",
-            "package": "lodash",
-            "vulnerable_versions": [
-                {"events": [{"introduced": "0"}, {"fixed": "4.17.21"}]}
-            ],
-            "ghsa_id": "GHSA-29mw-wpgm-hmr9",
-            "severity": "HIGH",
-            "summary": "Prototype pollution in lodash",
-        })
+        feed = self._feed(
+            {
+                "ecosystem": "npm",
+                "package": "lodash",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}, {"fixed": "4.17.21"}]}],
+                "ghsa_id": "GHSA-29mw-wpgm-hmr9",
+                "severity": "HIGH",
+                "summary": "Prototype pollution in lodash",
+            }
+        )
         with self._patch(feed):
             violations = self.rule.evaluate(_ctx("npm install lodash@4.17.20"))
         assert len(violations) == 1
@@ -225,29 +223,29 @@ class TestHappyPath:
 
     def test_allows_fixed_version(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "ecosystem": "npm",
-            "package": "lodash",
-            "vulnerable_versions": [
-                {"events": [{"introduced": "0"}, {"fixed": "4.17.21"}]}
-            ],
-            "ghsa_id": "GHSA-29mw-wpgm-hmr9",
-            "severity": "HIGH",
-        })
+        feed = self._feed(
+            {
+                "ecosystem": "npm",
+                "package": "lodash",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}, {"fixed": "4.17.21"}]}],
+                "ghsa_id": "GHSA-29mw-wpgm-hmr9",
+                "severity": "HIGH",
+            }
+        )
         with self._patch(feed):
             assert self.rule.evaluate(_ctx("npm install lodash@4.17.21")) == []
 
     def test_blocks_pip_eqeq(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "ecosystem": "PyPI",
-            "package": "requests",
-            "vulnerable_versions": [
-                {"events": [{"introduced": "2.0.0"}, {"fixed": "2.30.0"}]}
-            ],
-            "ghsa_id": "GHSA-9wx4-h78v-vm56",
-            "severity": "MEDIUM",
-        })
+        feed = self._feed(
+            {
+                "ecosystem": "PyPI",
+                "package": "requests",
+                "vulnerable_versions": [{"events": [{"introduced": "2.0.0"}, {"fixed": "2.30.0"}]}],
+                "ghsa_id": "GHSA-9wx4-h78v-vm56",
+                "severity": "MEDIUM",
+            }
+        )
         with self._patch(feed):
             violations = self.rule.evaluate(_ctx("pip install requests==2.25.0"))
         assert len(violations) == 1
@@ -255,14 +253,14 @@ class TestHappyPath:
     def test_unrelated_package_not_flagged(self, monkeypatch):
         # Same ecosystem + version, different package name: must not match.
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "ecosystem": "npm",
-            "package": "lodash",
-            "vulnerable_versions": [
-                {"events": [{"introduced": "0"}, {"fixed": "5.0.0"}]}
-            ],
-            "ghsa_id": "GHSA-x",
-        })
+        feed = self._feed(
+            {
+                "ecosystem": "npm",
+                "package": "lodash",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}, {"fixed": "5.0.0"}]}],
+                "ghsa_id": "GHSA-x",
+            }
+        )
         with self._patch(feed):
             assert self.rule.evaluate(_ctx("npm install express@4.17.0")) == []
 
@@ -304,8 +302,6 @@ class TestHappyPath:
             },
         )
         with self._patch(feed):
-            violations = self.rule.evaluate(
-                _ctx("cargo install ripgrep --version 13.0.0")
-            )
+            violations = self.rule.evaluate(_ctx("cargo install ripgrep --version 13.0.0"))
         assert len(violations) == 1
         assert "crates.io:ripgrep@13.0.0" in violations[0].message

@@ -1,4 +1,5 @@
 """Tests for AGENTS.md parser and config mapper."""
+
 from __future__ import annotations
 
 from click.testing import CliRunner
@@ -12,7 +13,6 @@ from agentlint.agents_md import (
 )
 from agentlint.cli import main
 from agentlint.detector import detect_stack
-
 
 # ---------------------------------------------------------------------------
 # find_agents_md
@@ -330,9 +330,7 @@ class TestImportAgentsMdCLI:
         assert "security" in content
 
     def test_merge_with_existing(self, tmp_path):
-        (tmp_path / "agentlint.yml").write_text(
-            "packs:\n  - universal\n  - quality\nrules: {}\n"
-        )
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n  - quality\nrules: {}\n")
         (tmp_path / "AGENTS.md").write_text("## Python\nUse pytest for testing\n")
         runner = CliRunner()
         result = runner.invoke(

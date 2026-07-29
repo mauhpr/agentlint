@@ -1,11 +1,12 @@
 """Output formatting for agent violations."""
+
 from __future__ import annotations
 
 import json
 
 from agentlint.formats.base import OutputFormatter
 from agentlint.formats.claude_hooks import ClaudeHookFormatter
-from agentlint.models import AgentEvent, Severity, Violation
+from agentlint.models import Severity, Violation
 
 
 class Reporter:
@@ -84,20 +85,24 @@ class Reporter:
         rule_fire_rates: list[dict] = []
         if total_evals > 0:
             for rid, count in sorted(rule_violations.items(), key=lambda x: x[1], reverse=True):
-                rule_fire_rates.append({
-                    "rule_id": rid,
-                    "fires": count,
-                    "evaluations": total_evals,
-                    "rate": round(count / total_evals, 4),
-                })
+                rule_fire_rates.append(
+                    {
+                        "rule_id": rid,
+                        "fires": count,
+                        "evaluations": total_evals,
+                        "rate": round(count / total_evals, 4),
+                    }
+                )
         circuit_breaker_per_rule: list[dict] = []
         for rid, cb_data in sorted(cb_state.items()):
-            circuit_breaker_per_rule.append({
-                "rule_id": rid,
-                "fire_count": cb_data.get("fire_count", 0),
-                "state": cb_data.get("state", "active"),
-                "transitions": cb_data.get("transitions", []),
-            })
+            circuit_breaker_per_rule.append(
+                {
+                    "rule_id": rid,
+                    "fire_count": cb_data.get("fire_count", 0),
+                    "state": cb_data.get("state", "active"),
+                    "transitions": cb_data.get("transitions", []),
+                }
+            )
 
         if output_format == "json":
             data = {
@@ -122,11 +127,14 @@ class Reporter:
                 data["hook_timing"] = {
                     "total_ms": round(hook_timing.get("total_ms", 0), 1),
                     "count": hook_timing.get("count", 0),
-                    "avg_ms": round(hook_timing.get("total_ms", 0) / max(hook_timing.get("count", 1), 1), 1),
+                    "avg_ms": round(
+                        hook_timing.get("total_ms", 0) / max(hook_timing.get("count", 1), 1), 1
+                    ),
                 }
             # Add circuit breaker degraded rules
             degraded = {
-                rid: data_cb for rid, data_cb in cb_state.items()
+                rid: data_cb
+                for rid, data_cb in cb_state.items()
                 if data_cb.get("state", "active") != "active"
             }
             if degraded:
@@ -165,9 +173,13 @@ class Reporter:
             count = hook_timing["count"]
             avg_ms = total_ms / count
             if total_ms >= 1000:
-                lines.append(f"Hook latency: {count} evaluations, avg {avg_ms:.0f}ms, total {total_ms / 1000:.1f}s")
+                lines.append(
+                    f"Hook latency: {count} evaluations, avg {avg_ms:.0f}ms, total {total_ms / 1000:.1f}s"
+                )
             else:
-                lines.append(f"Hook latency: {count} evaluations, avg {avg_ms:.0f}ms, total {total_ms:.0f}ms")
+                lines.append(
+                    f"Hook latency: {count} evaluations, avg {avg_ms:.0f}ms, total {total_ms:.0f}ms"
+                )
 
         # Files
         file_parts = []
@@ -184,7 +196,9 @@ class Reporter:
         if total_violations:
             lines.append("")
             lines.append(f"Violations ({total_violations} total)")
-            lines.append(f"  Blocked: {total_blocked} | Warnings: {total_warnings} | Info: {total_info}")
+            lines.append(
+                f"  Blocked: {total_blocked} | Warnings: {total_warnings} | Info: {total_info}"
+            )
 
         # Top rules
         if top_rules:
@@ -200,7 +214,8 @@ class Reporter:
 
         # Circuit breaker
         degraded = {
-            rid: data_cb for rid, data_cb in cb_state.items()
+            rid: data_cb
+            for rid, data_cb in cb_state.items()
             if data_cb.get("state", "active") != "active"
         }
         if degraded:
@@ -221,7 +236,7 @@ class Reporter:
                 rule_id = entry.get("rule_id", "?")
                 reason = entry.get("reason")
                 if reason:
-                    lines.append(f"  {file_label} — {rule_id} — \"{reason}\"")
+                    lines.append(f'  {file_label} — {rule_id} — "{reason}"')
                 else:
                     lines.append(f"  {file_label} — {rule_id}")
             if len(inline_ignores) > 10:
@@ -267,7 +282,8 @@ class Reporter:
         # Circuit breaker activity (only show non-active rules)
         if cb_state:
             degraded = {
-                rid: data for rid, data in cb_state.items()
+                rid: data
+                for rid, data in cb_state.items()
                 if data.get("state", "active") != "active"
             }
             if degraded:
@@ -282,7 +298,11 @@ class Reporter:
         state = session_state or {}
         vlog = state.get("violation_log")
         if vlog:
-            cum_total = vlog.get("total_blocked", 0) + vlog.get("total_warnings", 0) + vlog.get("total_info", 0)
+            cum_total = (
+                vlog.get("total_blocked", 0)
+                + vlog.get("total_warnings", 0)
+                + vlog.get("total_info", 0)
+            )
             if cum_total:
                 lines.append("")
                 lines.append(
@@ -291,7 +311,8 @@ class Reporter:
                 )
                 top_rules = sorted(
                     vlog.get("rule_violations", {}).items(),
-                    key=lambda x: x[1], reverse=True,
+                    key=lambda x: x[1],
+                    reverse=True,
                 )[:5]
                 if top_rules:
                     lines.append("Top rules:")
@@ -311,7 +332,9 @@ class Reporter:
                 cmds = audit.get("commands_count", 0)
                 findings = audit.get("findings", [])
                 if findings:
-                    lines.append(f"  [{agent_type}{id_suffix}] {cmds} commands, {len(findings)} finding(s):")
+                    lines.append(
+                        f"  [{agent_type}{id_suffix}] {cmds} commands, {len(findings)} finding(s):"
+                    )
                     for _label, cmd in findings:
                         lines.append(f"    - {cmd}")
                 else:

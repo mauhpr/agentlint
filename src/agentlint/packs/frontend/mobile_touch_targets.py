@@ -1,4 +1,5 @@
 """Rule: interactive elements too small for touch (WCAG 2.5.5)."""
+
 from __future__ import annotations
 
 import re

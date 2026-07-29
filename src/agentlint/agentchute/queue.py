@@ -3,8 +3,10 @@
 The hook path appends one privacy-safe JSON line and returns. Network
 delivery is handled later by a short-lived background flusher process.
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -201,7 +203,7 @@ def flush_queue(
 
         index = 0
         while index < len(pending) and time.time() < deadline:
-            raw_batch = pending[index:index + batch_size]
+            raw_batch = pending[index : index + batch_size]
             batch: list[dict] = []
             poison = 0
             for raw in raw_batch:
@@ -241,7 +243,9 @@ def flush_queue(
                 _record_failure()
                 return result
 
-            delivered = int(response.get("accepted", 0) or 0) + int(response.get("duplicates", 0) or 0)
+            delivered = int(response.get("accepted", 0) or 0) + int(
+                response.get("duplicates", 0) or 0
+            )
             if delivered <= 0:
                 delivered = len(batch)
             result.delivered += min(delivered, len(batch))
@@ -316,10 +320,8 @@ def _acquire_lock() -> bool:
 
 
 def _release_lock() -> None:
-    try:
+    with contextlib.suppress(OSError):
         _lock_path().unlink()
-    except OSError:
-        pass
 
 
 def _record_failure() -> None:
@@ -330,7 +332,5 @@ def _record_failure() -> None:
 
 
 def _clear_retry() -> None:
-    try:
+    with contextlib.suppress(OSError):
         _retry_path().unlink()
-    except OSError:
-        pass

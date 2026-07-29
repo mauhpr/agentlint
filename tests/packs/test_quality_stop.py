@@ -1,4 +1,5 @@
 """Tests for quality pack Stop rules."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext

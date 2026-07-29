@@ -1,4 +1,5 @@
 """Tests for package-manager-in-chroot rule."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -107,7 +108,9 @@ class TestPackageManagerInChroot:
     def test_allowed_ops_bypasses(self):
         ctx = _ctx(
             "chroot /mnt apt install nginx",
-            config={"package-manager-in-chroot": {"allowed_ops": ["chroot apt install/update/upgrade"]}},
+            config={
+                "package-manager-in-chroot": {"allowed_ops": ["chroot apt install/update/upgrade"]}
+            },
         )
         assert self.rule.evaluate(ctx) == []
 
@@ -152,14 +155,18 @@ class TestPackageManagerInChroot:
     def test_allowed_ops_bypasses_yum(self):
         ctx = _ctx(
             "chroot /mnt yum install httpd",
-            config={"package-manager-in-chroot": {"allowed_ops": ["chroot yum install/remove/update"]}},
+            config={
+                "package-manager-in-chroot": {"allowed_ops": ["chroot yum install/remove/update"]}
+            },
         )
         assert self.rule.evaluate(ctx) == []
 
     def test_allowed_ops_bypasses_dnf(self):
         ctx = _ctx(
             "chroot /mnt dnf install nginx",
-            config={"package-manager-in-chroot": {"allowed_ops": ["chroot dnf install/remove/update"]}},
+            config={
+                "package-manager-in-chroot": {"allowed_ops": ["chroot dnf install/remove/update"]}
+            },
         )
         assert self.rule.evaluate(ctx) == []
 

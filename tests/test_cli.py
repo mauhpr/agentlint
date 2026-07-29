@@ -1,4 +1,5 @@
 """Tests for AgentLint CLI entry point."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
+from agentlint import __version__
 from agentlint.cli import _codex_hooks_enabled, _enable_codex_hooks, _resolve_adapter, main
 
 
@@ -19,7 +21,7 @@ class TestMainCommand:
         result = runner.invoke(main, ["--version"])
 
         assert result.exit_code == 0
-        assert result.output.strip() == "agentlint 2.5.3"
+        assert result.output.strip() == f"agentlint {__version__}"
 
 
 class TestCheckCommand:
@@ -35,13 +37,15 @@ class TestCheckCommand:
 
     def test_check_blocks_secrets(self, tmp_path) -> None:
         """Write with an API key should be blocked via deny protocol (exit 0)."""
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": "config.py",
-                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "config.py",
+                    "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+                },
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -56,13 +60,15 @@ class TestCheckCommand:
 
     def test_check_passes_clean_code(self, tmp_path) -> None:
         """Write with clean code should pass (exit code 0)."""
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": "hello.py",
-                "content": "def hello():\n    return 'world'\n",
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "hello.py",
+                    "content": "def hello():\n    return 'world'\n",
+                },
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -131,13 +137,15 @@ class TestCheckErrorPaths:
 
     def test_binary_like_content(self, tmp_path) -> None:
         """Binary-like content in stdin should not crash."""
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": "test.bin",
-                "content": "\x00\x01\x02\x03binary content\xff\xfe",
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "test.bin",
+                    "content": "\x00\x01\x02\x03binary content\xff\xfe",
+                },
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -221,9 +229,18 @@ class TestCheckNewEvents:
     def test_all_new_events_accept_empty_input(self, tmp_path) -> None:
         """Every new event should accept empty JSON input without crashing."""
         new_events = [
-            "SessionEnd", "UserPromptSubmit", "SubagentStart", "SubagentStop",
-            "Notification", "PreCompact", "PostToolUseFailure", "PermissionRequest",
-            "ConfigChange", "WorktreeCreate", "WorktreeRemove", "TeammateIdle",
+            "SessionEnd",
+            "UserPromptSubmit",
+            "SubagentStart",
+            "SubagentStop",
+            "Notification",
+            "PreCompact",
+            "PostToolUseFailure",
+            "PermissionRequest",
+            "ConfigChange",
+            "WorktreeCreate",
+            "WorktreeRemove",
+            "TeammateIdle",
             "TaskCompleted",
         ]
         runner = CliRunner()
@@ -260,10 +277,12 @@ class TestCheckEdgeCases:
 
     def test_path_traversal_blocked(self, tmp_path) -> None:
         """File path outside project dir should be blocked in PostToolUse."""
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": "/etc/passwd"},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": "/etc/passwd"},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -302,10 +321,14 @@ class TestListRulesCommand:
         assert "docker-volume-guard" in result.output
         assert "18 rules total" in result.output
 
-    def test_list_rules_universal_pack(self) -> None:
+    def test_list_rules_universal_pack(self, tmp_path, monkeypatch) -> None:
         """list-rules --pack universal should show only universal rules."""
+        monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path / "policy"))
         runner = CliRunner()
-        result = runner.invoke(main, ["list-rules", "--pack", "universal"])
+        result = runner.invoke(
+            main,
+            ["list-rules", "--pack", "universal", "--project-dir", str(tmp_path)],
+        )
         assert result.exit_code == 0
         assert "no-secrets" in result.output
         assert "24 rules total" in result.output
@@ -390,7 +413,9 @@ class TestListRulesCommand:
         )
 
         runner = CliRunner()
-        result = runner.invoke(main, ["list-rules", "--pack", "mypack", "--project-dir", str(tmp_path)])
+        result = runner.invoke(
+            main, ["list-rules", "--pack", "mypack", "--project-dir", str(tmp_path)]
+        )
         assert result.exit_code == 0
         assert "my-custom-rule" in result.output
         assert "1 rules total" in result.output
@@ -419,7 +444,9 @@ class TestListRulesCommand:
         )
 
         runner = CliRunner()
-        result = runner.invoke(main, ["list-rules", "--pack", "universal", "--project-dir", str(tmp_path)])
+        result = runner.invoke(
+            main, ["list-rules", "--pack", "universal", "--project-dir", str(tmp_path)]
+        )
         assert result.exit_code == 0
         assert "custom-extra-universal" in result.output
         assert "no-secrets" in result.output  # built-in universal rules still present
@@ -439,13 +466,15 @@ class TestMonorepoCheck:
 
         runner = CliRunner()
         # Python rule should fire on backend file
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": str(tmp_path / "backend" / "app.py"),
-                "content": "try:\n    pass\nexcept:\n    pass\n",
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": str(tmp_path / "backend" / "app.py"),
+                    "content": "try:\n    pass\nexcept:\n    pass\n",
+                },
+            }
+        )
         result = runner.invoke(
             main,
             ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
@@ -489,9 +518,7 @@ class TestStatusCommand:
             "        return []\n"
         )
         # fintech NOT in packs: list
-        (tmp_path / "agentlint.yml").write_text(
-            "packs:\n  - universal\ncustom_rules_dir: rules/\n"
-        )
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\ncustom_rules_dir: rules/\n")
 
         runner = CliRunner()
         result_without = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
@@ -504,10 +531,10 @@ class TestStatusCommand:
 
         # Extract rule counts
         import re
+
         count_without = int(re.search(r"Rules: (\d+) active", result_without.output).group(1))
         count_with = int(re.search(r"Rules: (\d+) active", result_with.output).group(1))
         assert count_with == count_without + 1
-
 
     def test_status_shows_project_packs(self, tmp_path) -> None:
         (tmp_path / "agentlint.yml").write_text(
@@ -548,8 +575,7 @@ class TestSyncCommand:
         monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path / "queue"))
         monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path / "policy"))
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
-        from agentlint.agentchute import policy
-        from agentlint.agentchute import queue
+        from agentlint.agentchute import policy, queue
 
         queue.enqueue_event(
             {"tool_name": "Bash"},
@@ -643,14 +669,16 @@ class TestSyncCommand:
 
         policy._policy_root().mkdir(parents=True, exist_ok=True)
         policy._policy_path().write_text(
-            json.dumps({
-                "version": 7,
-                "required_packs": [
-                    {"id": "agentchute-compromised-packages", "type": "cloud_feed"},
-                    {"name": "definitely-missing-agentlint-pack"},
-                ],
-                "rules": [],
-            }),
+            json.dumps(
+                {
+                    "version": 7,
+                    "required_packs": [
+                        {"id": "agentchute-compromised-packages", "type": "cloud_feed"},
+                        {"name": "definitely-missing-agentlint-pack"},
+                    ],
+                    "rules": [],
+                }
+            ),
             encoding="utf-8",
         )
         runner = CliRunner()
@@ -680,7 +708,9 @@ class TestMagicalUxCommands:
         import agentlint.cli
         from agentlint.agentchute import policy
 
-        monkeypatch.setattr(policy, "policy_status", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+        monkeypatch.setattr(
+            policy, "policy_status", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
 
         assert agentlint.cli._agentchute_policy_metadata() == {
             "cached": False,
@@ -709,11 +739,17 @@ class TestMagicalUxCommands:
         monkeypatch.delenv("VIRTUAL_ENV", raising=False)
 
         monkeypatch.setattr(agentlint.cli.sys, "executable", "/opt/pipx/venvs/agentlint/bin/python")
-        monkeypatch.setattr(agentlint.cli.shutil, "which", lambda name: f"/bin/{name}" if name == "pipx" else None)
+        monkeypatch.setattr(
+            agentlint.cli.shutil, "which", lambda name: f"/bin/{name}" if name == "pipx" else None
+        )
         assert agentlint.cli._detect_update_command()[0] == "pipx"
 
-        monkeypatch.setattr(agentlint.cli.sys, "executable", "/Users/me/.local/share/uv/tools/agentlint/bin/python")
-        monkeypatch.setattr(agentlint.cli.shutil, "which", lambda name: f"/bin/{name}" if name == "uv" else None)
+        monkeypatch.setattr(
+            agentlint.cli.sys, "executable", "/Users/me/.local/share/uv/tools/agentlint/bin/python"
+        )
+        monkeypatch.setattr(
+            agentlint.cli.shutil, "which", lambda name: f"/bin/{name}" if name == "uv" else None
+        )
         assert agentlint.cli._detect_update_command()[0] == "uv tool"
 
         monkeypatch.setenv("VIRTUAL_ENV", "/tmp/venv")
@@ -726,7 +762,9 @@ class TestMagicalUxCommands:
         monkeypatch.setattr(agentlint.cli, "resolve_command", lambda: "/usr/local/bin/agentlint")
         assert agentlint.cli._detect_update_command()[0] == "pip"
 
-    def test_detect_update_command_uv_tool_from_resolved_binary(self, monkeypatch, tmp_path) -> None:
+    def test_detect_update_command_uv_tool_from_resolved_binary(
+        self, monkeypatch, tmp_path
+    ) -> None:
         import agentlint.cli
 
         binary = tmp_path / ".local" / "bin" / "agentlint"
@@ -736,7 +774,9 @@ class TestMagicalUxCommands:
         monkeypatch.delenv("VIRTUAL_ENV", raising=False)
         monkeypatch.setattr(agentlint.cli.sys, "executable", "/usr/bin/python")
         monkeypatch.setattr(agentlint.cli, "resolve_command", lambda: str(binary))
-        monkeypatch.setattr(agentlint.cli.shutil, "which", lambda name: "/bin/uv" if name == "uv" else None)
+        monkeypatch.setattr(
+            agentlint.cli.shutil, "which", lambda name: "/bin/uv" if name == "uv" else None
+        )
 
         assert agentlint.cli._detect_update_command()[0] == "uv tool"
 
@@ -744,8 +784,14 @@ class TestMagicalUxCommands:
         import agentlint.cli
 
         profile = tmp_path / ".zshrc"
-        profile.write_text("before\n" + agentlint.cli._agentchute_env_block(api_url="old", team_key="old") + "\nafter\n")
-        agentlint.cli._persist_agentchute_env(api_url="new-url", team_key="new-key", profile=profile)
+        profile.write_text(
+            "before\n"
+            + agentlint.cli._agentchute_env_block(api_url="old", team_key="old")
+            + "\nafter\n"
+        )
+        agentlint.cli._persist_agentchute_env(
+            api_url="new-url", team_key="new-key", profile=profile
+        )
         assert "old" not in profile.read_text()
         assert "new-key" in profile.read_text()
 
@@ -804,8 +850,13 @@ class TestMagicalUxCommands:
         monkeypatch.setenv("GEMINI_SESSION_ID", "session")
         assert agentlint.cli._detected_agent_platforms(str(tmp_path)) == ["gemini"]
         assert agentlint.cli._resolve_onboard_platforms(("auto",), str(tmp_path)) == ["gemini"]
-        assert agentlint.cli._resolve_onboard_platforms(("all",), str(tmp_path)) == list(agentlint.cli._HOOK_PLATFORMS)
-        assert agentlint.cli._resolve_onboard_platforms(("claude,,cursor",), str(tmp_path)) == ["claude", "cursor"]
+        assert agentlint.cli._resolve_onboard_platforms(("all",), str(tmp_path)) == list(
+            agentlint.cli._HOOK_PLATFORMS
+        )
+        assert agentlint.cli._resolve_onboard_platforms(("claude,,cursor",), str(tmp_path)) == [
+            "claude",
+            "cursor",
+        ]
 
         try:
             agentlint.cli._resolve_onboard_platforms(("unknown",), str(tmp_path))
@@ -918,7 +969,9 @@ class TestMagicalUxCommands:
         assert "claude:" in result.output
         assert not profile.exists()
 
-    def test_onboard_runs_update_and_writes_config_env_hooks_and_dashboard(self, tmp_path, monkeypatch) -> None:
+    def test_onboard_runs_update_and_writes_config_env_hooks_and_dashboard(
+        self, tmp_path, monkeypatch
+    ) -> None:
         import agentlint.cli
 
         profile = tmp_path / ".zshrc"
@@ -1017,7 +1070,9 @@ class TestMagicalUxCommands:
         assert result.exit_code == 0
         assert not (tmp_path / ".claude").exists()
 
-    def test_agentlint_test_runs_local_smoke_without_agentchute_key(self, tmp_path, monkeypatch) -> None:
+    def test_agentlint_test_runs_local_smoke_without_agentchute_key(
+        self, tmp_path, monkeypatch
+    ) -> None:
         monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(tmp_path / "queue"))
         monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
         monkeypatch.delenv("AGENTCHUTE_ENABLED", raising=False)
@@ -1060,23 +1115,29 @@ class TestMagicalUxCommands:
         (tmp_path / "agentlint.yml").write_text(
             "packs:\n  - universal\nagentchute:\n  enabled: true\n"
         )
-        (policy_dir / "policy.json").write_text(json.dumps({
-            "version": 1,
-            "updated_at": "2026-05-19T12:00:00Z",
-            "rules": [{
-                "id": "org-block-forbidden-domain",
-                "enabled": True,
-                "event": "PreToolUse",
-                "tool": "Bash",
-                "severity": "error",
-                "match": {
-                    "field": "command",
-                    "operator": "contains",
-                    "value": "internal-forbidden.example",
-                },
-                "message": "Blocked company-forbidden domain fetch.",
-            }],
-        }))
+        (policy_dir / "policy.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updated_at": "2026-05-19T12:00:00Z",
+                    "rules": [
+                        {
+                            "id": "org-block-forbidden-domain",
+                            "enabled": True,
+                            "event": "PreToolUse",
+                            "tool": "Bash",
+                            "severity": "error",
+                            "match": {
+                                "field": "command",
+                                "operator": "contains",
+                                "value": "internal-forbidden.example",
+                            },
+                            "message": "Blocked company-forbidden domain fetch.",
+                        }
+                    ],
+                }
+            )
+        )
         runner = CliRunner()
 
         result = runner.invoke(
@@ -1117,23 +1178,29 @@ class TestMagicalUxCommands:
             "packs:\n  - universal\nagentchute:\n  enabled: true\n"
         )
         policy_dir.mkdir()
-        (policy_dir / "policy.json").write_text(json.dumps({
-            "version": 1,
-            "updated_at": "2026-05-19T12:00:00Z",
-            "rules": [{
-                "id": "org-block-curl-pipe-sh",
-                "enabled": True,
-                "event": "PreToolUse",
-                "tool": "Bash",
-                "severity": "error",
-                "match": {
-                    "field": "command",
-                    "operator": "contains",
-                    "value": "| sh",
-                },
-                "message": "Blocked curl piped to shell.",
-            }],
-        }))
+        (policy_dir / "policy.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updated_at": "2026-05-19T12:00:00Z",
+                    "rules": [
+                        {
+                            "id": "org-block-curl-pipe-sh",
+                            "enabled": True,
+                            "event": "PreToolUse",
+                            "tool": "Bash",
+                            "severity": "error",
+                            "match": {
+                                "field": "command",
+                                "operator": "contains",
+                                "value": "| sh",
+                            },
+                            "message": "Blocked curl piped to shell.",
+                        }
+                    ],
+                }
+            )
+        )
 
         result = CliRunner().invoke(
             main,
@@ -1193,7 +1260,9 @@ class TestMagicalUxCommands:
         assert delivered.exit_code == 0
         assert "AgentChute upload: delivered 1, failed 0" in delivered.output
 
-    def test_policy_template_refresh_skipped_and_no_match_without_policy(self, tmp_path, monkeypatch) -> None:
+    def test_policy_template_refresh_skipped_and_no_match_without_policy(
+        self, tmp_path, monkeypatch
+    ) -> None:
         from agentlint.agentchute.policy import PolicyRefreshResult
         from agentlint.agentchute.queue import FlushResult
 
@@ -1293,8 +1362,10 @@ class TestMagicalUxCommands:
         queue_dir = tmp_path / "queue"
         queue_dir.mkdir()
         (queue_dir / "queue.jsonl").write_text(
-            json.dumps({"event_id": "old-1", "event": {}}) + "\n"
-            + json.dumps({"event_id": "old-2", "event": {}}) + "\n",
+            json.dumps({"event_id": "old-1", "event": {}})
+            + "\n"
+            + json.dumps({"event_id": "old-2", "event": {}})
+            + "\n",
             encoding="utf-8",
         )
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
@@ -1348,27 +1419,30 @@ class TestMagicalUxCommands:
             def json(self) -> dict:
                 return self.body
 
-        with patch(
-            "requests.post",
-            return_value=Response(
-                {
-                    "pairing_id": "pair_123",
-                    "user_code": "ABC-123",
-                    "verification_url": "http://localhost:3001/dashboard/settings/license?pair=ABC-123",
-                    "expires_at": "2026-05-15T12:00:00Z",
-                }
-            ),
-        ) as post, patch(
-            "requests.get",
-            return_value=Response(
-                {
-                    "status": "approved",
-                    "full_key": "ac_team_from_pairing",
-                    "api_url": "http://localhost:8000/v1",
-                    "expires_at": "2026-05-15T12:00:00Z",
-                }
-            ),
-        ) as get:
+        with (
+            patch(
+                "requests.post",
+                return_value=Response(
+                    {
+                        "pairing_id": "pair_123",
+                        "user_code": "ABC-123",
+                        "verification_url": "http://localhost:3001/dashboard/settings/license?pair=ABC-123",
+                        "expires_at": "2026-05-15T12:00:00Z",
+                    }
+                ),
+            ) as post,
+            patch(
+                "requests.get",
+                return_value=Response(
+                    {
+                        "status": "approved",
+                        "full_key": "ac_team_from_pairing",
+                        "api_url": "http://localhost:8000/v1",
+                        "expires_at": "2026-05-15T12:00:00Z",
+                    }
+                ),
+            ) as get,
+        ):
             result = CliRunner().invoke(
                 main,
                 [
@@ -1404,18 +1478,21 @@ class TestMagicalUxCommands:
             def json(self) -> dict:
                 return self.body
 
-        with patch(
-            "requests.post",
-            return_value=Response(
-                {
-                    "pairing_id": "pair_123",
-                    "user_code": "ABC-123",
-                    "verification_url": "http://localhost:3001/pair",
-                }
+        with (
+            patch(
+                "requests.post",
+                return_value=Response(
+                    {
+                        "pairing_id": "pair_123",
+                        "user_code": "ABC-123",
+                        "verification_url": "http://localhost:3001/pair",
+                    }
+                ),
             ),
-        ), patch(
-            "requests.get",
-            return_value=Response({"status": "expired"}),
+            patch(
+                "requests.get",
+                return_value=Response({"status": "expired"}),
+            ),
         ):
             result = CliRunner().invoke(
                 main,
@@ -1451,12 +1528,15 @@ class TestMagicalUxCommands:
 
         times = iter([0, 1, 601])
         monkeypatch.setattr("time.time", lambda: next(times))
-        with patch(
-            "requests.post",
-            return_value=Response({"pairing_id": "pair_123", "user_code": "ABC-123"}),
-        ), patch(
-            "requests.get",
-            return_value=Response({"status": "pending"}),
+        with (
+            patch(
+                "requests.post",
+                return_value=Response({"pairing_id": "pair_123", "user_code": "ABC-123"}),
+            ),
+            patch(
+                "requests.get",
+                return_value=Response({"status": "pending"}),
+            ),
         ):
             result = CliRunner().invoke(
                 main,
@@ -1530,20 +1610,24 @@ class TestMagicalUxCommands:
         )
 
         assert result.exit_code == 0
-        assert calls == [{
-            "max_events": 7,
-            "batch_size": 3,
-            "time_budget": 1.5,
-            "dry_run": False,
-            "background": False,
-        }]
+        assert calls == [
+            {
+                "max_events": 7,
+                "batch_size": 3,
+                "time_budget": 1.5,
+                "dry_run": False,
+                "background": False,
+            }
+        ]
 
     def test_queue_discard_pending_advances_cursor(self, tmp_path, monkeypatch) -> None:
         queue_dir = tmp_path / "queue"
         queue_dir.mkdir()
         (queue_dir / "queue.jsonl").write_text(
-            json.dumps({"event_id": "old-1", "event": {}}) + "\n"
-            + json.dumps({"event_id": "old-2", "event": {}}) + "\n",
+            json.dumps({"event_id": "old-1", "event": {}})
+            + "\n"
+            + json.dumps({"event_id": "old-2", "event": {}})
+            + "\n",
             encoding="utf-8",
         )
         monkeypatch.setenv("AGENTLINT_AGENTCHUTE_QUEUE_DIR", str(queue_dir))
@@ -1676,10 +1760,12 @@ class TestDoctorCommand:
         assert result.exit_code == 0
         assert "All checks passed" in result.output
 
-    def test_doctor_fix_repairs_config_hooks_policy_and_reports_io_errors(self, tmp_path, monkeypatch) -> None:
+    def test_doctor_fix_repairs_config_hooks_policy_and_reports_io_errors(
+        self, tmp_path, monkeypatch
+    ) -> None:
         import agentlint.cli
-        from agentlint.agentchute.policy import PolicyRefreshResult
         from agentlint.agentchute import queue
+        from agentlint.agentchute.policy import PolicyRefreshResult
 
         monkeypatch.setenv("CODEX_SESSION_ID", "session")
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_secret")
@@ -1744,8 +1830,9 @@ class TestDoctorCommand:
         assert "AgentChute credentials:" in result.output
         assert "(present)" in result.output
 
-
-    def test_doctor_warns_agentchute_enabled_without_license_key(self, tmp_path, monkeypatch) -> None:
+    def test_doctor_warns_agentchute_enabled_without_license_key(
+        self, tmp_path, monkeypatch
+    ) -> None:
         monkeypatch.delenv("AGENTCHUTE_LICENSE_KEY", raising=False)
         (tmp_path / "agentlint.yml").write_text("agentchute:\n  enabled: true\n")
 
@@ -1785,7 +1872,6 @@ class TestDoctorCommand:
         assert "Recordings dir:" in result.output
         assert "writable" in result.output
 
-
     def test_doctor_validates_custom_rules_dir_exists(self, tmp_path) -> None:
         """doctor should warn when custom_rules_dir is configured but missing."""
         (tmp_path / "agentlint.yml").write_text(
@@ -1799,9 +1885,7 @@ class TestDoctorCommand:
         """doctor should warn when custom_rules_dir exists but has no .py files."""
         rules_dir = tmp_path / "rules"
         rules_dir.mkdir()
-        (tmp_path / "agentlint.yml").write_text(
-            "packs:\n  - universal\ncustom_rules_dir: rules/\n"
-        )
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\ncustom_rules_dir: rules/\n")
         runner = CliRunner()
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
         assert "has no .py files" in result.output
@@ -1823,9 +1907,7 @@ class TestDoctorCommand:
             "    def evaluate(self, context: RuleContext) -> list[Violation]:\n"
             "        return []\n"
         )
-        (tmp_path / "agentlint.yml").write_text(
-            "packs:\n  - universal\ncustom_rules_dir: rules/\n"
-        )
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\ncustom_rules_dir: rules/\n")
         runner = CliRunner()
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
         assert "fintech" in result.output
@@ -1859,8 +1941,11 @@ class TestDoctorCommand:
     def test_doctor_suggests_cli_recipe(self, tmp_path, monkeypatch) -> None:
         """doctor should suggest CLI recipes when tools are in PATH."""
         import shutil
+
         original_which = shutil.which
-        monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/ruff" if cmd == "ruff" else original_which(cmd))
+        monkeypatch.setattr(
+            shutil, "which", lambda cmd: "/usr/bin/ruff" if cmd == "ruff" else original_which(cmd)
+        )
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
         runner = CliRunner()
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
@@ -1869,8 +1954,11 @@ class TestDoctorCommand:
     def test_doctor_suggests_ruff_format_recipe(self, tmp_path, monkeypatch) -> None:
         """doctor should suggest ruff format alongside ruff check."""
         import shutil
+
         original_which = shutil.which
-        monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/ruff" if cmd == "ruff" else original_which(cmd))
+        monkeypatch.setattr(
+            shutil, "which", lambda cmd: "/usr/bin/ruff" if cmd == "ruff" else original_which(cmd)
+        )
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
         runner = CliRunner()
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
@@ -1880,6 +1968,7 @@ class TestDoctorCommand:
     def test_doctor_no_recipes_when_cli_configured(self, tmp_path, monkeypatch) -> None:
         """doctor should not suggest recipes when cli-integration is already configured."""
         import shutil
+
         monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/ruff")
         (tmp_path / "agentlint.yml").write_text(
             "packs:\n  - universal\nrules:\n  cli-integration:\n    commands:\n"
@@ -1892,6 +1981,7 @@ class TestDoctorCommand:
     def test_doctor_no_recipes_when_tool_missing(self, tmp_path, monkeypatch) -> None:
         """doctor should not suggest recipes when tools aren't installed."""
         import shutil
+
         monkeypatch.setattr(shutil, "which", lambda cmd: None)
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
         runner = CliRunner()
@@ -1956,13 +2046,15 @@ class TestReportCommand:
         target = tmp_path / "test.py"
         target.write_text("x = 1\n")
 
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": str(target),
-                "content": "x = 2\n",
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": str(target),
+                    "content": "x = 2\n",
+                },
+            }
+        )
         runner = CliRunner()
         runner.invoke(
             main,
@@ -1979,10 +2071,12 @@ class TestSubagentFieldMapping:
 
     def test_subagent_start_passthrough(self, tmp_path) -> None:
         """SubagentStart event should accept agent fields."""
-        payload = json.dumps({
-            "agent_type": "general-purpose",
-            "agent_id": "abc-123",
-        })
+        payload = json.dumps(
+            {
+                "agent_type": "general-purpose",
+                "agent_id": "abc-123",
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -1993,11 +2087,13 @@ class TestSubagentFieldMapping:
 
     def test_subagent_stop_reads_last_assistant_message(self, tmp_path) -> None:
         """SubagentStop should read last_assistant_message field."""
-        payload = json.dumps({
-            "last_assistant_message": "I completed the task",
-            "agent_type": "general-purpose",
-            "agent_id": "abc-123",
-        })
+        payload = json.dumps(
+            {
+                "last_assistant_message": "I completed the task",
+                "agent_type": "general-purpose",
+                "agent_id": "abc-123",
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2008,10 +2104,12 @@ class TestSubagentFieldMapping:
 
     def test_subagent_stop_falls_back_to_subagent_output(self, tmp_path) -> None:
         """SubagentStop should fall back to subagent_output for backward compat."""
-        payload = json.dumps({
-            "subagent_output": "legacy field",
-            "agent_type": "general-purpose",
-        })
+        payload = json.dumps(
+            {
+                "subagent_output": "legacy field",
+                "agent_type": "general-purpose",
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2022,11 +2120,13 @@ class TestSubagentFieldMapping:
 
     def test_subagent_stop_with_transcript_path(self, tmp_path) -> None:
         """SubagentStop should accept agent_transcript_path."""
-        payload = json.dumps({
-            "agent_transcript_path": "/tmp/transcript.jsonl",
-            "agent_type": "general-purpose",
-            "agent_id": "abc-123",
-        })
+        payload = json.dumps(
+            {
+                "agent_transcript_path": "/tmp/transcript.jsonl",
+                "agent_type": "general-purpose",
+                "agent_id": "abc-123",
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2040,10 +2140,12 @@ class TestSubagentFieldMapping:
         config_path = tmp_path / "agentlint.yml"
         config_path.write_text("stack: auto\npacks:\n  - universal\n  - autopilot\n")
 
-        payload = json.dumps({
-            "agent_type": "general-purpose",
-            "agent_id": "abc-123",
-        })
+        payload = json.dumps(
+            {
+                "agent_type": "general-purpose",
+                "agent_id": "abc-123",
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2065,14 +2167,16 @@ class TestReportCircuitBreaker:
         monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
         monkeypatch.setenv("CLAUDE_SESSION_ID", "test-cb-report")
 
-        save_session({
-            "circuit_breaker": {
-                "no-destructive-commands": {
-                    "fire_count": 5,
-                    "state": "degraded",
+        save_session(
+            {
+                "circuit_breaker": {
+                    "no-destructive-commands": {
+                        "fire_count": 5,
+                        "state": "degraded",
+                    }
                 }
             }
-        })
+        )
 
         runner = CliRunner()
         result = runner.invoke(
@@ -2097,6 +2201,7 @@ class TestRecordingsCommands:
     def test_recordings_list_shows_entries(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
+
         append_event({"ts": 1.0, "event": "PreToolUse", "tool_name": "Bash"}, "test-sess")
 
         runner = CliRunner()
@@ -2108,11 +2213,17 @@ class TestRecordingsCommands:
     def test_recordings_show(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
-        append_event({
-            "ts": 1710000000.0, "event": "PreToolUse",
-            "tool_name": "Bash", "violations": [],
-            "tool_summary": {"command": "ls -la", "file_path": None, "content_length": None},
-        }, "show-sess")
+
+        append_event(
+            {
+                "ts": 1710000000.0,
+                "event": "PreToolUse",
+                "tool_name": "Bash",
+                "violations": [],
+                "tool_summary": {"command": "ls -la", "file_path": None, "content_length": None},
+            },
+            "show-sess",
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["recordings", "show", "show-sess"])
@@ -2124,11 +2235,17 @@ class TestRecordingsCommands:
     def test_recordings_stats(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
+
         for i in range(5):
-            append_event({
-                "ts": float(i), "event": "PreToolUse",
-                "tool_name": "Bash", "violations": [],
-            }, "stats-sess")
+            append_event(
+                {
+                    "ts": float(i),
+                    "event": "PreToolUse",
+                    "tool_name": "Bash",
+                    "violations": [],
+                },
+                "stats-sess",
+            )
 
         runner = CliRunner()
         result = runner.invoke(main, ["recordings", "stats"])
@@ -2139,6 +2256,7 @@ class TestRecordingsCommands:
     def test_recordings_clear(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
+
         append_event({"ts": 1.0}, "to-delete")
 
         runner = CliRunner()
@@ -2163,14 +2281,23 @@ class TestRecordingsCommands:
     def test_recordings_show_agent_summary(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
-        append_event({
-            "ts": 1710000000.0, "event": "PreToolUse",
-            "tool_name": "Agent", "violations": [],
-            "tool_summary": {
-                "command": None, "file_path": None, "content_length": None,
-                "subagent_type": "Explore", "description": "Find auth code",
+
+        append_event(
+            {
+                "ts": 1710000000.0,
+                "event": "PreToolUse",
+                "tool_name": "Agent",
+                "violations": [],
+                "tool_summary": {
+                    "command": None,
+                    "file_path": None,
+                    "content_length": None,
+                    "subagent_type": "Explore",
+                    "description": "Find auth code",
+                },
             },
-        }, "agent-sess")
+            "agent-sess",
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["recordings", "show", "agent-sess"])
@@ -2181,14 +2308,22 @@ class TestRecordingsCommands:
     def test_recordings_show_web_summary(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
-        append_event({
-            "ts": 1710000000.0, "event": "PreToolUse",
-            "tool_name": "WebSearch", "violations": [],
-            "tool_summary": {
-                "command": None, "file_path": None, "content_length": None,
-                "query": "python asyncio tutorial",
+
+        append_event(
+            {
+                "ts": 1710000000.0,
+                "event": "PreToolUse",
+                "tool_name": "WebSearch",
+                "violations": [],
+                "tool_summary": {
+                    "command": None,
+                    "file_path": None,
+                    "content_length": None,
+                    "query": "python asyncio tutorial",
+                },
             },
-        }, "web-sess")
+            "web-sess",
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["recordings", "show", "web-sess"])
@@ -2198,18 +2333,29 @@ class TestRecordingsCommands:
     def test_recordings_show_violations_only(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
+
         # Clean event
-        append_event({
-            "ts": 1.0, "event": "PreToolUse",
-            "tool_name": "Bash", "violations": [],
-            "tool_summary": {"command": "ls", "file_path": None, "content_length": None},
-        }, "filter-sess")
+        append_event(
+            {
+                "ts": 1.0,
+                "event": "PreToolUse",
+                "tool_name": "Bash",
+                "violations": [],
+                "tool_summary": {"command": "ls", "file_path": None, "content_length": None},
+            },
+            "filter-sess",
+        )
         # Event with violation
-        append_event({
-            "ts": 2.0, "event": "PreToolUse",
-            "tool_name": "Write", "violations": [{"rule_id": "no-secrets", "severity": "error"}],
-            "tool_summary": {"command": None, "file_path": "/bad.py", "content_length": 100},
-        }, "filter-sess")
+        append_event(
+            {
+                "ts": 2.0,
+                "event": "PreToolUse",
+                "tool_name": "Write",
+                "violations": [{"rule_id": "no-secrets", "severity": "error"}],
+                "tool_summary": {"command": None, "file_path": "/bad.py", "content_length": 100},
+            },
+            "filter-sess",
+        )
 
         runner = CliRunner()
         # Without filter: both events shown
@@ -2227,14 +2373,22 @@ class TestRecordingsCommands:
     def test_recordings_show_url_summary(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
-        append_event({
-            "ts": 1710000000.0, "event": "PreToolUse",
-            "tool_name": "WebFetch", "violations": [],
-            "tool_summary": {
-                "command": None, "file_path": None, "content_length": None,
-                "url": "https://example.com/api/docs",
+
+        append_event(
+            {
+                "ts": 1710000000.0,
+                "event": "PreToolUse",
+                "tool_name": "WebFetch",
+                "violations": [],
+                "tool_summary": {
+                    "command": None,
+                    "file_path": None,
+                    "content_length": None,
+                    "url": "https://example.com/api/docs",
+                },
             },
-        }, "url-sess")
+            "url-sess",
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["recordings", "show", "url-sess"])
@@ -2244,14 +2398,22 @@ class TestRecordingsCommands:
     def test_recordings_show_notebook_summary(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
-        append_event({
-            "ts": 1710000000.0, "event": "PreToolUse",
-            "tool_name": "NotebookEdit", "violations": [],
-            "tool_summary": {
-                "command": None, "file_path": None, "content_length": None,
-                "cell_index": 5,
+
+        append_event(
+            {
+                "ts": 1710000000.0,
+                "event": "PreToolUse",
+                "tool_name": "NotebookEdit",
+                "violations": [],
+                "tool_summary": {
+                    "command": None,
+                    "file_path": None,
+                    "content_length": None,
+                    "cell_index": 5,
+                },
             },
-        }, "nb-sess")
+            "nb-sess",
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["recordings", "show", "nb-sess"])
@@ -2261,11 +2423,17 @@ class TestRecordingsCommands:
     def test_recordings_show_no_violation_summary_when_clean(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         from agentlint.recorder import append_event
-        append_event({
-            "ts": 1.0, "event": "PreToolUse",
-            "tool_name": "Bash", "violations": [],
-            "tool_summary": {"command": "ls", "file_path": None, "content_length": None},
-        }, "clean-sess")
+
+        append_event(
+            {
+                "ts": 1.0,
+                "event": "PreToolUse",
+                "tool_name": "Bash",
+                "violations": [],
+                "tool_summary": {"command": "ls", "file_path": None, "content_length": None},
+            },
+            "clean-sess",
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["recordings", "show", "clean-sess"])
@@ -2283,10 +2451,12 @@ class TestRecordingIntegration:
         monkeypatch.setenv("CLAUDE_SESSION_ID", "rec-integration-test")
         monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
 
-        payload = json.dumps({
-            "tool_name": "Bash",
-            "tool_input": {"command": "ls -la"},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "ls -la"},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2296,6 +2466,7 @@ class TestRecordingIntegration:
         assert result.exit_code == 0
 
         from agentlint.recorder import load_recording
+
         recording = load_recording("rec-integration-test")
         assert len(recording) == 1
         assert recording[0]["tool_name"] == "Bash"
@@ -2310,10 +2481,12 @@ class TestRecordingIntegration:
         monkeypatch.setenv("CLAUDE_SESSION_ID", "no-rec-test")
         monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
 
-        payload = json.dumps({
-            "tool_name": "Bash",
-            "tool_input": {"command": "echo hello"},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "echo hello"},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2343,6 +2516,7 @@ class TestRecordingIntegration:
         assert result.exit_code == 0
 
         from agentlint.recorder import load_recording
+
         recording = load_recording("rec-report-test")
         assert len(recording) == 1
         assert recording[0]["event"] == "Stop"
@@ -2356,10 +2530,12 @@ class TestRecordingIntegration:
         monkeypatch.setenv("CLAUDE_SESSION_ID", "fail-test")
         monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
 
-        payload = json.dumps({
-            "tool_name": "Bash",
-            "tool_input": {"command": "ls"},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "ls"},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2457,16 +2633,18 @@ class TestReportSummaryFlag:
         monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
         monkeypatch.setenv("CLAUDE_SESSION_ID", "test-summary-text")
 
-        save_session({
-            "violation_log": {
-                "total_evaluations": 10,
-                "total_blocked": 2,
-                "total_warnings": 3,
-                "total_info": 1,
-                "rule_violations": {"no-secrets": 2, "max-file-size": 4},
-            },
-            "files_touched": ["a.py", "b.py"],
-        })
+        save_session(
+            {
+                "violation_log": {
+                    "total_evaluations": 10,
+                    "total_blocked": 2,
+                    "total_warnings": 3,
+                    "total_info": 1,
+                    "rule_violations": {"no-secrets": 2, "max-file-size": 4},
+                },
+                "files_touched": ["a.py", "b.py"],
+            }
+        )
 
         runner = CliRunner()
         result = runner.invoke(
@@ -2484,15 +2662,17 @@ class TestReportSummaryFlag:
         monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
         monkeypatch.setenv("CLAUDE_SESSION_ID", "test-summary-json")
 
-        save_session({
-            "violation_log": {
-                "total_evaluations": 5,
-                "total_blocked": 1,
-                "total_warnings": 2,
-                "total_info": 0,
-                "rule_violations": {"no-secrets": 1},
-            },
-        })
+        save_session(
+            {
+                "violation_log": {
+                    "total_evaluations": 5,
+                    "total_blocked": 1,
+                    "total_warnings": 2,
+                    "total_info": 0,
+                    "rule_violations": {"no-secrets": 1},
+                },
+            }
+        )
 
         runner = CliRunner()
         result = runner.invoke(
@@ -2558,13 +2738,15 @@ class TestViolationLogTracking:
         runner = CliRunner()
 
         # First check — triggers no-secrets
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": "config.py",
-                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "config.py",
+                    "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+                },
+            }
+        )
         runner.invoke(
             main,
             ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
@@ -2585,13 +2767,15 @@ class TestViolationLogTracking:
 
         runner = CliRunner()
 
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": "hello.py",
-                "content": "def hello():\n    return 'world'\n",
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "hello.py",
+                    "content": "def hello():\n    return 'world'\n",
+                },
+            }
+        )
         runner.invoke(
             main,
             ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path)],
@@ -2740,16 +2924,18 @@ class TestHookTiming:
 
         monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
         monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing-text")
-        save_session({
-            "violation_log": {
-                "total_evaluations": 5,
-                "total_blocked": 0,
-                "total_warnings": 1,
-                "total_info": 0,
-                "rule_violations": {},
-            },
-            "_hook_timing": {"total_ms": 42.5, "count": 5},
-        })
+        save_session(
+            {
+                "violation_log": {
+                    "total_evaluations": 5,
+                    "total_blocked": 0,
+                    "total_warnings": 1,
+                    "total_info": 0,
+                    "rule_violations": {},
+                },
+                "_hook_timing": {"total_ms": 42.5, "count": 5},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2762,16 +2948,18 @@ class TestHookTiming:
 
         monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
         monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing-json")
-        save_session({
-            "violation_log": {
-                "total_evaluations": 3,
-                "total_blocked": 0,
-                "total_warnings": 0,
-                "total_info": 0,
-                "rule_violations": {},
-            },
-            "_hook_timing": {"total_ms": 15.0, "count": 3},
-        })
+        save_session(
+            {
+                "violation_log": {
+                    "total_evaluations": 3,
+                    "total_blocked": 0,
+                    "total_warnings": 0,
+                    "total_info": 0,
+                    "rule_violations": {},
+                },
+                "_hook_timing": {"total_ms": 15.0, "count": 3},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2819,13 +3007,15 @@ class TestHookTiming:
         """Violations should still work correctly with timing tracking."""
         monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
         monkeypatch.setenv("CLAUDE_SESSION_ID", "test-timing-viol")
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": "config.py",
-                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "config.py",
+                    "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+                },
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2850,13 +3040,17 @@ class TestInlineIgnoreIntegration:
         content = "# agentlint:ignore-file\n" + "line\n" * 600
         target.write_text(content)
 
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": str(target), "content": content},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(target), "content": content},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
-            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+            main,
+            ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
         )
         assert result.exit_code == 0
 
@@ -2868,13 +3062,17 @@ class TestInlineIgnoreIntegration:
         target = tmp_path / "big.py"
         target.write_text(content)
 
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": str(target), "content": content},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(target), "content": content},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
-            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+            main,
+            ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
         )
         assert result.exit_code == 0
 
@@ -2895,13 +3093,17 @@ class TestIgnorePathsIntegration:
         content = "line\n" * 600
         target.write_text(content)
 
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": str(target), "content": content},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(target), "content": content},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
-            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+            main,
+            ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
         )
         # max-file-size would fire but ignore_paths skips the file
         assert result.exit_code == 0
@@ -2918,13 +3120,17 @@ class TestIgnorePathsIntegration:
         content = "line\n" * 600
         target.write_text(content)
 
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": str(target), "content": content},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(target), "content": content},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
-            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+            main,
+            ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
         )
         assert result.exit_code == 0
 
@@ -2943,12 +3149,16 @@ class TestCombinedFeaturesIntegration:
             "packs:\n  - universal\nrules:\n  ignore_paths:\n    - '**/*.py'\n"
         )
 
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": "app.py", "content": "x = 1\n"},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": "app.py", "content": "x = 1\n"},
+            }
+        )
         runner = CliRunner()
-        runner.invoke(main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload)
+        runner.invoke(
+            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload
+        )
 
         session = load_session()
         timing = session.get("_hook_timing", {})
@@ -2963,13 +3173,17 @@ class TestCombinedFeaturesIntegration:
         target = tmp_path / "big.py"
         target.write_text(content)
 
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": str(target), "content": content},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(target), "content": content},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
-            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+            main,
+            ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
         )
         assert result.exit_code == 0
 
@@ -2982,13 +3196,17 @@ class TestCombinedFeaturesIntegration:
         content = "line\n" * 500
         target.write_text(content)
 
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": str(target), "content": content},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(target), "content": content},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
-            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+            main,
+            ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
         )
         assert result.exit_code == 0
 
@@ -3001,13 +3219,17 @@ class TestCombinedFeaturesIntegration:
         content = "from __future__ import annotations\n\ndef foo(): pass\n"
         target.write_text(content)
 
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": str(target), "content": content},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(target), "content": content},
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
-            main, ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)], input=payload,
+            main,
+            ["check", "--event", "PostToolUse", "--project-dir", str(tmp_path)],
+            input=payload,
         )
         assert result.exit_code == 0
 
@@ -3015,17 +3237,27 @@ class TestCombinedFeaturesIntegration:
 class TestAdapterFlags:
     def test_check_with_cursor_adapter_blocks_secrets(self, tmp_path) -> None:
         """Cursor adapter should block secrets with Cursor hook format."""
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": "config.py",
-                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "config.py",
+                    "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+                },
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["check", "--event", "preToolUse", "--adapter", "cursor", "--project-dir", str(tmp_path)],
+            [
+                "check",
+                "--event",
+                "preToolUse",
+                "--adapter",
+                "cursor",
+                "--project-dir",
+                str(tmp_path),
+            ],
             input=payload,
         )
         assert result.exit_code == 2  # Cursor uses exit 2 for blocking
@@ -3034,17 +3266,27 @@ class TestAdapterFlags:
 
     def test_check_with_cursor_format_override(self, tmp_path) -> None:
         """Explicit --format cursor_hooks should use Cursor formatter even with default adapter."""
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": "config.py",
-                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "config.py",
+                    "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+                },
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["check", "--event", "PreToolUse", "--format", "cursor_hooks", "--project-dir", str(tmp_path)],
+            [
+                "check",
+                "--event",
+                "PreToolUse",
+                "--format",
+                "cursor_hooks",
+                "--project-dir",
+                str(tmp_path),
+            ],
             input=payload,
         )
         assert result.exit_code == 2
@@ -3054,13 +3296,15 @@ class TestAdapterFlags:
     def test_check_auto_detects_cursor_from_env(self, tmp_path, monkeypatch) -> None:
         """CURSOR_SESSION_ID env var should auto-select cursor adapter."""
         monkeypatch.setenv("CURSOR_SESSION_ID", "test-session-123")
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": "config.py",
-                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "config.py",
+                    "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+                },
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -3075,7 +3319,15 @@ class TestAdapterFlags:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["check", "--event", "PreToolUse", "--adapter", "unknown", "--project-dir", str(tmp_path)],
+            [
+                "check",
+                "--event",
+                "PreToolUse",
+                "--adapter",
+                "unknown",
+                "--project-dir",
+                str(tmp_path),
+            ],
             input="{}",
         )
         assert result.exit_code != 0
@@ -3185,7 +3437,9 @@ class TestSetupPlatformSubcommands:
         config_file.write_text("[features]\nhooks = true\n", encoding="utf-8")
         assert _codex_hooks_enabled() is True
 
-    def test_enable_codex_hooks_handles_existing_feature_variants(self, tmp_path, monkeypatch) -> None:
+    def test_enable_codex_hooks_handles_existing_feature_variants(
+        self, tmp_path, monkeypatch
+    ) -> None:
         home = tmp_path / "home"
         monkeypatch.setenv("HOME", str(home))
         config_file = home / ".codex" / "config.toml"
@@ -3204,7 +3458,7 @@ class TestSetupPlatformSubcommands:
         config_file.write_text('model = "gpt-5.5"\n', encoding="utf-8")
         _enable_codex_hooks()
         text = config_file.read_text()
-        assert '\n\n[features]\nhooks = true\n' in text
+        assert "\n\n[features]\nhooks = true\n" in text
 
     def test_setup_default_is_claude(self, tmp_path) -> None:
         """Backward compat: agentlint setup without platform defaults to claude."""
@@ -3290,17 +3544,27 @@ class TestResolveAdapter:
 
 class TestCheckFormatOverride:
     def test_format_claude_hooks_override(self, tmp_path) -> None:
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": "config.py",
-                "content": 'API_KEY = "sk_live_abc123def456ghi789"',
-            },
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "config.py",
+                    "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+                },
+            }
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["check", "--event", "PreToolUse", "--project-dir", str(tmp_path), "--format", "claude_hooks"],
+            [
+                "check",
+                "--event",
+                "PreToolUse",
+                "--project-dir",
+                str(tmp_path),
+                "--format",
+                "claude_hooks",
+            ],
             input=payload,
         )
         assert result.exit_code == 0
@@ -3311,7 +3575,9 @@ class TestCheckFormatOverride:
         (tmp_path / "agentlint.yml").write_text(
             "packs:\n  - universal\ncircuit_breaker:\n  max_violations: 10\n"
         )
-        payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": "x.py", "content": "a = 1"}})
+        payload = json.dumps(
+            {"tool_name": "Write", "tool_input": {"file_path": "x.py", "content": "a = 1"}}
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -3336,8 +3602,12 @@ class TestCheckCustomRules:
             "    def evaluate(self, ctx):\n"
             "        return [Violation(rule_id=self.id, message='Custom hit', severity=self.severity)]\n"
         )
-        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n  - custom\ncustom_rules_dir: custom_rules\n")
-        payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": "x.py", "content": "a = 1"}})
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n  - custom\ncustom_rules_dir: custom_rules\n"
+        )
+        payload = json.dumps(
+            {"tool_name": "Write", "tool_input": {"file_path": "x.py", "content": "a = 1"}}
+        )
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -3351,7 +3621,10 @@ class TestCheckCustomRules:
 class TestStatusVersionFallback:
     def test_status_version_fallback_on_exception(self, tmp_path, monkeypatch) -> None:
         import importlib.metadata
-        monkeypatch.setattr(importlib.metadata, "version", lambda _pkg: (_ for _ in ()).throw(RuntimeError("boom")))
+
+        monkeypatch.setattr(
+            importlib.metadata, "version", lambda _pkg: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
         (tmp_path / "agentlint.yml").write_text("stack: auto\n")
         runner = CliRunner()
         result = runner.invoke(main, ["status", "--project-dir", str(tmp_path)])
@@ -3374,7 +3647,15 @@ class TestDoctorBranches:
         cursor_dir = tmp_path / ".cursor"
         cursor_dir.mkdir()
         (cursor_dir / "hooks.json").write_text(
-            json.dumps({"hooks": {"preToolUse": [{"command": "agentlint check --event preToolUse --adapter cursor"}]}})
+            json.dumps(
+                {
+                    "hooks": {
+                        "preToolUse": [
+                            {"command": "agentlint check --event preToolUse --adapter cursor"}
+                        ]
+                    }
+                }
+            )
         )
         runner = CliRunner()
         result = runner.invoke(main, ["doctor", "--project-dir", str(tmp_path)])
@@ -3421,7 +3702,14 @@ class TestRecordingsStats:
         # Create a recording file
         rec = tmp_path / "test-session.jsonl"
         rec.write_text(
-            json.dumps({"event": "PreToolUse", "tool_name": "Write", "violations": [{"rule_id": "no-secrets"}]}) + "\n"
+            json.dumps(
+                {
+                    "event": "PreToolUse",
+                    "tool_name": "Write",
+                    "violations": [{"rule_id": "no-secrets"}],
+                }
+            )
+            + "\n"
         )
         runner = CliRunner()
         result = runner.invoke(main, ["recordings", "stats", "--last", "1"])
@@ -3441,6 +3729,7 @@ class TestRecordingsStats:
 class TestSuppressCommand:
     def _patch_cache(self, monkeypatch, tmp_path):
         import agentlint.session
+
         monkeypatch.setattr(agentlint.session, "_cache_dir", lambda: tmp_path)
 
     def test_suppress_no_args_shows_usage(self) -> None:
@@ -3524,15 +3813,19 @@ class TestCheckOSError:
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
         target = tmp_path / "test.py"
         target.write_text("a = 1\n")
-        payload = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": str(target), "content": "a = 1"},
-        })
+        payload = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(target), "content": "a = 1"},
+            }
+        )
         real_open = open
+
         def fake_open(path, *args, **kwargs):
             if str(path) == str(target):
                 raise OSError("boom")
             return real_open(path, *args, **kwargs)
+
         monkeypatch.setattr("builtins.open", fake_open)
         runner = CliRunner()
         result = runner.invoke(
@@ -3559,10 +3852,13 @@ class TestCiCustomRules:
             "    def evaluate(self, ctx):\n"
             "        return [Violation(rule_id=self.id, message='CI hit', severity=self.severity)]\n"
         )
-        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n  - custom\ncustom_rules_dir: custom_rules\n")
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n  - custom\ncustom_rules_dir: custom_rules\n"
+        )
         test_file = tmp_path / "test.py"
         test_file.write_text("a = 1\n")
         import agentlint.cli
+
         monkeypatch.setattr(agentlint.cli, "get_diff_files", lambda _pd, _dr: [str(test_file)])
         runner = CliRunner()
         result = runner.invoke(main, ["ci", "--project-dir", str(tmp_path)])
@@ -3575,12 +3871,15 @@ class TestCiCustomRules:
         test_file = tmp_path / "test.py"
         test_file.write_text("a = 1\n")
         import agentlint.cli
+
         monkeypatch.setattr(agentlint.cli, "get_diff_files", lambda _pd, _dr: [str(test_file)])
         real_open = open
+
         def fake_open(path, *args, **kwargs):
             if str(path) == str(test_file):
                 raise OSError("boom")
             return real_open(path, *args, **kwargs)
+
         monkeypatch.setattr("builtins.open", fake_open)
         runner = CliRunner()
         result = runner.invoke(main, ["ci", "--project-dir", str(tmp_path)])
@@ -3603,7 +3902,9 @@ class TestReportCustomRules:
             "    def evaluate(self, ctx):\n"
             "        return [Violation(rule_id=self.id, message='Report hit', severity=self.severity)]\n"
         )
-        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n  - custom\ncustom_rules_dir: custom_rules\n")
+        (tmp_path / "agentlint.yml").write_text(
+            "packs:\n  - universal\n  - custom\ncustom_rules_dir: custom_rules\n"
+        )
         runner = CliRunner()
         result = runner.invoke(main, ["report", "--project-dir", str(tmp_path)])
         assert result.exit_code == 0

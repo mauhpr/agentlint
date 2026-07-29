@@ -1,4 +1,5 @@
 """Rule: warn when the agent switches between cloud accounts/projects within a session."""
+
 from __future__ import annotations
 
 import re
@@ -43,10 +44,13 @@ class CrossAccountGuard(Rule):
         if not command:
             return []
 
-        ca = context.session_state.setdefault("cross_account", {
-            "seen_gcloud_projects": [],
-            "seen_aws_profiles": [],
-        })
+        ca = context.session_state.setdefault(
+            "cross_account",
+            {
+                "seen_gcloud_projects": [],
+                "seen_aws_profiles": [],
+            },
+        )
 
         violations: list[Violation] = []
 
@@ -59,7 +63,8 @@ class CrossAccountGuard(Rule):
                         rule_id=self.id,
                         message=f"GCloud project switch detected: {seen[-1]} → {project}",
                         severity=self.severity,
-                        suggestion="Verify this project switch is intentional. Previous project: " + seen[-1],
+                        suggestion="Verify this project switch is intentional. Previous project: "
+                        + seen[-1],
                     )
                 )
             if project not in seen:
@@ -74,7 +79,8 @@ class CrossAccountGuard(Rule):
                         rule_id=self.id,
                         message=f"AWS profile switch detected: {seen[-1]} → {profile}",
                         severity=self.severity,
-                        suggestion="Verify this profile switch is intentional. Previous profile: " + seen[-1],
+                        suggestion="Verify this profile switch is intentional. Previous profile: "
+                        + seen[-1],
                     )
                 )
             if profile not in seen:

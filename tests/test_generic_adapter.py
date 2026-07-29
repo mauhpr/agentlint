@@ -1,4 +1,5 @@
 """Tests for the generic HTTP/webhook adapter."""
+
 from __future__ import annotations
 
 import pytest
@@ -60,10 +61,12 @@ class TestGenericAdapterMisc:
     def test_formatter_is_plain_json(self) -> None:
         adapter = GenericAdapter()
         from agentlint.formats.plain_json import PlainJsonFormatter
+
         assert isinstance(adapter.formatter, PlainJsonFormatter)
 
     def test_install_hooks_prints_example(self, tmp_path) -> None:
         from unittest.mock import patch
+
         adapter = GenericAdapter()
         with patch("click.echo") as mock_echo:
             adapter.install_hooks(str(tmp_path))

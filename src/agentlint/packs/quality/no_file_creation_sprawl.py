@@ -8,6 +8,7 @@ migrations) are exempt by default so the counter reflects real source-file
 sprawl rather than routine test/doc additions. Configure via the rule's
 ``exempt_paths`` key.
 """
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
@@ -31,10 +32,7 @@ _DEFAULT_EXEMPT_PATHS: tuple[str, ...] = (
 def _is_exempt(file_path: str, exempt_paths: list[str]) -> bool:
     """Return True if file_path falls under any exempt path fragment."""
     normalised = file_path.replace("\\", "/")
-    for fragment in exempt_paths:
-        if fragment and fragment in normalised:
-            return True
-    return False
+    return any(fragment and fragment in normalised for fragment in exempt_paths)
 
 
 class NoFileCreationSprawl(Rule):
@@ -76,12 +74,14 @@ class NoFileCreationSprawl(Rule):
 
         count = len(created)
         if count > max_new:
-            return [Violation(
-                rule_id=self.id,
-                message=f"{count} new files created this session (max {max_new})",
-                severity=self.severity,
-                file_path=file_path,
-                suggestion="Consider extending existing files instead of creating new ones",
-            )]
+            return [
+                Violation(
+                    rule_id=self.id,
+                    message=f"{count} new files created this session (max {max_new})",
+                    severity=self.severity,
+                    file_path=file_path,
+                    suggestion="Consider extending existing files instead of creating new ones",
+                )
+            ]
 
         return []

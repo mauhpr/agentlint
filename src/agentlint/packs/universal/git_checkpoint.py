@@ -1,4 +1,5 @@
 """Rule: create a git safety checkpoint before destructive operations."""
+
 from __future__ import annotations
 
 import re
@@ -74,7 +75,7 @@ class GitCheckpoint(Rule):
             return [
                 Violation(
                     rule_id=self.id,
-                    message=f"Created git checkpoint before destructive operation. Use `git stash pop` to recover if needed.",
+                    message="Created git checkpoint before destructive operation. Use `git stash pop` to recover if needed.",
                     severity=self.severity,
                     suggestion=f"Checkpoint saved as: {message}",
                 )

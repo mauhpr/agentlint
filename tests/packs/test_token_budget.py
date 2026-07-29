@@ -1,8 +1,8 @@
 """Tests for universal token-budget rule."""
+
 from __future__ import annotations
 
 import time
-from unittest.mock import patch
 
 from agentlint.models import HookEvent, RuleContext, Severity
 from agentlint.packs.universal.token_budget import TokenBudget
@@ -53,12 +53,14 @@ class TestTokenBudgetTracking:
         assert state["token_budget"]["total_content_bytes"] == 11
 
     def test_warns_at_threshold(self):
-        state: dict = {"token_budget": {
-            "tool_invocations": {"Write": 159},
-            "total_calls": 159,
-            "total_content_bytes": 0,
-            "session_start_time": time.time(),
-        }}
+        state: dict = {
+            "token_budget": {
+                "tool_invocations": {"Write": 159},
+                "total_calls": 159,
+                "total_content_bytes": 0,
+                "session_start_time": time.time(),
+            }
+        }
         ctx = _ctx(session_state=state)
         violations = self.rule.evaluate(ctx)
         # 160 = 80% of default 200
@@ -66,23 +68,27 @@ class TestTokenBudgetTracking:
         assert "80%" in violations[0].message
 
     def test_no_warn_below_threshold(self):
-        state: dict = {"token_budget": {
-            "tool_invocations": {"Write": 5},
-            "total_calls": 5,
-            "total_content_bytes": 0,
-            "session_start_time": time.time(),
-        }}
+        state: dict = {
+            "token_budget": {
+                "tool_invocations": {"Write": 5},
+                "total_calls": 5,
+                "total_content_bytes": 0,
+                "session_start_time": time.time(),
+            }
+        }
         ctx = _ctx(session_state=state)
         violations = self.rule.evaluate(ctx)
         assert violations == []
 
     def test_custom_threshold(self):
-        state: dict = {"token_budget": {
-            "tool_invocations": {"Write": 79},
-            "total_calls": 79,
-            "total_content_bytes": 0,
-            "session_start_time": time.time(),
-        }}
+        state: dict = {
+            "token_budget": {
+                "tool_invocations": {"Write": 79},
+                "total_calls": 79,
+                "total_content_bytes": 0,
+                "session_start_time": time.time(),
+            }
+        }
         config = {"token-budget": {"max_tool_invocations": 100, "warn_at_percent": 80}}
         ctx = _ctx(session_state=state, config=config)
         violations = self.rule.evaluate(ctx)
@@ -101,12 +107,14 @@ class TestTokenBudgetReport:
     rule = TokenBudget()
 
     def test_reports_summary_at_stop(self):
-        state: dict = {"token_budget": {
-            "tool_invocations": {"Write": 50, "Edit": 30, "Bash": 20},
-            "total_calls": 100,
-            "total_content_bytes": 50000,
-            "session_start_time": time.time() - 120,  # 2 minutes ago
-        }}
+        state: dict = {
+            "token_budget": {
+                "tool_invocations": {"Write": 50, "Edit": 30, "Bash": 20},
+                "total_calls": 100,
+                "total_content_bytes": 50000,
+                "session_start_time": time.time() - 120,  # 2 minutes ago
+            }
+        }
         ctx = _ctx(event=HookEvent.STOP, session_state=state)
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
@@ -115,23 +123,27 @@ class TestTokenBudgetReport:
         assert "Write: 50" in violations[0].message
 
     def test_report_severity_info_under_budget(self):
-        state: dict = {"token_budget": {
-            "tool_invocations": {"Write": 10},
-            "total_calls": 10,
-            "total_content_bytes": 1000,
-            "session_start_time": time.time(),
-        }}
+        state: dict = {
+            "token_budget": {
+                "tool_invocations": {"Write": 10},
+                "total_calls": 10,
+                "total_content_bytes": 1000,
+                "session_start_time": time.time(),
+            }
+        }
         ctx = _ctx(event=HookEvent.STOP, session_state=state)
         violations = self.rule.evaluate(ctx)
         assert violations[0].severity == Severity.INFO
 
     def test_report_severity_warning_over_budget(self):
-        state: dict = {"token_budget": {
-            "tool_invocations": {"Write": 250},
-            "total_calls": 250,
-            "total_content_bytes": 100000,
-            "session_start_time": time.time(),
-        }}
+        state: dict = {
+            "token_budget": {
+                "tool_invocations": {"Write": 250},
+                "total_calls": 250,
+                "total_content_bytes": 100000,
+                "session_start_time": time.time(),
+            }
+        }
         ctx = _ctx(event=HookEvent.STOP, session_state=state)
         violations = self.rule.evaluate(ctx)
         assert violations[0].severity == Severity.WARNING
@@ -142,12 +154,14 @@ class TestTokenBudgetReport:
         assert violations == []
 
     def test_report_includes_duration(self):
-        state: dict = {"token_budget": {
-            "tool_invocations": {"Write": 5},
-            "total_calls": 5,
-            "total_content_bytes": 500,
-            "session_start_time": time.time() - 65,  # 1m5s ago
-        }}
+        state: dict = {
+            "token_budget": {
+                "tool_invocations": {"Write": 5},
+                "total_calls": 5,
+                "total_content_bytes": 500,
+                "session_start_time": time.time() - 65,  # 1m5s ago
+            }
+        }
         ctx = _ctx(event=HookEvent.STOP, session_state=state)
         violations = self.rule.evaluate(ctx)
         assert "1m" in violations[0].message

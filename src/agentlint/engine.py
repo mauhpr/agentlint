@@ -1,4 +1,5 @@
 """AgentLint evaluation engine."""
+
 from __future__ import annotations
 
 import logging
@@ -16,6 +17,7 @@ logger = logging.getLogger("agentlint")
 @dataclass
 class EvaluationResult:
     """Result of evaluating rules against a context."""
+
     violations: list[Violation] = field(default_factory=list)
     rules_evaluated: int = 0
 
@@ -48,7 +50,9 @@ class Engine:
                 ignore_paths = context.config.get("ignore_paths", [])
                 if isinstance(ignore_paths, list) and ignore_paths:
                     basename = os.path.basename(context.file_path)
-                    if any(fnmatch(context.file_path, p) or fnmatch(basename, p) for p in ignore_paths):
+                    if any(
+                        fnmatch(context.file_path, p) or fnmatch(basename, p) for p in ignore_paths
+                    ):
                         continue
 
             # Per-rule allow_paths — skip this specific rule for matching files
@@ -56,7 +60,9 @@ class Engine:
                 rule_allow = get_rule_setting(context.config, rule.id, "allow_paths", [])
                 if isinstance(rule_allow, list) and rule_allow:
                     basename = os.path.basename(context.file_path)
-                    if any(fnmatch(context.file_path, p) or fnmatch(basename, p) for p in rule_allow):
+                    if any(
+                        fnmatch(context.file_path, p) or fnmatch(basename, p) for p in rule_allow
+                    ):
                         continue
 
                 # Per-rule ignore_paths — accepted-pattern alias for allow_paths.
@@ -65,7 +71,9 @@ class Engine:
                 rule_ignore = get_rule_setting(context.config, rule.id, "ignore_paths", [])
                 if isinstance(rule_ignore, list) and rule_ignore:
                     basename = os.path.basename(context.file_path)
-                    if any(fnmatch(context.file_path, p) or fnmatch(basename, p) for p in rule_ignore):
+                    if any(
+                        fnmatch(context.file_path, p) or fnmatch(basename, p) for p in rule_ignore
+                    ):
                         continue
 
             result.rules_evaluated += 1
@@ -84,20 +92,25 @@ class Engine:
 
         # Apply circuit breaker degradation
         result.violations = apply_circuit_breaker(
-            result.violations, context.session_state, context.config,
+            result.violations,
+            context.session_state,
+            context.config,
         )
 
         # Suppress acknowledged rules (ERRORs are never suppressed)
         suppressed = set(context.session_state.get("suppressed_rules", []))
         if suppressed:
             result.violations = [
-                v for v in result.violations
+                v
+                for v in result.violations
                 if v.rule_id not in suppressed or v.severity == Severity.ERROR
             ]
 
         # Auto-suppress: track consecutive fires per rule (after manual suppress
         # filter so already-suppressed rules don't accumulate counts)
-        auto_suppress_threshold = context.config.get("auto_suppress_after", 0) if context.config else 0
+        auto_suppress_threshold = (
+            context.config.get("auto_suppress_after", 0) if context.config else 0
+        )
         if auto_suppress_threshold and auto_suppress_threshold > 0:
             fire_counts = context.session_state.setdefault("rule_fire_counts", {})
             # Count once per rule per invocation, not per violation
@@ -108,7 +121,10 @@ class Engine:
                 count = fire_counts.get(rule_id, 0) + 1
                 fire_counts[rule_id] = count
                 threshold = get_rule_setting(
-                    context.config, rule_id, "auto_suppress_after", auto_suppress_threshold,
+                    context.config,
+                    rule_id,
+                    "auto_suppress_after",
+                    auto_suppress_threshold,
                 )
                 if count > threshold:
                     suppressed_rules = context.session_state.setdefault("suppressed_rules", [])
@@ -124,7 +140,8 @@ class Engine:
             newly_suppressed = set(context.session_state.get("suppressed_rules", [])) - suppressed
             if newly_suppressed:
                 result.violations = [
-                    v for v in result.violations
+                    v
+                    for v in result.violations
                     if v.rule_id not in newly_suppressed or v.severity == Severity.ERROR
                 ]
 

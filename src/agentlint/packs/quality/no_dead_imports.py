@@ -1,4 +1,5 @@
 """Rule: detect unused imports in written/edited files."""
+
 from __future__ import annotations
 
 import re
@@ -127,6 +128,7 @@ class NoDeadImports(Rule):
 
         # Check if this file should be ignored
         import os
+
         basename = os.path.basename(file_path)
         if basename in ignore_files:
             return []

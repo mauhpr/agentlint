@@ -1,4 +1,5 @@
 """Rule: heading structure issues."""
+
 from __future__ import annotations
 
 import re

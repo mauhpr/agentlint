@@ -1,4 +1,5 @@
 """Cursor IDE adapter for AgentLint."""
+
 from __future__ import annotations
 
 import json
@@ -13,8 +14,7 @@ from agentlint.adapters._utils import (
     write_json_config,
 )
 from agentlint.adapters.base import AgentAdapter
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext, to_hook_event
-
+from agentlint.models import AgentEvent, NormalizedTool, RuleContext, to_hook_event
 
 # Mapping from Cursor native event names to generic AgentEvent
 _CURSOR_EVENT_MAP: dict[str, AgentEvent] = {
@@ -112,7 +112,7 @@ def _build_hooks(cmd: str) -> dict:
                     "timeout": 30,
                 }
             ],
-        }
+        },
     }
 
 
@@ -134,6 +134,7 @@ class CursorAdapter(AgentAdapter):
     @property
     def formatter(self):
         from agentlint.formats.cursor_hooks import CursorHookFormatter
+
         return CursorHookFormatter()
 
     def resolve_project_dir(self) -> str:
@@ -153,8 +154,8 @@ class CursorAdapter(AgentAdapter):
     def translate_event(self, native_event: str) -> AgentEvent:
         try:
             return _CURSOR_EVENT_MAP[native_event]
-        except KeyError:
-            raise ValueError(f"Unknown Cursor event: {native_event}")
+        except KeyError as exc:
+            raise ValueError(f"Unknown Cursor event: {native_event}") from exc
 
     def normalize_tool_name(self, native_tool: str) -> str:
         return _CURSOR_TOOL_MAP.get(native_tool, NormalizedTool.UNKNOWN).value
@@ -218,6 +219,7 @@ class CursorAdapter(AgentAdapter):
 
         if dry_run:
             import click
+
             click.echo(f"\nDry run — would write to {path}:")
             click.echo(json.dumps(config, indent=2))
             return

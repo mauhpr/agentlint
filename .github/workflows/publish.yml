@@ -4,39 +4,73 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
 jobs:
   build:
+    name: Verify and build once
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
       - name: Set up Python
         run: uv python install 3.13
 
-      - name: Build package
+      - name: Install dependencies
+        run: uv sync --extra dev --frozen --python 3.13
+
+      - name: Verify source
+        run: |
+          uv lock --check
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run pytest -q
+
+      - name: Build distributions
         run: uv build
 
+      - name: Smoke-test wheel
+        run: |
+          uv venv --seed .wheel-venv
+          uv pip install --python .wheel-venv/bin/python dist/*.whl
+          .wheel-venv/bin/agentlint --version
+
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dist
+          name: distributions
           path: dist/
+          if-no-files-found: error
+          retention-days: 7
 
   publish-pypi:
+    name: Trusted publish
     needs: build
     runs-on: ubuntu-latest
-    environment: pypi
+    environment:
+      name: pypi
+      url: https://pypi.org/p/agentlint
     permissions:
+      contents: read
       id-token: write
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist
+          name: distributions
           path: dist/
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          attestations: true

@@ -1,4 +1,5 @@
 """Rule pack loader."""
+
 from __future__ import annotations
 
 import importlib
@@ -39,15 +40,22 @@ def load_rules(active_packs: list[str]) -> list[Rule]:
     return rules
 
 
-def load_project_rules(config: "AgentLintConfig", project_dir: str, *, include_policy: bool = True) -> list[Rule]:
+def load_project_rules(
+    config: AgentLintConfig, project_dir: str, *, include_policy: bool = True
+) -> list[Rule]:
     """Load built-in, installed custom, repo-local custom, and policy rules."""
     rules = load_rules(config.packs)
     rules.extend(r for r in load_installed_rules() if r.pack in config.packs)
     if config.custom_rules_dir:
-        rules.extend(r for r in load_custom_rules(config.custom_rules_dir, project_dir) if r.pack in config.packs)
+        rules.extend(
+            r
+            for r in load_custom_rules(config.custom_rules_dir, project_dir)
+            if r.pack in config.packs
+        )
     if include_policy:
         try:
             from agentlint.agentchute.policy import build_policy_rules
+
             rules.extend(build_policy_rules())
         except Exception:
             logger.debug("Failed to load AgentChute policy rules", exc_info=True)

@@ -97,9 +97,7 @@ class NoBlockedDomainFetch(Rule):
         except ImportError:
             return []
 
-        feed_data = cloud_feed.get(
-            "blocked-domains", default={"domains": []}, allow_network=False
-        )
+        feed_data = cloud_feed.get("blocked-domains", default={"domains": []}, allow_network=False)
         if not isinstance(feed_data, dict):
             return []
         domains: list[str] = feed_data.get("domains") or []

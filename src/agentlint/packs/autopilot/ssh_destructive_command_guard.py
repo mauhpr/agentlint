@@ -1,4 +1,5 @@
 """Rule: warn on destructive commands executed via SSH on remote servers."""
+
 from __future__ import annotations
 
 import re
@@ -11,12 +12,20 @@ _BASH_TOOLS = {"Bash"}
 # destructive subcommands.  Each tuple: (compiled_regex, label, severity).
 # ERROR = can brick/destroy a machine; WARNING = disruptive but recoverable.
 _DESTRUCTIVE_PATTERNS: list[tuple[re.Pattern[str], str, Severity]] = [
-    (re.compile(r"\brm\s+(?:-r(?:f)?|-f?r|--recursive)\b", re.I), "rm -rf (recursive delete)", Severity.WARNING),
+    (
+        re.compile(r"\brm\s+(?:-r(?:f)?|-f?r|--recursive)\b", re.I),
+        "rm -rf (recursive delete)",
+        Severity.WARNING,
+    ),
     (re.compile(r"\bdpkg\s+--purge\b", re.I), "dpkg --purge", Severity.WARNING),
     (re.compile(r"\bapt\s+(?:purge|remove)\b", re.I), "apt purge/remove", Severity.WARNING),
     (re.compile(r"\bmkfs\b", re.I), "mkfs (format filesystem)", Severity.ERROR),
     (re.compile(r"\bdd\s+if=", re.I), "dd if= (raw disk write)", Severity.ERROR),
-    (re.compile(r"\bsystemctl\s+(?:stop|disable)\b", re.I), "systemctl stop/disable", Severity.WARNING),
+    (
+        re.compile(r"\bsystemctl\s+(?:stop|disable)\b", re.I),
+        "systemctl stop/disable",
+        Severity.WARNING,
+    ),
     (re.compile(r"\breboot\b", re.I), "reboot", Severity.WARNING),
     (re.compile(r"\bshutdown\b", re.I), "shutdown", Severity.WARNING),
     (re.compile(r"\bpoweroff\b", re.I), "poweroff", Severity.WARNING),

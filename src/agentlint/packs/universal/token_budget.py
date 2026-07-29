@@ -1,4 +1,5 @@
 """Rule: track session activity and warn on excessive tool usage."""
+
 from __future__ import annotations
 
 import time

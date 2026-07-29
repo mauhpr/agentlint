@@ -1,4 +1,5 @@
 """Tests for the MCP adapter."""
+
 from __future__ import annotations
 
 import pytest
@@ -93,6 +94,7 @@ class TestMCPAdapterMisc:
         adapter = MCPAdapter()
         formatter = adapter.formatter
         from agentlint.formats.plain_json import PlainJsonFormatter
+
         assert isinstance(formatter, PlainJsonFormatter)
 
     def test_resolve_project_dir_from_claude_env(self, monkeypatch) -> None:
@@ -107,6 +109,7 @@ class TestMCPAdapterMisc:
 
     def test_install_hooks_prints_config(self, tmp_path) -> None:
         from unittest.mock import patch
+
         adapter = MCPAdapter()
         with patch("click.echo") as mock_echo:
             adapter.install_hooks(str(tmp_path))
@@ -131,10 +134,10 @@ class TestMCPAdapterMisc:
 
     def test_check_content_monorepo_uses_project_packs(self, tmp_path) -> None:
         (tmp_path / "agentlint.yml").write_text(
-            "packs:\n  - universal\n"
-            "projects:\n  backend/:\n    packs: [universal, python]\n"
+            "packs:\n  - universal\nprojects:\n  backend/:\n    packs: [universal, python]\n"
         )
         import os
+
         old = os.environ.get("CLAUDE_PROJECT_DIR")
         os.environ["CLAUDE_PROJECT_DIR"] = str(tmp_path)
         (tmp_path / "backend").mkdir()
@@ -155,16 +158,19 @@ class TestMCPAdapterMisc:
 class TestPlainJsonFormatter:
     def test_format_returns_none_when_empty(self) -> None:
         from agentlint.formats.plain_json import PlainJsonFormatter
+
         formatter = PlainJsonFormatter()
         assert formatter.format([]) is None
 
     def test_format_returns_json_with_violations(self) -> None:
         from agentlint.formats.plain_json import PlainJsonFormatter
         from agentlint.models import Severity, Violation
+
         formatter = PlainJsonFormatter()
         violations = [Violation(rule_id="test", message="msg", severity=Severity.WARNING)]
         output = formatter.format(violations)
         import json
+
         data = json.loads(output)
         assert data["blocked"] is False
         assert len(data["violations"]) == 1
@@ -172,16 +178,19 @@ class TestPlainJsonFormatter:
     def test_format_blocked_with_errors(self) -> None:
         from agentlint.formats.plain_json import PlainJsonFormatter
         from agentlint.models import Severity, Violation
+
         formatter = PlainJsonFormatter()
         violations = [Violation(rule_id="test", message="msg", severity=Severity.ERROR)]
         output = formatter.format(violations)
         import json
+
         data = json.loads(output)
         assert data["blocked"] is True
 
     def test_exit_code_with_errors(self) -> None:
         from agentlint.formats.plain_json import PlainJsonFormatter
         from agentlint.models import Severity, Violation
+
         formatter = PlainJsonFormatter()
         violations = [Violation(rule_id="test", message="msg", severity=Severity.ERROR)]
         assert formatter.exit_code(violations) == 1
@@ -189,6 +198,7 @@ class TestPlainJsonFormatter:
     def test_exit_code_without_errors(self) -> None:
         from agentlint.formats.plain_json import PlainJsonFormatter
         from agentlint.models import Severity, Violation
+
         formatter = PlainJsonFormatter()
         violations = [Violation(rule_id="test", message="msg", severity=Severity.WARNING)]
         assert formatter.exit_code(violations) == 0
@@ -196,9 +206,11 @@ class TestPlainJsonFormatter:
     def test_format_subagent_start_delegates(self) -> None:
         from agentlint.formats.plain_json import PlainJsonFormatter
         from agentlint.models import Severity, Violation
+
         formatter = PlainJsonFormatter()
         violations = [Violation(rule_id="test", message="msg", severity=Severity.WARNING)]
         output = formatter.format_subagent_start(violations)
         import json
+
         data = json.loads(output)
         assert len(data["violations"]) == 1

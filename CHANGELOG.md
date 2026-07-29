@@ -1,5 +1,35 @@
 # Changelog
 
+## v2.5.4 (2026-07-29) — Quality and Release Hardening
+
+This patch release strengthens AgentLint's development and publishing controls
+without intentionally changing its public rule or adapter APIs.
+
+### Changed
+
+- Establishes a repository-wide Ruff formatting and linting baseline and
+  enforces it in CI.
+- Enables branch-aware coverage with a 95% combined floor; the release suite
+  now contains 2,542 tests and reports 96.2% combined coverage.
+- Extracts the local AgentChute queue command group from the main CLI module,
+  creating the first dedicated boundary for continued CLI decomposition.
+- Expands MCP server coverage from 68% to 94%, including generic event checks,
+  session tools/resources, and server startup.
+- Pins GitHub Actions to immutable commit SHAs, disables checkout credential
+  persistence, uses frozen lockfile installs, and smoke-tests the built wheel.
+- Verifies source, tests, wheel installation, and trusted-publishing artifacts
+  before production releases; adds a manual TestPyPI workflow.
+- Adds Dependabot, CODEOWNERS, and regression tests for version consistency,
+  immutable workflow actions, and OIDC-only publishing.
+
+### Compatibility
+
+- Existing configurations, rules, adapters, hook payloads, and CLI command
+  names remain compatible.
+- The legacy `agentlint.setup` re-exports remain available.
+
+---
+
 ## v2.5.3 (2026-05-25) — AgentChute Queue Baseline
 
 This patch release fixes AgentChute onboarding for existing AgentLint users

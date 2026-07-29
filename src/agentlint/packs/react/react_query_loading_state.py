@@ -1,4 +1,5 @@
 """Rule: useQuery/useMutation without loading/error state handling."""
+
 from __future__ import annotations
 
 import re
@@ -47,7 +48,7 @@ class ReactQueryLoadingState(Rule):
         for hook in hooks:
             pattern = re.compile(r"\b" + re.escape(hook) + r"\s*\(")
             for match in pattern.finditer(content):
-                line_num = content[:match.start()].count("\n") + 1
+                line_num = content[: match.start()].count("\n") + 1
                 has_loading = any(s in content for s in _LOADING_STATES)
                 has_error = any(s in content for s in _ERROR_STATES)
                 if not has_loading or not has_error:
@@ -70,7 +71,7 @@ class ReactQueryLoadingState(Rule):
         # Check useMutation
         mutation_pattern = re.compile(r"\b" + re.escape(_MUTATION_HOOK) + r"\s*\(")
         for match in mutation_pattern.finditer(content):
-            line_num = content[:match.start()].count("\n") + 1
+            line_num = content[: match.start()].count("\n") + 1
             if "isPending" not in content:
                 violations.append(
                     Violation(

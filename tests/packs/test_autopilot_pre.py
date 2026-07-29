@@ -1,4 +1,5 @@
 """Tests for autopilot pack PreToolUse rules."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -301,7 +302,9 @@ class TestDryRunRequired:
 class TestBashRateLimiter:
     rule = BashRateLimiter()
 
-    def _ctx_with_state(self, command: str, state: dict | None = None, config: dict | None = None) -> RuleContext:
+    def _ctx_with_state(
+        self, command: str, state: dict | None = None, config: dict | None = None
+    ) -> RuleContext:
         return RuleContext(
             event=HookEvent.PRE_TOOL_USE,
             tool_name="Bash",
@@ -325,6 +328,7 @@ class TestBashRateLimiter:
 
     def test_blocks_after_exceeding_limit(self):
         import time
+
         state = {
             "rate_limiter": {
                 "destructive_count": 5,
@@ -342,6 +346,7 @@ class TestBashRateLimiter:
 
     def test_resets_after_window_expires(self):
         import time
+
         state = {
             "rate_limiter": {
                 "destructive_count": 5,
@@ -392,7 +397,9 @@ class TestCrossAccountGuard:
 
     def test_second_different_gcloud_project_warns(self):
         state = {"cross_account": {"seen_gcloud_projects": ["my-dev"], "seen_aws_profiles": []}}
-        ctx = self._ctx_with_state("gcloud --project=my-production compute instances list", state=state)
+        ctx = self._ctx_with_state(
+            "gcloud --project=my-production compute instances list", state=state
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
         assert violations[0].severity == Severity.WARNING
@@ -428,7 +435,12 @@ class TestCrossAccountGuard:
 
     def test_trailing_shell_metachar_stripped_from_project(self):
         """Regression: --project=foo) inside $(...) should not false-positive."""
-        state = {"cross_account": {"seen_gcloud_projects": ["psyched-axle-431819-t4"], "seen_aws_profiles": []}}
+        state = {
+            "cross_account": {
+                "seen_gcloud_projects": ["psyched-axle-431819-t4"],
+                "seen_aws_profiles": [],
+            }
+        }
         # The trailing ) comes from a subshell: $(gcloud ... --project=foo)
         ctx = self._ctx_with_state(
             "gcloud secrets versions access latest --secret=my-key --project=psyched-axle-431819-t4)",

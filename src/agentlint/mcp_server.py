@@ -3,6 +3,7 @@
 Install with: pip install agentlint[mcp]
 Run with: agentlint-mcp (stdio transport)
 """
+
 from __future__ import annotations
 
 import json
@@ -12,11 +13,10 @@ from agentlint.session import load_session, save_session
 
 try:
     from fastmcp import FastMCP
-except ImportError:
+except ImportError as exc:
     raise ImportError(
-        "FastMCP is required for the MCP server. "
-        "Install with: pip install agentlint[mcp]"
-    )
+        "FastMCP is required for the MCP server. Install with: pip install agentlint[mcp]"
+    ) from exc
 
 mcp = FastMCP("agentlint")
 _adapter = MCPAdapter()

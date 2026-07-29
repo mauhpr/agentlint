@@ -1,14 +1,14 @@
 """Tests for the Kimi Code CLI adapter."""
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from agentlint.adapters.kimi import KimiAdapter, _build_hooks, _config_path
 from agentlint.adapters._utils import is_agentlint_flat_entry
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext
+from agentlint.adapters.kimi import KimiAdapter, _build_hooks, _config_path
+from agentlint.models import AgentEvent, HookEvent, NormalizedTool
 
 
 class TestEventTranslation:
@@ -115,8 +115,13 @@ class TestBuildHooks:
         hooks = _build_hooks("agentlint")
         events = {h["event"] for h in hooks}
         assert events == {
-            "PreToolUse", "PostToolUse", "UserPromptSubmit",
-            "SubagentStart", "SubagentStop", "Notification", "Stop",
+            "PreToolUse",
+            "PostToolUse",
+            "UserPromptSubmit",
+            "SubagentStart",
+            "SubagentStop",
+            "Notification",
+            "Stop",
         }
 
     def test_embeds_adapter_flag(self) -> None:
@@ -134,7 +139,7 @@ class TestInstallHooks:
         assert config_file.exists()
         text = config_file.read_text()
         assert "[[hooks]]" in text
-        assert "event = \"PreToolUse\"" in text
+        assert 'event = "PreToolUse"' in text
 
     def test_idempotent_install(self, tmp_path) -> None:
         adapter = KimiAdapter()
@@ -149,7 +154,7 @@ class TestInstallHooks:
     def test_preserves_existing_hooks(self, tmp_path) -> None:
         config_file = tmp_path / ".kimi" / "config.toml"
         config_file.parent.mkdir(parents=True)
-        existing = "[[hooks]]\nevent = \"PostToolUse\"\ncommand = \"prettier --write\"\n"
+        existing = '[[hooks]]\nevent = "PostToolUse"\ncommand = "prettier --write"\n'
         config_file.write_text(existing)
 
         adapter = KimiAdapter()
@@ -179,7 +184,7 @@ class TestUninstallHooks:
     def test_preserves_other_hooks(self, tmp_path) -> None:
         config_file = tmp_path / ".kimi" / "config.toml"
         config_file.parent.mkdir(parents=True)
-        existing = "[[hooks]]\nevent = \"PostToolUse\"\ncommand = \"prettier --write\"\n"
+        existing = '[[hooks]]\nevent = "PostToolUse"\ncommand = "prettier --write"\n'
         config_file.write_text(existing)
 
         adapter = KimiAdapter()
@@ -193,11 +198,13 @@ class TestUninstallHooks:
 
 class TestFormatter:
     def test_exit_code_blocked(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = ClaudeHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         assert formatter.exit_code(violations, AgentEvent.PRE_TOOL_USE) == 0
 
     def test_exit_code_allowed(self) -> None:
@@ -207,25 +214,39 @@ class TestFormatter:
         assert formatter.exit_code([], AgentEvent.PRE_TOOL_USE) == 0
 
     def test_blocking_format(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = ClaudeHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         output = formatter.format(violations, AgentEvent.PRE_TOOL_USE)
         assert output is not None
         data = json.loads(output)
         assert data["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_format_with_warnings_and_infos(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = ClaudeHookFormatter()
         violations = [
-            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR, suggestion="Use env vars"),
-            Violation(rule_id="max-file-size", message="File too large", severity=Severity.WARNING, suggestion="Split it"),
-            Violation(rule_id="todo", message="TODO found", severity=Severity.INFO, suggestion="Fix it"),
+            Violation(
+                rule_id="no-secrets",
+                message="Secret found",
+                severity=Severity.ERROR,
+                suggestion="Use env vars",
+            ),
+            Violation(
+                rule_id="max-file-size",
+                message="File too large",
+                severity=Severity.WARNING,
+                suggestion="Split it",
+            ),
+            Violation(
+                rule_id="todo", message="TODO found", severity=Severity.INFO, suggestion="Fix it"
+            ),
         ]
         output = formatter.format(violations, AgentEvent.STOP)
         assert output is not None
@@ -239,11 +260,13 @@ class TestFormatter:
         assert "Fix it" in msg
 
     def test_format_subagent_start(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = ClaudeHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         output = formatter.format_subagent_start(violations)
         assert output is not None
         data = json.loads(output)
@@ -260,25 +283,33 @@ class TestFormatter:
 class TestWriteConfig:
     def test_preserves_non_hooks_dict_section(self, tmp_path) -> None:
         from agentlint.adapters.kimi import _write_config
+
         config_file = tmp_path / "config.toml"
-        _write_config(config_file, {
-            "hooks": [],
-            "settings": {"theme": "dark"},
-        })
+        _write_config(
+            config_file,
+            {
+                "hooks": [],
+                "settings": {"theme": "dark"},
+            },
+        )
         text = config_file.read_text()
         assert "[settings]" in text
         assert 'theme = "dark"' in text
 
     def test_preserves_non_hooks_str_int_float_bool(self, tmp_path) -> None:
         from agentlint.adapters.kimi import _write_config
+
         config_file = tmp_path / "config.toml"
-        _write_config(config_file, {
-            "hooks": [],
-            "name": "test",
-            "count": 42,
-            "rate": 3.14,
-            "enabled": True,
-        })
+        _write_config(
+            config_file,
+            {
+                "hooks": [],
+                "name": "test",
+                "count": 42,
+                "rate": 3.14,
+                "enabled": True,
+            },
+        )
         text = config_file.read_text()
         assert 'name = "test"' in text
         assert "count = 42" in text
@@ -289,5 +320,6 @@ class TestWriteConfig:
 class TestAdapterFormatter:
     def test_formatter_property(self) -> None:
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
+
         adapter = KimiAdapter()
         assert isinstance(adapter.formatter, ClaudeHookFormatter)

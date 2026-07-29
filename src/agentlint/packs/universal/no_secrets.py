@@ -1,4 +1,5 @@
 """Rule: block secrets and credentials from being written to files."""
+
 from __future__ import annotations
 
 import os
@@ -41,11 +42,19 @@ def _is_secrets_manager_pipeline(command: str) -> bool:
     # All subsequent pipe stages must be safe text-processing tools.
     return all(_SAFE_PIPE_TOOLS.match(p) for p in parts[1:])
 
+
 # Literal token prefixes that indicate a real secret.
 _TOKEN_PREFIXES = (
-    "sk_live_", "sk_test_", "AKIA",
-    "ghp_", "ghs_", "gho_", "github_pat_",
-    "xoxb-", "xoxp-", "xoxs-",
+    "sk_live_",
+    "sk_test_",
+    "AKIA",
+    "ghp_",
+    "ghs_",
+    "gho_",
+    "github_pat_",
+    "xoxb-",
+    "xoxp-",
+    "xoxs-",
     "_authToken",
 )
 
@@ -143,9 +152,8 @@ class NoSecrets(Rule):
         allow_paths: list[str] = get_rule_setting(context.config, self.id, "allow_paths", [])
 
         # Skip files matching allow_paths (e.g. test files with mock tokens).
-        if file_path and allow_paths:
-            if any(fnmatch(file_path, p) for p in allow_paths):
-                return []
+        if file_path and allow_paths and any(fnmatch(file_path, p) for p in allow_paths):
+            return []
 
         # Check for sensitive filenames (only for Write/Edit).
         if file_path and context.tool_name in _WRITE_TOOLS:

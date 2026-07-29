@@ -1,7 +1,6 @@
 """Tests for configuration loading and parsing."""
-from __future__ import annotations
 
-import json
+from __future__ import annotations
 
 import yaml
 
@@ -254,7 +253,10 @@ class TestMonorepoProjects:
     def test_resolve_packs_value_error_fallback(self, monkeypatch):
         """ValueError in relpath falls back to global packs."""
         import os as _os
-        monkeypatch.setattr(_os.path, "relpath", lambda *a: (_ for _ in ()).throw(ValueError("cross-drive")))
+
+        monkeypatch.setattr(
+            _os.path, "relpath", lambda *a: (_ for _ in ()).throw(ValueError("cross-drive"))
+        )
         config = AgentLintConfig(
             packs=["universal"],
             projects={"frontend/": {"packs": ["universal", "frontend"]}},
@@ -290,7 +292,10 @@ class TestGetRuleSetting:
 
     def test_allow_paths_global_applies(self):
         rules = {"allow_paths": ["*.log", "/tmp/*"]}
-        assert get_rule_setting(rules, "no-bash-file-write", "allow_paths", []) == ["*.log", "/tmp/*"]
+        assert get_rule_setting(rules, "no-bash-file-write", "allow_paths", []) == [
+            "*.log",
+            "/tmp/*",
+        ]
 
     def test_allow_paths_per_rule_overrides(self):
         rules = {"allow_paths": ["*.log"], "no-bash-file-write": {"allow_paths": ["deploy/*"]}}

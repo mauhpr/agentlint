@@ -1,4 +1,5 @@
 """Tests for python -m agentlint entry point."""
+
 from __future__ import annotations
 
 import subprocess

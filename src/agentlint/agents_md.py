@@ -3,6 +3,7 @@
 Reads AGENTS.md from a project root, extracts conventions by section headings,
 and maps them to AgentLint configuration (packs, rules, severity).
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,16 +19,49 @@ AGENTS_MD_FILENAMES = ["AGENTS.md", "agents.md", "Agents.md"]
 
 # Section keywords → pack/rule mapping.
 _PACK_KEYWORDS: dict[str, list[str]] = {
-    "python": ["python", "pip", "pyproject", "pytest", "django", "flask", "fastapi", "poetry", "uv"],
-    "frontend": ["frontend", "css", "html", "javascript", "typescript", "webpack", "vite", "eslint", "prettier"],
+    "python": [
+        "python",
+        "pip",
+        "pyproject",
+        "pytest",
+        "django",
+        "flask",
+        "fastapi",
+        "poetry",
+        "uv",
+    ],
+    "frontend": [
+        "frontend",
+        "css",
+        "html",
+        "javascript",
+        "typescript",
+        "webpack",
+        "vite",
+        "eslint",
+        "prettier",
+    ],
     "react": ["react", "jsx", "tsx", "next.js", "nextjs", "remix", "gatsby"],
     "seo": ["seo", "meta tags", "open graph", "structured data", "sitemap", "lighthouse"],
-    "security": ["security", "secrets", "credentials", "api key", "token", "authentication", "vulnerability"],
+    "security": [
+        "security",
+        "secrets",
+        "credentials",
+        "api key",
+        "token",
+        "authentication",
+        "vulnerability",
+    ],
 }
 
 _RULE_KEYWORDS: dict[str, list[str]] = {
     "no-env-commit": [".env", "env file", "environment variable", "dotenv"],
-    "commit-message-format": ["commit message", "conventional commit", "commit format", "git commit"],
+    "commit-message-format": [
+        "commit message",
+        "conventional commit",
+        "commit format",
+        "git commit",
+    ],
     "no-destructive-commands": ["destructive", "rm -rf", "force delete", "dangerous command"],
     "no-force-push": ["force push", "force-push", "--force"],
     "no-secrets": ["secret", "api key", "credential", "password", "token", "private key"],
@@ -94,9 +128,7 @@ def map_to_config(sections: dict[str, str]) -> dict:
     rules: dict[str, dict] = {}
 
     # Combine all section text for keyword scanning.
-    all_text = " ".join(
-        f"{heading} {body}" for heading, body in sections.items()
-    ).lower()
+    all_text = " ".join(f"{heading} {body}" for heading, body in sections.items()).lower()
 
     # Detect packs from keywords.
     for pack_name, keywords in _PACK_KEYWORDS.items():

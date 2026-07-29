@@ -1,4 +1,5 @@
 """Tests for src/agentlint/utils/paths.py."""
+
 from __future__ import annotations
 
 import pytest
@@ -89,9 +90,7 @@ class TestIsSafePathTmpdirEnv:
             is False
         )
 
-    def test_tmpdir_with_trailing_slash_normalised(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_tmpdir_with_trailing_slash_normalised(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("TMPDIR", "/Users/me/scratch/")
         assert (
             is_safe_path(

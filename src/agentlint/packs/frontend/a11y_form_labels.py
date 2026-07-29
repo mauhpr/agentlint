@@ -1,4 +1,5 @@
 """Rule: form inputs without labels or aria-label (WCAG 1.3.1)."""
+
 from __future__ import annotations
 
 import re
@@ -14,7 +15,7 @@ _SKIP_TYPES = {"hidden", "submit", "button"}
 # Attributes that satisfy labelling
 _LABEL_ATTRS = {"aria-label", "aria-labelledby", "id"}
 
-_FORM_TAG_RE = re.compile(r"<(input|select|textarea)\s([^>]*)/?>" , re.IGNORECASE)
+_FORM_TAG_RE = re.compile(r"<(input|select|textarea)\s([^>]*)/?>", re.IGNORECASE)
 _TYPE_RE = re.compile(r"""type\s*=\s*["'](\w+)["']""", re.IGNORECASE)
 
 

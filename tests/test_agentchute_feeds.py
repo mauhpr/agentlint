@@ -50,9 +50,7 @@ def test_returns_default_when_no_license_key(isolated_feed_cache, monkeypatch):
     assert result == set()
 
 
-def test_existing_cache_does_not_leak_when_license_key_unset(
-    isolated_feed_cache, monkeypatch
-):
+def test_existing_cache_does_not_leak_when_license_key_unset(isolated_feed_cache, monkeypatch):
     """REGRESSION (Phase 19A): cache files left behind from a previous
     licensed session must NOT serve data when the license key is
     currently unset.
@@ -63,6 +61,7 @@ def test_existing_cache_does_not_leak_when_license_key_unset(
     OSS users without a license get a silent no-op.
     """
     import time
+
     from agentlint.agentchute import cloud_feed
 
     # Pre-populate a cache file as if a previous licensed run created it
@@ -87,15 +86,11 @@ def test_existing_cache_does_not_leak_when_license_key_unset(
         result = cloud_feed.get("compromised-packages", default=set())
 
     mock_get.assert_not_called()
-    assert result == set(), (
-        "stale cache leaked through opt-in gate — Phase 17 contract violated"
-    )
+    assert result == set(), "stale cache leaked through opt-in gate — Phase 17 contract violated"
     _ = time  # silence unused import linter false-positive in some setups
 
 
-def test_returns_default_when_network_fails_with_no_cache(
-    isolated_feed_cache, feed_creds
-):
+def test_returns_default_when_network_fails_with_no_cache(isolated_feed_cache, feed_creds):
     """First-ever fetch fails → return default (rule still runs, just
     without the cloud-curated data)."""
     from agentlint.agentchute import cloud_feed
@@ -115,9 +110,7 @@ def test_cache_only_read_does_not_fetch_with_no_cache(isolated_feed_cache, feed_
     from agentlint.agentchute import cloud_feed
 
     with patch("requests.get") as mock_get:
-        result = cloud_feed.get(
-            "compromised-packages", default=["fallback"], allow_network=False
-        )
+        result = cloud_feed.get("compromised-packages", default=["fallback"], allow_network=False)
 
     mock_get.assert_not_called()
     assert result == ["fallback"]
@@ -296,18 +289,14 @@ def test_expired_cache_triggers_refetch(isolated_feed_cache, feed_creds):
 # ---------- stale-fallback: network fails after cache expires ----------
 
 
-def test_serves_stale_when_network_fails_after_expiry(
-    isolated_feed_cache, feed_creds
-):
+def test_serves_stale_when_network_fails_after_expiry(isolated_feed_cache, feed_creds):
     """Cache expired AND network fails → return stale cache, never default.
     This is the 'yesterday's deny list > no deny list' property."""
     from agentlint.agentchute import cloud_feed
     from agentlint.agentchute import feeds as feeds_module
 
     # Pre-populate cache.
-    pre_response = MagicMock(
-        status_code=200, headers={"ETag": "v1", "X-Feed-TTL": "3600"}
-    )
+    pre_response = MagicMock(status_code=200, headers={"ETag": "v1", "X-Feed-TTL": "3600"})
     pre_response.json.return_value = ["stale-but-real-data"]
     with patch("requests.get", return_value=pre_response):
         cloud_feed.get("test-feed", default=[])
@@ -335,16 +324,12 @@ def test_serves_stale_when_network_fails_after_expiry(
 # ---------- privacy contract ----------
 
 
-def test_feed_request_only_sends_license_and_etag(
-    isolated_feed_cache, feed_creds
-):
+def test_feed_request_only_sends_license_and_etag(isolated_feed_cache, feed_creds):
     """The outbound HTTP call must contain the license bearer token + etag,
     and must NOT contain any event data or content body."""
     from agentlint.agentchute import cloud_feed
 
-    fake_response = MagicMock(
-        status_code=200, headers={"ETag": "v1", "X-Feed-TTL": "3600"}
-    )
+    fake_response = MagicMock(status_code=200, headers={"ETag": "v1", "X-Feed-TTL": "3600"})
     fake_response.json.return_value = []
 
     with patch("requests.get", return_value=fake_response) as mock_get:
@@ -366,9 +351,7 @@ def test_etag_is_sent_on_subsequent_request(isolated_feed_cache, feed_creds):
     from agentlint.agentchute import cloud_feed
     from agentlint.agentchute import feeds as feeds_module
 
-    pre_response = MagicMock(
-        status_code=200, headers={"ETag": "v-abc-123", "X-Feed-TTL": "3600"}
-    )
+    pre_response = MagicMock(status_code=200, headers={"ETag": "v-abc-123", "X-Feed-TTL": "3600"})
     pre_response.json.return_value = ["initial"]
     with patch("requests.get", return_value=pre_response):
         cloud_feed.get("test-feed", default=[])
@@ -394,9 +377,7 @@ def test_304_response_serves_existing_cache(isolated_feed_cache, feed_creds):
     from agentlint.agentchute import cloud_feed
     from agentlint.agentchute import feeds as feeds_module
 
-    pre_response = MagicMock(
-        status_code=200, headers={"ETag": "v1", "X-Feed-TTL": "3600"}
-    )
+    pre_response = MagicMock(status_code=200, headers={"ETag": "v1", "X-Feed-TTL": "3600"})
     pre_response.json.return_value = ["original-payload"]
     with patch("requests.get", return_value=pre_response):
         cloud_feed.get("test-feed", default=[])

@@ -3,6 +3,7 @@
 This module re-exports from agentlint.core for backward compatibility.
 New code should import from agentlint.core directly.
 """
+
 from agentlint.core.models import (
     AgentEvent,
     HookEvent,

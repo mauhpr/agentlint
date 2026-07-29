@@ -1,4 +1,5 @@
 """Rule: focus indicator removed without replacement (WCAG 2.4.7)."""
+
 from __future__ import annotations
 
 import re

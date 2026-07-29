@@ -1,4 +1,5 @@
 """Tests for the file-scope governance rule."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -241,7 +242,6 @@ class TestFileScopeRelPathFallback:
     def test_relpath_value_error_falls_back(self, tmp_path, monkeypatch):
         """When os.path.relpath raises ValueError, fall back to resolved path."""
         import os as _os
-        original_relpath = _os.path.relpath
 
         def _raising_relpath(path, start):
             raise ValueError("path is on mount 'C:', start on mount 'D:'")

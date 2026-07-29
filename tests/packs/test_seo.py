@@ -1,9 +1,10 @@
 """Tests for SEO pack rules."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
-from agentlint.packs.seo.seo_page_metadata import SeoPageMetadata
 from agentlint.packs.seo.seo_open_graph import SeoOpenGraph
+from agentlint.packs.seo.seo_page_metadata import SeoPageMetadata
 from agentlint.packs.seo.seo_semantic_html import SeoSemanticHtml
 from agentlint.packs.seo.seo_structured_data import SeoStructuredData
 
@@ -27,67 +28,93 @@ class TestSeoPageMetadata:
     rule = SeoPageMetadata()
 
     def test_detects_page_without_metadata(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": "export default function Home() { return <div>Hello</div> }",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": "export default function Home() { return <div>Hello</div> }",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
         assert violations[0].severity == Severity.WARNING
 
     def test_allows_page_with_head(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": "return <><Head><title>Home</title></Head><div>Hello</div></>",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": "return <><Head><title>Home</title></Head><div>Hello</div></>",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_allows_page_with_helmet(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": "<Helmet><title>Home</title></Helmet>",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": "<Helmet><title>Home</title></Helmet>",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_allows_page_with_generate_metadata(self):
-        ctx = _ctx("Write", {
-            "file_path": "app/page.tsx",
-            "content": "export const generateMetadata = async () => ({ title: 'Home' })",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "app/page.tsx",
+                "content": "export const generateMetadata = async () => ({ title: 'Home' })",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_ignores_non_page_files(self):
-        ctx = _ctx("Write", {
-            "file_path": "components/Button.tsx",
-            "content": "export default function Button() { return <button /> }",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "components/Button.tsx",
+                "content": "export default function Button() { return <button /> }",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_ignores_non_frontend_extensions(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/api/users.ts",
-            "content": "export default handler",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/api/users.ts",
+                "content": "export default handler",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_custom_page_patterns(self):
-        ctx = _ctx("Write", {
-            "file_path": "views/Home.tsx",
-            "content": "export default function Home() { return <div /> }",
-        }, config={"page_patterns": ["views/"]})
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "views/Home.tsx",
+                "content": "export default function Home() { return <div /> }",
+            },
+            config={"page_patterns": ["views/"]},
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_custom_metadata_components(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": "<SEO title='Home' />",
-        }, config={"metadata_components": ["<SEO"]})
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": "<SEO title='Home' />",
+            },
+            config={"metadata_components": ["<SEO"]},
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
@@ -101,43 +128,59 @@ class TestSeoOpenGraph:
     rule = SeoOpenGraph()
 
     def test_detects_metadata_without_og(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": "<Head><title>Home</title></Head>",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": "<Head><title>Home</title></Head>",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
         assert "og:title" in violations[0].message
 
     def test_allows_metadata_with_all_og(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": '<Head><title>Home</title><meta property="og:title" /><meta property="og:description" /><meta property="og:image" /></Head>',
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": '<Head><title>Home</title><meta property="og:title" /><meta property="og:description" /><meta property="og:image" /></Head>',
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_skips_pages_without_metadata(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": "export default function Home() { return <div /> }",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": "export default function Home() { return <div /> }",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_ignores_non_page_files(self):
-        ctx = _ctx("Write", {
-            "file_path": "components/Header.tsx",
-            "content": "<Head><title>Site</title></Head>",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "components/Header.tsx",
+                "content": "<Head><title>Site</title></Head>",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_custom_required_properties(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": '<Head><title>Home</title><meta property="og:title" /></Head>',
-        }, config={"required_properties": ["og:title"]})
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": '<Head><title>Home</title><meta property="og:title" /></Head>',
+            },
+            config={"required_properties": ["og:title"]},
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
@@ -152,46 +195,62 @@ class TestSeoSemanticHtml:
 
     def test_detects_div_soup(self):
         divs = "\n".join(f"<div>Block {i}</div>" for i in range(12))
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": divs,
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": divs,
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
         assert "12" in violations[0].message
 
     def test_allows_divs_with_semantic(self):
         divs = "\n".join(f"<div>Block {i}</div>" for i in range(12))
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": f"<main>\n{divs}\n</main>",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": f"<main>\n{divs}\n</main>",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_allows_few_divs(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": "<div>One</div>\n<div>Two</div>\n<div>Three</div>",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": "<div>One</div>\n<div>Two</div>\n<div>Three</div>",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_ignores_non_page_files(self):
         divs = "\n".join(f"<div>Block {i}</div>" for i in range(15))
-        ctx = _ctx("Write", {
-            "file_path": "components/Card.tsx",
-            "content": divs,
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "components/Card.tsx",
+                "content": divs,
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_custom_min_threshold(self):
         divs = "\n".join(f"<div>Block {i}</div>" for i in range(6))
-        ctx = _ctx("Write", {
-            "file_path": "pages/Home.tsx",
-            "content": divs,
-        }, config={"min_div_threshold": 5})
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/Home.tsx",
+                "content": divs,
+            },
+            config={"min_div_threshold": 5},
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
@@ -205,50 +264,69 @@ class TestSeoStructuredData:
     rule = SeoStructuredData()
 
     def test_detects_product_page_without_jsonld(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/product/[id].tsx",
-            "content": "export default function Product() { return <div /> }",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/product/[id].tsx",
+                "content": "export default function Product() { return <div /> }",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_allows_product_page_with_jsonld(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/product/[id].tsx",
-            "content": '<script type="application/ld+json">{}</script>',
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/product/[id].tsx",
+                "content": '<script type="application/ld+json">{}</script>',
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_detects_blog_post_without_jsonld(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/blog/post.tsx",
-            "content": "export default function Post() { return <article /> }",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/blog/post.tsx",
+                "content": "export default function Post() { return <article /> }",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
     def test_ignores_non_content_pages(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/settings.tsx",
-            "content": "export default function Settings() { return <div /> }",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/settings.tsx",
+                "content": "export default function Settings() { return <div /> }",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_ignores_non_frontend_files(self):
-        ctx = _ctx("Write", {
-            "file_path": "api/product.ts",
-            "content": "export default handler",
-        })
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "api/product.ts",
+                "content": "export default handler",
+            },
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_custom_content_patterns(self):
-        ctx = _ctx("Write", {
-            "file_path": "pages/listing/item.tsx",
-            "content": "export default function Item() { return <div /> }",
-        }, config={"content_path_patterns": ["listing"]})
+        ctx = _ctx(
+            "Write",
+            {
+                "file_path": "pages/listing/item.tsx",
+                "content": "export default function Item() { return <div /> }",
+            },
+            config={"content_path_patterns": ["listing"]},
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 

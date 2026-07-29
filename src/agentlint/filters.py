@@ -11,6 +11,7 @@ surface in the session summary so suppressions are auditable rather
 than anonymous. Reasons cannot contain the matching quote character;
 escaped quotes inside the value are not supported (reasons are short).
 """
+
 from __future__ import annotations
 
 import re
@@ -78,11 +79,13 @@ def filter_inline_ignores(
     def _record(rule_id: str, reason: str | None) -> None:
         if log is None:
             return
-        log.append({
-            "file": file_path,
-            "rule_id": rule_id,
-            "reason": reason,
-        })
+        log.append(
+            {
+                "file": file_path,
+                "rule_id": rule_id,
+                "reason": reason,
+            }
+        )
 
     # ignore-file: suppress everything. Record once per rule that fired
     # so the summary still shows what was overridden.

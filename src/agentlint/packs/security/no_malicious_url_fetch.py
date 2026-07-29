@@ -163,9 +163,7 @@ class NoMaliciousUrlFetch(Rule):
         except ImportError:
             return []
 
-        feed_data: Any = cloud_feed.get(
-            "malicious-urls", default={"urls": []}, allow_network=False
-        )
+        feed_data: Any = cloud_feed.get("malicious-urls", default={"urls": []}, allow_network=False)
         if not isinstance(feed_data, dict):
             return []
         denylist: list[str] = feed_data.get("urls") or []
@@ -180,10 +178,7 @@ class NoMaliciousUrlFetch(Rule):
             violations.append(
                 Violation(
                     rule_id=self.id,
-                    message=(
-                        f"Fetch of {url} blocked — matches URLhaus "
-                        f"deny-list entry {match}"
-                    ),
+                    message=(f"Fetch of {url} blocked — matches URLhaus deny-list entry {match}"),
                     severity=self.severity,
                     suggestion=(
                         "URLhaus has flagged this URL as malicious. "

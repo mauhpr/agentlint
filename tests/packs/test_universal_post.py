@@ -1,4 +1,5 @@
 """Tests for universal pack PostToolUse rules."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -312,7 +313,7 @@ class TestDriftDetector:
         rule = self._make_rule()
         session_state: dict = {}
         # Edit the same file 15 times — should count as 1 unique file.
-        for i in range(15):
+        for _i in range(15):
             ctx = RuleContext(
                 event=HookEvent.POST_TOOL_USE,
                 tool_name="Write",
@@ -416,7 +417,7 @@ class TestDriftDetector:
         """When no extensions config set, use default code extensions."""
         rule = self._make_rule()
         session_state: dict = {}
-        for ext, should_count in [(".py", True), (".ts", True), (".md", False), (".yml", False)]:
+        for ext, _should_count in [(".py", True), (".ts", True), (".md", False), (".yml", False)]:
             ctx = RuleContext(
                 event=HookEvent.POST_TOOL_USE,
                 tool_name="Write",
@@ -522,13 +523,15 @@ class TestDriftDetectorCommitBoundary:
         session_state: dict = {}
         self._post_edit(session_state, 16)
         # Tests run — resets last_test_run flag.
-        rule.evaluate(RuleContext(
-            event=HookEvent.POST_TOOL_USE,
-            tool_name="Bash",
-            tool_input={"command": "pytest -v"},
-            project_dir="/tmp/project",
-            session_state=session_state,
-        ))
+        rule.evaluate(
+            RuleContext(
+                event=HookEvent.POST_TOOL_USE,
+                tool_name="Bash",
+                tool_input={"command": "pytest -v"},
+                project_dir="/tmp/project",
+                session_state=session_state,
+            )
+        )
 
         ctx = self._commit_ctx('git commit -m "feat: ship"', session_state)
         violations = rule.evaluate(ctx)
@@ -572,13 +575,15 @@ class TestDriftDetectorCommitBoundary:
         # First commit attempt fires
         rule.evaluate(self._commit_ctx('git commit -m "x"', session_state))
         # Tests run, edits cleared, then drift again
-        rule.evaluate(RuleContext(
-            event=HookEvent.POST_TOOL_USE,
-            tool_name="Bash",
-            tool_input={"command": "pytest"},
-            project_dir="/tmp/project",
-            session_state=session_state,
-        ))
+        rule.evaluate(
+            RuleContext(
+                event=HookEvent.POST_TOOL_USE,
+                tool_name="Bash",
+                tool_input={"command": "pytest"},
+                project_dir="/tmp/project",
+                session_state=session_state,
+            )
+        )
         # Re-edit and try again — commit warning should re-fire
         self._post_edit(session_state, 16)
         session_state["_drift_warned"] = False

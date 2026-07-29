@@ -2,6 +2,7 @@
 
 Internal module — not part of the public API. Subject to change without notice.
 """
+
 from __future__ import annotations
 
 import json

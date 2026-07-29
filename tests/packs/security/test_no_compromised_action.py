@@ -24,8 +24,9 @@ from agentlint.packs.security.no_compromised_action import (
 )
 
 
-def _ctx(content: str, *, file_path: str = ".github/workflows/ci.yml",
-         tool: str = "Write") -> RuleContext:
+def _ctx(
+    content: str, *, file_path: str = ".github/workflows/ci.yml", tool: str = "Write"
+) -> RuleContext:
     tool_input: dict = {"file_path": file_path}
     if tool == "Edit":
         tool_input["new_string"] = content
@@ -129,16 +130,14 @@ class TestSelfDegrading:
 
     def test_empty_feed(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        with patch("agentlint.agentchute.cloud_feed.get",
-                   return_value={"actions": []}):
-            assert self.rule.evaluate(
-                _ctx("uses: tj-actions/changed-files@v44")
-            ) == []
+        with patch("agentlint.agentchute.cloud_feed.get", return_value={"actions": []}):
+            assert self.rule.evaluate(_ctx("uses: tj-actions/changed-files@v44")) == []
 
     def test_non_workflow_file(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        with patch("agentlint.agentchute.cloud_feed.get",
-                   return_value={"actions": [{"repo": "foo/bar"}]}):
+        with patch(
+            "agentlint.agentchute.cloud_feed.get", return_value={"actions": [{"repo": "foo/bar"}]}
+        ):
             ctx = _ctx("uses: foo/bar@v1", file_path="/some/randomfile.py")
             assert self.rule.evaluate(ctx) == []
 
@@ -173,19 +172,17 @@ class TestHappyPath:
 
     def test_blocks_vulnerable_version(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "repo": "tj-actions/changed-files",
-            "vulnerable_versions": [
-                {"events": [{"introduced": "0"}, {"fixed": "46.0.0"}]}
-            ],
-            "ghsa_id": "GHSA-mw4p-6x4p-x5m5",
-            "severity": "CRITICAL",
-            "summary": "Hijacked Action exfiltrates secrets",
-        })
+        feed = self._feed(
+            {
+                "repo": "tj-actions/changed-files",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}, {"fixed": "46.0.0"}]}],
+                "ghsa_id": "GHSA-mw4p-6x4p-x5m5",
+                "severity": "CRITICAL",
+                "summary": "Hijacked Action exfiltrates secrets",
+            }
+        )
         with self._patch(feed):
-            v = self.rule.evaluate(_ctx(
-                "      uses: tj-actions/changed-files@v44"
-            ))
+            v = self.rule.evaluate(_ctx("      uses: tj-actions/changed-files@v44"))
         assert len(v) == 1
         assert v[0].rule_id == "no-compromised-action"
         assert "tj-actions/changed-files" in v[0].message
@@ -194,18 +191,16 @@ class TestHappyPath:
 
     def test_allows_fixed_version(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "repo": "tj-actions/changed-files",
-            "vulnerable_versions": [
-                {"events": [{"introduced": "0"}, {"fixed": "46.0.0"}]}
-            ],
-            "ghsa_id": "GHSA-mw4p-6x4p-x5m5",
-            "severity": "CRITICAL",
-        })
+        feed = self._feed(
+            {
+                "repo": "tj-actions/changed-files",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}, {"fixed": "46.0.0"}]}],
+                "ghsa_id": "GHSA-mw4p-6x4p-x5m5",
+                "severity": "CRITICAL",
+            }
+        )
         with self._patch(feed):
-            v = self.rule.evaluate(_ctx(
-                "      uses: tj-actions/changed-files@v46.0.1"
-            ))
+            v = self.rule.evaluate(_ctx("      uses: tj-actions/changed-files@v46.0.1"))
         assert v == []
 
     def test_sha_pin_still_fires(self, monkeypatch):
@@ -213,26 +208,28 @@ class TestHappyPath:
         # — surface the advisory anyway.
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
         sha = "a" * 40
-        feed = self._feed({
-            "repo": "tj-actions/changed-files",
-            "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
-            "ghsa_id": "GHSA-x",
-            "severity": "HIGH",
-        })
+        feed = self._feed(
+            {
+                "repo": "tj-actions/changed-files",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
+                "ghsa_id": "GHSA-x",
+                "severity": "HIGH",
+            }
+        )
         with self._patch(feed):
-            v = self.rule.evaluate(_ctx(
-                f"      uses: tj-actions/changed-files@{sha}"
-            ))
+            v = self.rule.evaluate(_ctx(f"      uses: tj-actions/changed-files@{sha}"))
         assert len(v) == 1
 
     def test_no_ref_surfaces_advisory(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "repo": "actions/checkout",
-            "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
-            "ghsa_id": "GHSA-no-ref",
-            "severity": "HIGH",
-        })
+        feed = self._feed(
+            {
+                "repo": "actions/checkout",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
+                "ghsa_id": "GHSA-no-ref",
+                "severity": "HIGH",
+            }
+        )
         with self._patch(feed):
             v = self.rule.evaluate(_ctx("      uses: actions/checkout"))
         assert len(v) == 1
@@ -255,14 +252,14 @@ class TestHappyPath:
 
     def test_unrelated_action_not_flagged(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "repo": "tj-actions/changed-files",
-            "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
-            "ghsa_id": "GHSA-x",
-            "severity": "HIGH",
-        })
+        feed = self._feed(
+            {
+                "repo": "tj-actions/changed-files",
+                "vulnerable_versions": [{"events": [{"introduced": "0"}]}],
+                "ghsa_id": "GHSA-x",
+                "severity": "HIGH",
+            }
+        )
         with self._patch(feed):
-            v = self.rule.evaluate(_ctx(
-                "      uses: actions/checkout@v4"
-            ))
+            v = self.rule.evaluate(_ctx("      uses: actions/checkout@v4"))
         assert v == []

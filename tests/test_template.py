@@ -1,4 +1,5 @@
 """Tests for agentlint.template — placeholder resolution and security."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext

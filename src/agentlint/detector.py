@@ -1,4 +1,5 @@
 """Stack auto-detection for AgentLint."""
+
 from __future__ import annotations
 
 import json
@@ -10,8 +11,14 @@ from agentlint.packs import PACK_MODULES
 logger = logging.getLogger("agentlint")
 
 _SSR_SSG_FRAMEWORKS = {
-    "next", "nuxt", "gatsby", "astro", "@sveltejs/kit", "remix",
-    "@angular/ssr", "vite-plugin-ssr",
+    "next",
+    "nuxt",
+    "gatsby",
+    "astro",
+    "@sveltejs/kit",
+    "remix",
+    "@angular/ssr",
+    "vite-plugin-ssr",
 }
 
 

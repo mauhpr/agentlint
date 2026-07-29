@@ -1,4 +1,5 @@
 """AgentLint generic core — engine, models, config, and evaluation."""
+
 from agentlint.core.models import (
     AgentEvent,
     HookEvent,

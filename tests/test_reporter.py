@@ -1,9 +1,8 @@
 """Tests for agentlint.reporter."""
+
 from __future__ import annotations
 
 import json
-
-import pytest
 
 from agentlint.models import Severity, Violation
 from agentlint.reporter import Reporter
@@ -61,7 +60,11 @@ class TestPreToolUseDenyProtocol:
 
     def test_pretooluse_error_uses_deny_protocol(self) -> None:
         """PreToolUse ERROR violations should use permissionDecision=deny."""
-        violations = [_make_violation(rule_id="no-secrets", severity=Severity.ERROR, message="Secret detected")]
+        violations = [
+            _make_violation(
+                rule_id="no-secrets", severity=Severity.ERROR, message="Secret detected"
+            )
+        ]
         reporter = Reporter(violations=violations)
 
         output = reporter.format_hook_output(event="PreToolUse")
@@ -76,16 +79,20 @@ class TestPreToolUseDenyProtocol:
         assert "Secret detected" in hook_output["permissionDecisionReason"]
 
     def test_pretooluse_error_includes_suggestion_in_reason(self) -> None:
-        violations = [_make_violation(
-            severity=Severity.ERROR,
-            message="Bad thing",
-            suggestion="Do the good thing instead",
-        )]
+        violations = [
+            _make_violation(
+                severity=Severity.ERROR,
+                message="Bad thing",
+                suggestion="Do the good thing instead",
+            )
+        ]
         reporter = Reporter(violations=violations)
 
         output = reporter.format_hook_output(event="PreToolUse")
         parsed = json.loads(output)
-        assert "Do the good thing instead" in parsed["hookSpecificOutput"]["permissionDecisionReason"]
+        assert (
+            "Do the good thing instead" in parsed["hookSpecificOutput"]["permissionDecisionReason"]
+        )
 
     def test_pretooluse_warning_uses_additional_context(self) -> None:
         """PreToolUse WARNING violations should use additionalContext (agent sees it)."""
@@ -126,7 +133,9 @@ class TestPreToolUseDenyProtocol:
 
     def test_posttooluse_warning_uses_decision_block(self) -> None:
         """PostToolUse WARNING uses decision: block + reason for strong advisory."""
-        violations = [_make_violation(severity=Severity.WARNING, rule_id="WARN01", message="Fix this")]
+        violations = [
+            _make_violation(severity=Severity.WARNING, rule_id="WARN01", message="Fix this")
+        ]
         reporter = Reporter(violations=violations)
 
         output = reporter.format_hook_output(event="PostToolUse")
@@ -164,10 +173,12 @@ class TestPreToolUseDenyProtocol:
         assert "WARN01" in parsed["reason"]
 
     def test_posttooluse_includes_suggestion_in_context(self) -> None:
-        violations = [_make_violation(
-            severity=Severity.WARNING,
-            suggestion="Try this approach",
-        )]
+        violations = [
+            _make_violation(
+                severity=Severity.WARNING,
+                suggestion="Try this approach",
+            )
+        ]
         reporter = Reporter(violations=violations)
 
         output = reporter.format_hook_output(event="PostToolUse")
@@ -260,7 +271,9 @@ class TestFormatSessionReport:
     def test_format_session_report_contains_counts(self) -> None:
         violations = [
             _make_violation(rule_id="ERR01", severity=Severity.ERROR, message="Blocked something"),
-            _make_violation(rule_id="WARN01", severity=Severity.WARNING, message="Warning about something"),
+            _make_violation(
+                rule_id="WARN01", severity=Severity.WARNING, message="Warning about something"
+            ),
         ]
         reporter = Reporter(violations=violations, rules_evaluated=5)
 
@@ -282,11 +295,13 @@ class TestFormatSubagentStartOutput:
         assert reporter.format_subagent_start_output() is None
 
     def test_single_violation_returns_additional_context(self) -> None:
-        violations = [_make_violation(
-            rule_id="subagent-safety-briefing",
-            severity=Severity.INFO,
-            message="SAFETY NOTICE: This subagent is unmonitored",
-        )]
+        violations = [
+            _make_violation(
+                rule_id="subagent-safety-briefing",
+                severity=Severity.INFO,
+                message="SAFETY NOTICE: This subagent is unmonitored",
+            )
+        ]
         reporter = Reporter(violations=violations)
         output = reporter.format_subagent_start_output()
         assert output is not None
@@ -322,7 +337,8 @@ class TestSessionReportSubagentActivity:
             ],
         }
         report = reporter.format_session_report(
-            files_changed=0, session_state=session_state,
+            files_changed=0,
+            session_state=session_state,
         )
         assert "Subagent Activity" in report
         assert "1 spawned" in report
@@ -341,7 +357,8 @@ class TestSessionReportSubagentActivity:
             ],
         }
         report = reporter.format_session_report(
-            files_changed=0, session_state=session_state,
+            files_changed=0,
+            session_state=session_state,
         )
         assert "Subagent Activity" in report
         assert "1 finding" in report
@@ -362,7 +379,8 @@ class TestSessionReportSubagentActivity:
             ],
         }
         report = reporter.format_session_report(
-            files_changed=0, session_state=session_state,
+            files_changed=0,
+            session_state=session_state,
         )
         assert "no findings" in report
         assert "xyz-456" in report
@@ -396,7 +414,8 @@ class TestSessionReportSubagentActivity:
             ],
         }
         report = reporter.format_session_report(
-            files_changed=0, session_state=session_state,
+            files_changed=0,
+            session_state=session_state,
         )
         assert "3 spawned, 1 audited" in report
 
@@ -424,7 +443,8 @@ class TestSessionReportSubagentActivity:
             ],
         }
         report = reporter.format_session_report(
-            files_changed=0, session_state=session_state,
+            files_changed=0,
+            session_state=session_state,
         )
         assert "aaa-111" in report
         assert "bbb-222" in report
@@ -445,7 +465,8 @@ class TestSessionReportSubagentActivity:
             ],
         }
         report = reporter.format_session_report(
-            files_changed=0, session_state=session_state,
+            files_changed=0,
+            session_state=session_state,
         )
         assert "[Explore]" in report
         assert "unknown" not in report.split("Subagent Activity")[1].split("[Explore]")[1]
@@ -541,8 +562,7 @@ class TestSessionReportCumulativeViolations:
         report = reporter.format_session_report(files_changed=0, session_state={})
 
         assert (
-            "Files changed: 0  |  Rules evaluated: 7  |  Passed: 7  |  "
-            "Warnings: 0  |  Blocked: 0"
+            "Files changed: 0  |  Rules evaluated: 7  |  Passed: 7  |  Warnings: 0  |  Blocked: 0"
         ) in report
         assert "Rules evaluated: 7\nPassed:" not in report
 
@@ -562,14 +582,12 @@ class TestSessionReportCumulativeViolations:
                 "total_blocked": 3,
                 "total_warnings": 7,
                 "total_info": 2,
-                "rule_violations": {
-                    f"rule-{i}": 10 - i for i in range(8)
-                },
+                "rule_violations": {f"rule-{i}": 10 - i for i in range(8)},
             },
         }
         report = reporter.format_session_report(files_changed=0, session_state=session_state)
         # Should only show top 5 rules
-        rule_lines = [l for l in report.split("\n") if l.startswith("  rule-")]
+        rule_lines = [line for line in report.split("\n") if line.startswith("  rule-")]
         assert len(rule_lines) == 5
 
 
@@ -722,10 +740,7 @@ class TestSessionSummaryV1_10_0:
 
     def test_text_inline_ignores_truncated_to_ten(self) -> None:
         reporter = Reporter(violations=[], rules_evaluated=0)
-        ignores = [
-            {"file": f"f{i}.py", "rule_id": "r", "reason": None}
-            for i in range(15)
-        ]
+        ignores = [{"file": f"f{i}.py", "rule_id": "r", "reason": None} for i in range(15)]
         session_state = {"inline_ignores": ignores}
         output = reporter.format_session_summary(session_state=session_state)
         assert "and 5 more" in output
@@ -742,9 +757,7 @@ class TestSessionSummaryV1_10_0:
             output_format="json",
         )
         data = json.loads(output)
-        assert data["inline_ignores"] == [
-            {"file": "x.py", "rule_id": "r", "reason": "y"}
-        ]
+        assert data["inline_ignores"] == [{"file": "x.py", "rule_id": "r", "reason": "y"}]
 
     def test_json_circuit_breaker_per_rule_includes_transitions(self) -> None:
         reporter = Reporter(violations=[], rules_evaluated=0)

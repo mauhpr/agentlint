@@ -1,4 +1,5 @@
 """Rule: detect potential network exfiltration via Bash commands."""
+
 from __future__ import annotations
 
 import re
@@ -16,42 +17,62 @@ _SAFE_HOST_SUFFIXES = (".local", ".internal", ".localhost", ".test")
 # Each tuple: (compiled_regex, human-readable label).
 _EXFIL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # curl POST/PUT with data or file upload.
-    (re.compile(
-        r"\bcurl\b.*(?:-X\s*(?:POST|PUT)\s.*-[dF@]|-[dF@]\s.*-X\s*(?:POST|PUT))",
-        re.IGNORECASE,
-    ), "curl POST/PUT with data"),
+    (
+        re.compile(
+            r"\bcurl\b.*(?:-X\s*(?:POST|PUT)\s.*-[dF@]|-[dF@]\s.*-X\s*(?:POST|PUT))",
+            re.IGNORECASE,
+        ),
+        "curl POST/PUT with data",
+    ),
     # curl with -d @file (file upload).
     (re.compile(r"\bcurl\b.*-d\s*@\S+", re.IGNORECASE), "curl -d @file"),
     # Piping sensitive content to curl.
-    (re.compile(r"cat\s+\S*(?:\.env|secret|credential|token|\.pem|\.key|id_rsa)\S*\s*\|.*\bcurl\b", re.IGNORECASE),
-     "piping secrets to curl"),
+    (
+        re.compile(
+            r"cat\s+\S*(?:\.env|secret|credential|token|\.pem|\.key|id_rsa)\S*\s*\|.*\bcurl\b",
+            re.IGNORECASE,
+        ),
+        "piping secrets to curl",
+    ),
     # netcat (nc) with input redirection from sensitive files.
-    (re.compile(r"\bnc\b.*<\s*\S*(?:\.env|secret|credential|token|\.pem|\.key)", re.IGNORECASE),
-     "nc < sensitive file"),
+    (
+        re.compile(r"\bnc\b.*<\s*\S*(?:\.env|secret|credential|token|\.pem|\.key)", re.IGNORECASE),
+        "nc < sensitive file",
+    ),
     # scp with sensitive file paths.
-    (re.compile(r"\bscp\b.*(?:\.env|credential|secret|token|\.pem|\.key|id_rsa)", re.IGNORECASE),
-     "scp sensitive file"),
+    (
+        re.compile(r"\bscp\b.*(?:\.env|credential|secret|token|\.pem|\.key|id_rsa)", re.IGNORECASE),
+        "scp sensitive file",
+    ),
     # wget --post-file or --post-data.
     (re.compile(r"\bwget\b.*--post-(?:file|data)", re.IGNORECASE), "wget POST"),
     # Python requests.post() one-liners.
-    (re.compile(
-        r"\bpython[23]?\s+-c\s+.*requests\.(?:post|put)\b",
-        re.IGNORECASE,
-    ), "python requests.post()"),
+    (
+        re.compile(
+            r"\bpython[23]?\s+-c\s+.*requests\.(?:post|put)\b",
+            re.IGNORECASE,
+        ),
+        "python requests.post()",
+    ),
     # rsync to remote (contains :).
-    (re.compile(
-        r"\brsync\b.*(?:\.env|credential|secret|token|\.pem|\.key).*\S+:\S+",
-        re.IGNORECASE,
-    ), "rsync sensitive files to remote"),
+    (
+        re.compile(
+            r"\brsync\b.*(?:\.env|credential|secret|token|\.pem|\.key).*\S+:\S+",
+            re.IGNORECASE,
+        ),
+        "rsync sensitive files to remote",
+    ),
 ]
 
 # Default hosts that are safe for outbound data.
-_DEFAULT_ALLOWED_HOSTS = frozenset({
-    "github.com",
-    "pypi.org",
-    "registry.npmjs.org",
-    "rubygems.org",
-})
+_DEFAULT_ALLOWED_HOSTS = frozenset(
+    {
+        "github.com",
+        "pypi.org",
+        "registry.npmjs.org",
+        "rubygems.org",
+    }
+)
 
 
 def _extract_host(command: str) -> str | None:
@@ -98,10 +119,7 @@ class NoNetworkExfil(Rule):
         is_local = (
             not strict_mode
             and host is not None
-            and (
-                host in _LOCAL_HOSTS
-                or any(host.endswith(s) for s in _SAFE_HOST_SUFFIXES)
-            )
+            and (host in _LOCAL_HOSTS or any(host.endswith(s) for s in _SAFE_HOST_SUFFIXES))
         )
 
         for pattern, label in _EXFIL_PATTERNS:

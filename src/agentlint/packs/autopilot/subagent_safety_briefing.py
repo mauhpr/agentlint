@@ -1,4 +1,5 @@
 """Rule: inject safety context into subagent sessions."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation

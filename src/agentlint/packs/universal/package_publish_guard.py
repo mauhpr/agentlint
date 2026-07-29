@@ -1,4 +1,5 @@
 """Rule: block package publishing commands to prevent supply-chain incidents."""
+
 from __future__ import annotations
 
 import re
@@ -15,7 +16,11 @@ _PUBLISH_OPS: list[tuple[re.Pattern[str], str, Severity]] = [
     (re.compile(r"\bpnpm\s+publish\b", re.I), "pnpm publish", Severity.ERROR),
     # Python — ERROR.
     (re.compile(r"\btwine\s+upload\b", re.I), "twine upload (PyPI)", Severity.ERROR),
-    (re.compile(r"\bpython[23]?\s+-m\s+twine\s+upload\b", re.I), "python -m twine upload", Severity.ERROR),
+    (
+        re.compile(r"\bpython[23]?\s+-m\s+twine\s+upload\b", re.I),
+        "python -m twine upload",
+        Severity.ERROR,
+    ),
     (re.compile(r"\bflit\s+publish\b", re.I), "flit publish", Severity.ERROR),
     (re.compile(r"\bpoetry\s+publish\b", re.I), "poetry publish", Severity.ERROR),
     # Ruby — ERROR.
@@ -33,7 +38,9 @@ class PackagePublishGuard(Rule):
     """Block package publishing to prevent supply-chain incidents."""
 
     id = "package-publish-guard"
-    description = "Blocks npm publish, twine upload, gem push, cargo publish, and similar registry pushes"
+    description = (
+        "Blocks npm publish, twine upload, gem push, cargo publish, and similar registry pushes"
+    )
     severity = Severity.ERROR
     events = [HookEvent.PRE_TOOL_USE]
     pack = "universal"

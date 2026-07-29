@@ -1,4 +1,5 @@
 """Tests for env-credential-reference rule."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -27,7 +28,11 @@ def _edit_ctx(new_string: str) -> RuleContext:
     return RuleContext(
         event=HookEvent.PRE_TOOL_USE,
         tool_name="Edit",
-        tool_input={"file_path": ".github/workflows/deploy.yml", "old_string": "x", "new_string": new_string},
+        tool_input={
+            "file_path": ".github/workflows/deploy.yml",
+            "old_string": "x",
+            "new_string": new_string,
+        },
         project_dir="/tmp/project",
     )
 
@@ -123,14 +128,14 @@ class TestEnvCredentialReference:
             'gcloud run deploy myservice --set-env-vars "SECRET_KEY_FILE=config/key.pem"'
         )
         violations = self.rule.evaluate(ctx)
-        assert "Secret Manager" in violations[0].suggestion or "gitignore" in violations[0].suggestion
+        assert (
+            "Secret Manager" in violations[0].suggestion or "gitignore" in violations[0].suggestion
+        )
 
     # --- Secret Manager bypass (legitimate Cloud Run references) ---
 
     def test_secret_manager_reference_passes(self):
-        ctx = _bash_ctx(
-            'gcloud run deploy svc --set-env-vars "MY_KEY_FILE=Secret:my-secret-name"'
-        )
+        ctx = _bash_ctx('gcloud run deploy svc --set-env-vars "MY_KEY_FILE=Secret:my-secret-name"')
         assert self.rule.evaluate(ctx) == []
 
     def test_secretmanager_uri_reference_passes(self):
@@ -140,9 +145,7 @@ class TestEnvCredentialReference:
         assert self.rule.evaluate(ctx) == []
 
     def test_cloud_run_quoted_var_triggers(self):
-        ctx = _bash_ctx(
-            'gcloud run deploy svc --set-env-vars "SECRET_KEY_FILE=config/key.pem"'
-        )
+        ctx = _bash_ctx('gcloud run deploy svc --set-env-vars "SECRET_KEY_FILE=config/key.pem"')
         assert len(self.rule.evaluate(ctx)) == 1
 
     # --- CI/CD smart defaults ---

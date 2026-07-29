@@ -1,0 +1,7 @@
+* @mauhpr
+
+/agentlint.yml @mauhpr
+/.github/workflows/ @mauhpr
+/src/agentlint/cli.py @mauhpr
+/src/agentlint/core/models.py @mauhpr
+/src/agentlint/mcp_server.py @mauhpr

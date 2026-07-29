@@ -1,13 +1,13 @@
 """Tests for the Codex CLI adapter."""
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
 from agentlint.adapters.codex import CodexAdapter, _build_hooks, _hooks_path
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext
+from agentlint.models import AgentEvent, HookEvent, NormalizedTool
 
 
 class TestEventTranslation:
@@ -87,8 +87,11 @@ class TestHooksPath:
 
 class TestBuildHooks:
     EXPECTED_EVENTS = {
-        "PreToolUse", "PostToolUse", "UserPromptSubmit",
-        "SessionStart", "Stop",
+        "PreToolUse",
+        "PostToolUse",
+        "UserPromptSubmit",
+        "SessionStart",
+        "Stop",
     }
 
     def test_builds_all_events(self) -> None:
@@ -164,7 +167,15 @@ class TestUninstallHooks:
             "hooks": {
                 "PreToolUse": [
                     {"matcher": "^Bash$", "hooks": [{"type": "command", "command": "echo hello"}]},
-                    {"matcher": "^Bash$", "hooks": [{"type": "command", "command": "agentlint check --event PreToolUse --adapter codex"}]},
+                    {
+                        "matcher": "^Bash$",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "agentlint check --event PreToolUse --adapter codex",
+                            }
+                        ],
+                    },
                 ]
             }
         }
@@ -181,6 +192,7 @@ class TestUninstallHooks:
 class TestFormatter:
     def test_uses_claude_formatter(self) -> None:
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
+
         adapter = CodexAdapter()
         assert isinstance(adapter.formatter, ClaudeHookFormatter)
 

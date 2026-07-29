@@ -1,7 +1,6 @@
 """Rule: pages with metadata but missing OG tags."""
-from __future__ import annotations
 
-import re
+from __future__ import annotations
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 from agentlint.packs.seo._helpers import _WRITE_TOOLS, is_page_file

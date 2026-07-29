@@ -1,16 +1,29 @@
 """End-to-end integration tests for AgentLint."""
+
 import json
 import os
 import subprocess
 import sys
 
+
 class TestEndToEnd:
-    def _run_agentlint(self, args: list[str], stdin_data: dict | None = None, project_dir: str = "/tmp", env: dict | None = None):
+    def _run_agentlint(
+        self,
+        args: list[str],
+        stdin_data: dict | None = None,
+        project_dir: str = "/tmp",
+        env: dict | None = None,
+    ):
         cmd = [sys.executable, "-m", "agentlint.cli"] + args + ["--project-dir", project_dir]
         input_data = json.dumps(stdin_data) if stdin_data else "{}"
         run_env = {**os.environ, **(env or {})}
         result = subprocess.run(
-            cmd, input=input_data, capture_output=True, text=True, timeout=10, env=run_env,
+            cmd,
+            input=input_data,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=run_env,
         )
         return result
 
@@ -168,11 +181,11 @@ class TestEndToEnd:
 
             if i < 2:
                 # First 2 fires should block (deny protocol)
-                assert "hookSpecificOutput" in output, f"Fire {i+1} should block"
+                assert "hookSpecificOutput" in output, f"Fire {i + 1} should block"
                 assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
             else:
                 # 3rd fire should be degraded to warning (additionalContext, not deny)
-                assert "hookSpecificOutput" in output, f"Fire {i+1} should be degraded to warning"
+                assert "hookSpecificOutput" in output, f"Fire {i + 1} should be degraded to warning"
                 assert "additionalContext" in output["hookSpecificOutput"]
                 assert "permissionDecision" not in output["hookSpecificOutput"]
 
@@ -201,7 +214,7 @@ class TestEndToEnd:
             assert result.returncode == 0
             output = json.loads(result.stdout)
             # Should ALWAYS block — never degraded
-            assert "hookSpecificOutput" in output, f"Fire {i+1}: no-secrets should always block"
+            assert "hookSpecificOutput" in output, f"Fire {i + 1}: no-secrets should always block"
             assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_cli_integration_runs_echo(self, tmp_path):

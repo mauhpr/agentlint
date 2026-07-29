@@ -35,7 +35,6 @@ from typing import Any
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
-
 _FILE_TOOLS = {"Edit", "Write"}
 
 
@@ -58,9 +57,7 @@ def _looks_like_workflow(file_path: str | None, content: str) -> bool:
         if path_lower.endswith((".yml", ".yaml")) and "uses:" in content:
             return True
     # No path? Heuristic: presence of GitHub-specific top-level keys
-    if "uses:" in content and ("on:" in content or "jobs:" in content):
-        return True
-    return False
+    return bool("uses:" in content and ("on:" in content or "jobs:" in content))
 
 
 def _extract_uses(content: str) -> list[tuple[str, str | None]]:
@@ -109,9 +106,7 @@ def _ref_looks_like_sha(ref: str) -> bool:
     return bool(ref) and len(ref) == 40 and all(c in "0123456789abcdef" for c in ref.lower())
 
 
-def _version_in_range(
-    version: tuple[int, ...], events: list[dict[str, Any]]
-) -> bool:
+def _version_in_range(version: tuple[int, ...], events: list[dict[str, Any]]) -> bool:
     introduced: tuple[int, ...] | None = None
     fixed: tuple[int, ...] | None = None
     last_affected: tuple[int, ...] | None = None
@@ -127,9 +122,7 @@ def _version_in_range(
         return False
     if fixed is not None and version >= fixed:
         return False
-    if last_affected is not None and version > last_affected:
-        return False
-    return True
+    return not (last_affected is not None and version > last_affected)
 
 
 def _matches_any_range(version: tuple[int, ...], ranges: Any) -> bool:
@@ -165,11 +158,7 @@ class NoCompromisedAction(Rule):
         if context.tool_name not in _FILE_TOOLS:
             return []
 
-        content = (
-            context.tool_input.get("new_string")
-            or context.tool_input.get("content")
-            or ""
-        )
+        content = context.tool_input.get("new_string") or context.tool_input.get("content") or ""
         if not content:
             return []
 
