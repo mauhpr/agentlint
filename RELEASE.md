@@ -19,11 +19,19 @@ Do not publish from a local machine.
 3. Run local verification before opening or updating the PR.
 
    ```bash
-   .venv/bin/pytest tests/test_cli.py tests/test_agentchute_policy_queue_sync.py -k "not test_list_rules_universal_pack"
-   uv run ruff check CHANGELOG.md pyproject.toml src/agentlint/__init__.py src/agentlint/cli.py src/agentlint/agentchute/queue.py tests/test_cli.py tests/test_agentchute_policy_queue_sync.py
+   uv lock --check
+   uv sync --extra dev --frozen
+   uv run ruff format --check .
+   uv run ruff check .
+   uv run pytest -q
+   uv build
+   uv venv --seed .release-wheel-venv
+   uv pip install --python .release-wheel-venv/bin/python dist/*.whl
+   .release-wheel-venv/bin/agentlint --version
    ```
 
-   Adjust the test list when the release touches other areas.
+   A focused test run is useful while developing, but it does not replace this
+   complete release gate.
 
 4. Open the PR and wait for required GitHub checks.
    - Python matrix must pass.

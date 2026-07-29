@@ -1,5 +1,10 @@
 # Contributing to AgentLint
 
+## Code of Conduct
+
+By participating, you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+Report conduct concerns privately using the contact method documented there.
+
 ## First timer? Start here
 
 1. **Fork and clone** the repository
