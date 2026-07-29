@@ -6,6 +6,7 @@ summaries (never full file contents) to a JSONL file per session.
 Enable via ``recording.enabled: true`` in agentlint.yml or the
 ``AGENTLINT_RECORDING=1`` environment variable.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,6 +18,7 @@ from pathlib import Path
 # Path helpers (lazy — avoids module-level expanduser)
 # ---------------------------------------------------------------------------
 
+
 def _recordings_dir() -> Path:
     """Return the recordings directory, reading env var lazily."""
     return Path(
@@ -26,6 +28,7 @@ def _recordings_dir() -> Path:
 
 def _recording_path(key: str) -> Path:
     import re
+
     safe = re.sub(r"[^a-zA-Z0-9_\-]", "_", key)
     return _recordings_dir() / f"{safe}.jsonl"
 
@@ -33,6 +36,7 @@ def _recording_path(key: str) -> Path:
 # ---------------------------------------------------------------------------
 # Opt-in gate
 # ---------------------------------------------------------------------------
+
 
 def is_recording_enabled(config) -> bool:
     """Check config + env var to decide whether recording is active."""
@@ -95,6 +99,7 @@ def summarize_tool_input(
 # Append / Load
 # ---------------------------------------------------------------------------
 
+
 def append_event(entry: dict, key: str) -> None:
     """Append one JSONL line to the recording file for *key*."""
     path = _recording_path(key)
@@ -123,6 +128,7 @@ def load_recording(key: str) -> list[dict]:
 # Listing & stats
 # ---------------------------------------------------------------------------
 
+
 def list_recordings() -> list[dict]:
     """Return metadata for every recording file found."""
     rdir = _recordings_dir()
@@ -133,13 +139,15 @@ def list_recordings() -> list[dict]:
         stat = p.stat()
         # Count lines without loading full JSON
         line_count = sum(1 for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip())
-        results.append({
-            "session_key": p.stem,
-            "path": str(p),
-            "event_count": line_count,
-            "size_bytes": stat.st_size,
-            "modified": stat.st_mtime,
-        })
+        results.append(
+            {
+                "session_key": p.stem,
+                "path": str(p),
+                "event_count": line_count,
+                "size_bytes": stat.st_size,
+                "modified": stat.st_mtime,
+            }
+        )
     return results
 
 
@@ -187,6 +195,7 @@ def recording_stats(keys: list[str] | None = None) -> dict:
 # ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
+
 
 def clear_recordings(older_than_days: int | None = None) -> int:
     """Delete recording files. Returns count of files removed."""

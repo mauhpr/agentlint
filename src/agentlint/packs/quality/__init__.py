@@ -1,4 +1,5 @@
 """Quality rule pack — code quality and best practices."""
+
 from agentlint.packs.quality.commit_message_format import CommitMessageFormat
 from agentlint.packs.quality.naming_conventions import NamingConventions
 from agentlint.packs.quality.no_dead_imports import NoDeadImports

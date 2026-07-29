@@ -5,6 +5,7 @@ Configuration merges from .continue/settings.json (and corresponding .claude/ di
 
 Reference: https://github.com/continuedev/continue
 """
+
 from __future__ import annotations
 
 import json
@@ -20,8 +21,7 @@ from agentlint.adapters._utils import (
 )
 from agentlint.adapters.base import AgentAdapter
 from agentlint.formats.claude_hooks import ClaudeHookFormatter
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext, to_hook_event
-
+from agentlint.models import AgentEvent, NormalizedTool, RuleContext, to_hook_event
 
 # Mapping from Continue native event names to generic AgentEvent
 _CONTINUE_EVENT_MAP: dict[str, AgentEvent] = {
@@ -189,8 +189,8 @@ class ContinueAdapter(AgentAdapter):
     def translate_event(self, native_event: str) -> AgentEvent:
         try:
             return _CONTINUE_EVENT_MAP[native_event]
-        except KeyError:
-            raise ValueError(f"Unknown Continue event: {native_event}")
+        except KeyError as exc:
+            raise ValueError(f"Unknown Continue event: {native_event}") from exc
 
     def normalize_tool_name(self, native_tool: str) -> str:
         return _CONTINUE_TOOL_MAP.get(native_tool, NormalizedTool.UNKNOWN).value
@@ -211,7 +211,8 @@ class ContinueAdapter(AgentAdapter):
             config={},
             session_state=session_state,
             prompt=raw_payload.get("prompt"),
-            subagent_output=raw_payload.get("last_assistant_message") or raw_payload.get("subagent_output"),
+            subagent_output=raw_payload.get("last_assistant_message")
+            or raw_payload.get("subagent_output"),
             notification_type=raw_payload.get("notification_type"),
             compact_source=raw_payload.get("compact_source"),
             agent_transcript_path=raw_payload.get("agent_transcript_path"),
@@ -246,6 +247,7 @@ class ContinueAdapter(AgentAdapter):
 
         if dry_run:
             import click
+
             click.echo(f"\nDry run — would write to {path}:")
             click.echo(json.dumps(settings, indent=2))
             return

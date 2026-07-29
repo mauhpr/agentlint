@@ -1,4 +1,5 @@
 """Rule: warn on any package manager invocation inside a chroot."""
+
 from __future__ import annotations
 
 import re
@@ -10,11 +11,23 @@ _BASH_TOOLS = {"Bash"}
 # Each tuple: (compiled_regex, label).
 _CHROOT_PKG_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Debian/Ubuntu
-    (re.compile(r"\bchroot\b.*\bapt(?:-get)?\s+(?:install|update|upgrade|dist-upgrade|autoremove)\b", re.I), "chroot apt install/update/upgrade"),
+    (
+        re.compile(
+            r"\bchroot\b.*\bapt(?:-get)?\s+(?:install|update|upgrade|dist-upgrade|autoremove)\b",
+            re.I,
+        ),
+        "chroot apt install/update/upgrade",
+    ),
     (re.compile(r"\bchroot\b.*\bdpkg\s+-i\b", re.I), "chroot dpkg -i"),
     # RHEL/Fedora
-    (re.compile(r"\bchroot\b.*\byum\s+(?:install|remove|update)\b", re.I), "chroot yum install/remove/update"),
-    (re.compile(r"\bchroot\b.*\bdnf\s+(?:install|remove|update)\b", re.I), "chroot dnf install/remove/update"),
+    (
+        re.compile(r"\bchroot\b.*\byum\s+(?:install|remove|update)\b", re.I),
+        "chroot yum install/remove/update",
+    ),
+    (
+        re.compile(r"\bchroot\b.*\bdnf\s+(?:install|remove|update)\b", re.I),
+        "chroot dnf install/remove/update",
+    ),
     # Arch
     (re.compile(r"\bchroot\b.*\bpacman\s+-[SRU]", re.I), "chroot pacman -S/-R/-U"),
 ]

@@ -6,6 +6,7 @@ of the upgrade and should not be flagged. The rule still warns when an
 ``upgrade()`` performs an irreversible operation without a corresponding
 ``downgrade()`` body, but does not double-fire on the downgrade itself.
 """
+
 from __future__ import annotations
 
 import ast
@@ -129,7 +130,7 @@ class NoDangerousMigration(Rule):
         # it's not a forward-direction destructive op, so we don't fire on it.
         if _DROP_TABLE_RE.search(upgrade_src) and not _CREATE_TABLE_RE.search(downgrade_src):
             for match in _DROP_TABLE_RE.finditer(content):
-                line_num = content[:match.start()].count("\n") + 1
+                line_num = content[: match.start()].count("\n") + 1
                 # Only flag occurrences that fall within the upgrade body.
                 # We re-scan content to keep accurate line numbers.
                 if _is_line_in_function(content, match.start(), "upgrade"):
@@ -150,7 +151,7 @@ class NoDangerousMigration(Rule):
         for match in _DROP_COLUMN_RE.finditer(content):
             if not _is_line_in_function(content, match.start(), "upgrade"):
                 continue
-            line_num = content[:match.start()].count("\n") + 1
+            line_num = content[: match.start()].count("\n") + 1
             violations.append(
                 Violation(
                     rule_id=self.id,
@@ -166,7 +167,7 @@ class NoDangerousMigration(Rule):
         for match in _ALTER_NULLABLE_RE.finditer(content):
             if not _is_line_in_function(content, match.start(), "upgrade"):
                 continue
-            line_num = content[:match.start()].count("\n") + 1
+            line_num = content[: match.start()].count("\n") + 1
             violations.append(
                 Violation(
                     rule_id=self.id,
@@ -182,7 +183,7 @@ class NoDangerousMigration(Rule):
         # not a direction concern).
         if require_timezone:
             for match in _DATETIME_NO_TZ_RE.finditer(content):
-                line_num = content[:match.start()].count("\n") + 1
+                line_num = content[: match.start()].count("\n") + 1
                 violations.append(
                     Violation(
                         rule_id=self.id,

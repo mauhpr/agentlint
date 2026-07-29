@@ -1,4 +1,5 @@
 """Rule: pages with excessive divs and no semantic elements."""
+
 from __future__ import annotations
 
 import re

@@ -26,7 +26,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 AgentLint ships with 77 rules across 8 packs and normalizes tool events across supported AI coding agents. The 24 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
 
-**v2.5.0 highlights:** Local-first AgentChute NVD enforcement with `no-nvd-critical-cve-install`, which consumes the cached `nvd-cves` feed and blocks exact critical/CISA KEV CPE product+version matches without network access in the hook path. Previous: AgentChute onboarding with `agentlint onboard`, dashboard pairing through `agentlint login`, `doctor --fix`, `status`, `test`, `test-policy`, policy cache diagnostics, durable queue inspection/flush commands, automatic background event upload, safer Codex hook enablement, sync dry-run diagnostics, FastAPI-aware `no-unnecessary-async`, grouped text CI findings, hybrid cloud feeds, privacy-safe event queueing, multi-platform adapter architecture, MCP server, warning suppression, auto-suppress, `diff_only` mode, and `auto-fix` mode.
+**v2.5.4 highlights:** Repository-wide Ruff enforcement, branch-aware coverage floors, immutable CI actions, verified release artifacts, stronger MCP tests, and the first extraction from the main CLI module. Previous: local-first AgentChute NVD enforcement, AgentChute onboarding with `agentlint onboard`, dashboard pairing through `agentlint login`, durable queue delivery, safer Codex hook enablement, multi-platform adapters, MCP server support, warning suppression, and auto-fix workflows.
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
@@ -405,6 +405,7 @@ Create a Python file in your custom rules directory:
 # .agentlint/rules/no_direct_db.py
 from agentlint.models import Rule, RuleContext, Violation, Severity, HookEvent
 
+
 class NoDirectDB(Rule):
     id = "no-direct-db"
     description = "API routes must not import database layer directly"
@@ -416,12 +417,14 @@ class NoDirectDB(Rule):
         if not context.file_path or "/routes/" not in context.file_path:
             return []
         if context.file_content and "from database" in context.file_content:
-            return [Violation(
-                rule_id=self.id,
-                message="Route imports database directly. Use repository pattern.",
-                severity=self.severity,
-                file_path=context.file_path,
-            )]
+            return [
+                Violation(
+                    rule_id=self.id,
+                    message="Route imports database directly. Use repository pattern.",
+                    severity=self.severity,
+                    file_path=context.file_path,
+                )
+            ]
         return []
 ```
 

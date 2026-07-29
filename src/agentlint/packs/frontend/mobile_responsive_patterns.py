@@ -1,4 +1,5 @@
 """Rule: desktop-only layout patterns."""
+
 from __future__ import annotations
 
 import re

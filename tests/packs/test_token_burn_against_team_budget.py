@@ -142,9 +142,9 @@ class TestMessageResilience:
             violations = self.rule.evaluate(_ctx())
         msg = violations[0].message
         assert "exceeded" in msg.lower()
-        # Should not contain $None / NaN / similar artifacts
+        # Missing numeric fields must not leak placeholder values.
         assert "None" not in msg
-        assert "$0" not in msg or True  # tolerate this case
+        assert "nan" not in msg.lower()
 
     def test_message_with_string_percent_does_not_crash(self):
         # Guard against API returning percent_used as string "85.5" not float

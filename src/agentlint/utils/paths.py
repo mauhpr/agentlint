@@ -6,6 +6,7 @@ Some rules ought to treat paths under ephemeral/scratch directories as safe
 files). This module centralises the convention so individual rules don't
 re-implement it.
 """
+
 from __future__ import annotations
 
 import os

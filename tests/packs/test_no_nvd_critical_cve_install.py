@@ -89,13 +89,18 @@ class TestNvdFeedHelpers:
 
     def test_blocking_cve_requires_critical_or_cisa(self):
         assert _is_blocking_cve({"severity": "CRITICAL"})
-        assert _is_blocking_cve({"severity": "HIGH", "metadata": {"cisa": {"cisaExploitAdd": "2026-01-01"}}})
+        assert _is_blocking_cve(
+            {"severity": "HIGH", "metadata": {"cisa": {"cisaExploitAdd": "2026-01-01"}}}
+        )
         assert not _is_blocking_cve({"severity": "HIGH", "metadata": {"cisa": {}}})
 
     def test_critical_cpe_index_skips_non_blocking_and_malformed_records(self):
         records = [
             "bad",
-            {"severity": "HIGH", "metadata": {"cpe_matches": ["cpe:2.3:a:nginx:nginx:1.24.0:*:*:*:*:*:*:*"]}},
+            {
+                "severity": "HIGH",
+                "metadata": {"cpe_matches": ["cpe:2.3:a:nginx:nginx:1.24.0:*:*:*:*:*:*:*"]},
+            },
             {
                 "cve_id": "CVE-2026-0001",
                 "severity": "CRITICAL",
@@ -142,14 +147,16 @@ class TestRule:
 
     def test_blocks_exact_critical_cpe_match(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "cve_id": "CVE-2026-0001",
-            "severity": "CRITICAL",
-            "summary": "Critical nginx overflow",
-            "metadata": {
-                "cpe_matches": ["cpe:2.3:a:nginx:nginx:1.24.0:*:*:*:*:*:*:*"],
-            },
-        })
+        feed = self._feed(
+            {
+                "cve_id": "CVE-2026-0001",
+                "severity": "CRITICAL",
+                "summary": "Critical nginx overflow",
+                "metadata": {
+                    "cpe_matches": ["cpe:2.3:a:nginx:nginx:1.24.0:*:*:*:*:*:*:*"],
+                },
+            }
+        )
         with patch("agentlint.agentchute.cloud_feed.get", return_value=feed):
             violations = self.rule.evaluate(_ctx("docker pull nginx:1.24.0"))
         assert len(violations) == 1
@@ -160,14 +167,16 @@ class TestRule:
 
     def test_blocks_cisa_kev_even_when_not_critical(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "cve_id": "CVE-2026-0002",
-            "severity": "HIGH",
-            "metadata": {
-                "cisa": {"cisaExploitAdd": "2026-01-01"},
-                "cpe_matches": ["cpe:2.3:a:openssl:openssl:1.1.1f:*:*:*:*:*:*:*"],
-            },
-        })
+        feed = self._feed(
+            {
+                "cve_id": "CVE-2026-0002",
+                "severity": "HIGH",
+                "metadata": {
+                    "cisa": {"cisaExploitAdd": "2026-01-01"},
+                    "cpe_matches": ["cpe:2.3:a:openssl:openssl:1.1.1f:*:*:*:*:*:*:*"],
+                },
+            }
+        )
         with patch("agentlint.agentchute.cloud_feed.get", return_value=feed):
             violations = self.rule.evaluate(_ctx("apt-get install openssl=1.1.1f-1ubuntu2"))
         assert len(violations) == 1

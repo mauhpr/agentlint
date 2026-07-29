@@ -1,4 +1,5 @@
 """Release-facing rule inventory checks."""
+
 from __future__ import annotations
 
 from agentlint.packs import PACK_MODULES, load_rules

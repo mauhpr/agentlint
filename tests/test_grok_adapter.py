@@ -1,13 +1,14 @@
 """Tests for the Grok CLI adapter."""
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from agentlint.adapters.grok import GrokAdapter, _build_hooks, _settings_path as _hooks_path
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext
+from agentlint.adapters.grok import GrokAdapter, _build_hooks
+from agentlint.adapters.grok import _settings_path as _hooks_path
+from agentlint.models import AgentEvent, HookEvent, NormalizedTool
 
 
 class TestEventTranslation:
@@ -95,8 +96,13 @@ class TestHooksPath:
 
 class TestBuildHooks:
     EXPECTED_EVENTS = {
-        "PreToolUse", "PostToolUse", "UserPromptSubmit",
-        "SubagentStart", "SubagentStop", "Notification", "Stop",
+        "PreToolUse",
+        "PostToolUse",
+        "UserPromptSubmit",
+        "SubagentStart",
+        "SubagentStop",
+        "Notification",
+        "Stop",
     }
 
     def test_builds_all_events(self) -> None:
@@ -168,7 +174,15 @@ class TestUninstallHooks:
             "hooks": {
                 "PreToolUse": [
                     {"matcher": "bash", "hooks": [{"type": "command", "command": "echo hello"}]},
-                    {"matcher": "bash", "hooks": [{"type": "command", "command": "agentlint check --event PreToolUse --adapter grok"}]},
+                    {
+                        "matcher": "bash",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "agentlint check --event PreToolUse --adapter grok",
+                            }
+                        ],
+                    },
                 ]
             }
         }
@@ -185,6 +199,7 @@ class TestUninstallHooks:
 class TestFormatter:
     def test_uses_claude_formatter(self) -> None:
         from agentlint.formats.claude_hooks import ClaudeHookFormatter
+
         adapter = GrokAdapter()
         assert isinstance(adapter.formatter, ClaudeHookFormatter)
 

@@ -1,4 +1,5 @@
 """Rule: interactive non-button elements without ARIA roles."""
+
 from __future__ import annotations
 
 import re

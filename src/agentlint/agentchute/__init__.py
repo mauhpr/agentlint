@@ -30,7 +30,12 @@ from agentlint.agentchute.client import (
     is_agentchute_enabled,
     post_event_async,
 )
-from agentlint.agentchute.queue import FlushResult, enqueue_event, flush_queue, trigger_background_flush
+from agentlint.agentchute.queue import (
+    FlushResult,
+    enqueue_event,
+    flush_queue,
+    trigger_background_flush,
+)
 from agentlint.agentchute.sync import SyncResult, sync_recordings
 
 # Convenience: ``from agentlint.agentchute import cloud_feed`` then

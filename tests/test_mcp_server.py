@@ -1,10 +1,10 @@
 """Tests for agentlint MCP server."""
+
 from __future__ import annotations
 
 import json
 
 import pytest
-
 from fastmcp import Client
 
 from agentlint.mcp_server import mcp
@@ -62,7 +62,6 @@ class TestCheckContent:
             violations = json.loads(result.data)
             assert not any(v["rule_id"] == "no-secrets" for v in violations)
 
-
     async def test_invalid_event_returns_error(self, client):
         """Invalid event string should return error, not crash."""
         result = await client.call_tool(
@@ -85,6 +84,25 @@ class TestCheckContent:
         )
         violations = json.loads(result.data)
         assert any("no-force-push" in v["rule_id"] for v in violations)
+
+
+class TestCheckEvent:
+    async def test_generic_event_evaluates_rules(self, client):
+        result = await client.call_tool(
+            "check_event",
+            {
+                "event": "pre_tool_use",
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": "app.py",
+                    "content": 'API_KEY = "sk_live_abc123def456ghi789"',
+                },
+                "file_content": 'API_KEY = "sk_live_abc123def456ghi789"',
+            },
+        )
+
+        violations = json.loads(result.data)
+        assert any(violation["rule_id"] == "no-secrets" for violation in violations)
 
 
 class TestListRules:
@@ -111,6 +129,16 @@ class TestGetConfig:
         assert "universal" in config["packs"]
 
 
+class TestGetSession:
+    async def test_returns_current_session(self, client, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-mcp-session")
+
+        result = await client.call_tool("get_session", {})
+
+        assert json.loads(result.data) == {}
+
+
 class TestWithCustomRules:
     async def test_check_content_with_custom_rules(self, tmp_path, monkeypatch):
         """check_content should evaluate custom rules when custom_rules_dir is set."""
@@ -129,9 +157,7 @@ class TestWithCustomRules:
             "    def evaluate(self, context):\n"
             "        return [Violation(rule_id=self.id, message='custom fired', severity=self.severity)]\n"
         )
-        (tmp_path / "agentlint.yml").write_text(
-            "packs:\n  - universal\ncustom_rules_dir: rules/\n"
-        )
+        (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\ncustom_rules_dir: rules/\n")
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
         async with Client(mcp) as c:
             result = await c.call_tool(
@@ -172,8 +198,7 @@ class TestMonorepoMCP:
     async def test_check_content_resolves_project_packs(self, tmp_path, monkeypatch):
         """MCP check_content should use project-specific packs."""
         (tmp_path / "agentlint.yml").write_text(
-            "packs:\n  - universal\n"
-            "projects:\n  backend/:\n    packs: [universal, python]\n"
+            "packs:\n  - universal\nprojects:\n  backend/:\n    packs: [universal, python]\n"
         )
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
         (tmp_path / "backend").mkdir()
@@ -222,6 +247,26 @@ class TestResources:
         text = result[0].text if hasattr(result[0], "text") else str(result[0])
         config = json.loads(text)
         assert "packs" in config
+
+    async def test_session_resource(self, client, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-mcp-session-resource")
+
+        result = await client.read_resource("agentlint://session")
+
+        text = result[0].text if hasattr(result[0], "text") else str(result[0])
+        assert json.loads(text) == {}
+
+
+def test_run_starts_fastmcp(monkeypatch):
+    from agentlint import mcp_server
+
+    calls = []
+    monkeypatch.setattr(mcp_server.mcp, "run", lambda: calls.append(True))
+
+    mcp_server.run()
+
+    assert calls == [True]
 
 
 class TestViolationSchemaContract:

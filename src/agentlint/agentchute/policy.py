@@ -1,4 +1,5 @@
 """Cached AgentChute org policy and declarative policy rules."""
+
 from __future__ import annotations
 
 import fnmatch
@@ -7,7 +8,8 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from importlib.metadata import PackageNotFoundError, version as package_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any
 
@@ -119,13 +121,15 @@ def refresh_policy() -> PolicyRefreshResult:
 
     _policy_root().mkdir(parents=True, exist_ok=True)
     _policy_path().write_text(json.dumps(policy, sort_keys=True), encoding="utf-8")
-    _write_meta({
-        "etag": response.headers.get("ETag"),
-        "fetched_at": time.time(),
-        "version": policy.get("version"),
-        "updated_at": policy.get("updated_at"),
-        "error": None,
-    })
+    _write_meta(
+        {
+            "etag": response.headers.get("ETag"),
+            "fetched_at": time.time(),
+            "version": policy.get("version"),
+            "updated_at": policy.get("updated_at"),
+            "error": None,
+        }
+    )
     return PolicyRefreshResult(ok=True, version=policy.get("version"))
 
 

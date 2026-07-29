@@ -23,7 +23,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------- helpers ----------
 
 
@@ -105,9 +104,7 @@ def test_summarize_strips_edit_old_and_new_strings():
     assert "EXTRA_SECRET" not in serialized
     assert "topsecret" not in serialized
     # Lengths are present and accurate.
-    assert summary["content_length"] == len(SECRET_FILE_CONTENT) + len(
-        "EXTRA_SECRET=topsecret"
-    )
+    assert summary["content_length"] == len(SECRET_FILE_CONTENT) + len("EXTRA_SECRET=topsecret")
     assert summary["old_content_length"] == len(SECRET_FILE_CONTENT)
 
 
@@ -141,8 +138,9 @@ def test_summarize_truncates_user_prompt_preview():
 def test_post_event_does_not_leak_file_content(agentchute_env, captured_post):
     """Integration check: the captured HTTP body for a Write event
     contains no file content."""
-    from agentlint.agentchute import post_event_async
     import threading
+
+    from agentlint.agentchute import post_event_async
 
     # Build the same shape cli.py builds when agentchute_needed is true.
     from agentlint.recorder import summarize_tool_input
@@ -180,9 +178,10 @@ def test_post_event_does_not_leak_file_content(agentchute_env, captured_post):
 
 def test_post_event_does_not_leak_long_bash(agentchute_env, captured_post):
     """Bash commands above 200 chars must be truncated before POST."""
+    import threading
+
     from agentlint.agentchute import post_event_async
     from agentlint.recorder import summarize_tool_input
-    import threading
 
     event = {
         "session_key": "test-session",
@@ -212,9 +211,10 @@ def test_post_event_does_not_leak_long_bash(agentchute_env, captured_post):
 
 def test_post_event_does_not_leak_full_prompt(agentchute_env, captured_post):
     """UserPromptSubmit prompts must never transmit beyond the 100-char preview."""
+    import threading
+
     from agentlint.agentchute import post_event_async
     from agentlint.recorder import summarize_tool_input
-    import threading
 
     event = {
         "session_key": "test-session",
@@ -277,8 +277,9 @@ def test_no_post_when_explicitly_disabled(captured_post, monkeypatch):
 
 def test_agentchute_env_enables_post(captured_post, monkeypatch):
     """AgentChute-named env vars are the public paid-product interface."""
-    from agentlint.agentchute import post_event_async
     import threading
+
+    from agentlint.agentchute import post_event_async
 
     monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_xxx")
     monkeypatch.setenv("AGENTCHUTE_API_URL", "https://api.example.test/v1")
@@ -294,9 +295,10 @@ def test_agentchute_env_enables_post(captured_post, monkeypatch):
 
 def test_agentchute_config_enables_post(captured_post, monkeypatch):
     """agentchute.enabled in config enables posting when a license exists."""
-    from agentlint.config import AgentLintConfig
-    from agentlint.agentchute import post_event_async
     import threading
+
+    from agentlint.agentchute import post_event_async
+    from agentlint.config import AgentLintConfig
 
     monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_xxx")
     monkeypatch.setenv("AGENTCHUTE_API_URL", "https://api.example.test/v1")
@@ -527,6 +529,7 @@ def test_client_post_event_handles_status_codes(monkeypatch, caplog):
 
 def test_client_post_event_handles_timeout_and_request_exception():
     import requests
+
     from agentlint.agentchute.client import AgentChuteClient
 
     client = AgentChuteClient(api_url="https://api.example.test/v1", license_key="k")
@@ -555,6 +558,7 @@ def test_client_batch_handles_empty_invalid_json_and_failed_ids():
 
 def test_client_batch_handles_success_timeout_and_server_error():
     import requests
+
     from agentlint.agentchute.client import AgentChuteClient
 
     client = AgentChuteClient(api_url="https://api.example.test/v1", license_key="k")

@@ -1,4 +1,5 @@
 """Rule: images without alt text (WCAG 1.1.1)."""
+
 from __future__ import annotations
 
 import re
@@ -7,6 +8,7 @@ from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 from agentlint.packs.frontend._helpers import _WRITE_TOOLS, is_frontend_file
 
 _DEFAULT_COMPONENTS = {"img", "Image"}
+
 
 # Matches <img or <Image (or configured components) without alt= attribute
 def _build_pattern(components: set[str]) -> re.Pattern:
@@ -42,7 +44,7 @@ class A11yImageAlt(Rule):
 
         violations: list[Violation] = []
         for line_num, line in enumerate(content.splitlines(), start=1):
-            for match in pattern.finditer(line):
+            for _match in pattern.finditer(line):
                 violations.append(
                     Violation(
                         rule_id=self.id,

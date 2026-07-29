@@ -1,9 +1,10 @@
 """Base class for output formatters."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from agentlint.models import AgentEvent, Severity, Violation
+from agentlint.models import AgentEvent, Violation
 
 
 class OutputFormatter(ABC):
@@ -35,6 +36,7 @@ class OutputFormatter(ABC):
         Override if the platform uses a different shape for subagent context.
         """
         from agentlint.models import AgentEvent
+
         return self.format(violations, AgentEvent.SUB_AGENT_START)
 
     def _format_violation_lines(

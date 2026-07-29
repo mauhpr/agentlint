@@ -1,13 +1,27 @@
 """Bash command parsing utilities."""
+
 from __future__ import annotations
 
 # Cloud/infra CLI tools whose subcommands (cp, mv, rm, etc.) are NOT
 # shell file operations. When argv[0] is one of these, file-write and
 # some destructive-command patterns should be skipped.
 KNOWN_CLI_TOOLS = {
-    "bq", "gcloud", "gsutil", "aws", "az", "kubectl", "helm",
-    "terraform", "pulumi", "docker", "podman", "heroku", "flyctl",
-    "scp", "rsync", "rclone",
+    "bq",
+    "gcloud",
+    "gsutil",
+    "aws",
+    "az",
+    "kubectl",
+    "helm",
+    "terraform",
+    "pulumi",
+    "docker",
+    "podman",
+    "heroku",
+    "flyctl",
+    "scp",
+    "rsync",
+    "rclone",
 }
 
 
@@ -24,9 +38,7 @@ def get_command_binary(command: str) -> str:
     i = 0
     while i < len(parts):
         token = parts[i]
-        if token in ("sudo", "nohup", "nice", "time", "strace"):
-            i += 1
-        elif token == "env" or "=" in token:
+        if token in ("sudo", "nohup", "nice", "time", "strace") or token == "env" or "=" in token:
             i += 1
         else:
             break
@@ -60,14 +72,14 @@ def strip_string_args(command: str) -> str:
             i += 1
             depth = 0  # track $(...) nesting
             while i < n:
-                if command[i] == '$' and i + 1 < n and command[i + 1] == '(':
+                if command[i] == "$" and i + 1 < n and command[i + 1] == "(":
                     # Entering command substitution — preserve content
                     depth += 1
                     result.append(command[i])
-                elif command[i] == '(' and depth > 0:
+                elif command[i] == "(" and depth > 0:
                     depth += 1
                     result.append(command[i])
-                elif command[i] == ')' and depth > 0:
+                elif command[i] == ")" and depth > 0:
                     depth -= 1
                     result.append(command[i])
                 elif command[i] == '"' and depth == 0:
@@ -75,7 +87,7 @@ def strip_string_args(command: str) -> str:
                     result.append('"')
                     i += 1
                     break
-                elif command[i] == '\\' and i + 1 < n:
+                elif command[i] == "\\" and i + 1 < n:
                     # Escaped character inside quotes — skip both
                     i += 2
                     continue

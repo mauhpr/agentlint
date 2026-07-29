@@ -1,4 +1,5 @@
 """Rule: detect risky operations inside a chroot on remote systems."""
+
 from __future__ import annotations
 
 import re
@@ -16,7 +17,9 @@ _CHROOT_PATTERNS: list[tuple[re.Pattern[str], str, Severity]] = [
         Severity.ERROR,
     ),
     (
-        re.compile(r"\bchroot\b.*\bapt\s+(?:remove|purge)\b.*\b(?:grub|linux-image|shim-signed)\b", re.I),
+        re.compile(
+            r"\bchroot\b.*\bapt\s+(?:remove|purge)\b.*\b(?:grub|linux-image|shim-signed)\b", re.I
+        ),
         "chroot apt remove/purge bootloader package",
         Severity.ERROR,
     ),

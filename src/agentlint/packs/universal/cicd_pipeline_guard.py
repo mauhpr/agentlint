@@ -1,4 +1,5 @@
 """Rule: block writes to CI/CD pipeline definition files without approval."""
+
 from __future__ import annotations
 
 import fnmatch

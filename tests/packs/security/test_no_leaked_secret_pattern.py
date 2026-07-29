@@ -19,8 +19,8 @@ from unittest.mock import patch
 
 from agentlint.models import HookEvent, RuleContext
 from agentlint.packs.security.no_leaked_secret_pattern import (
-    NoLeakedSecretPattern,
     _MAX_VIOLATIONS_PER_FILE,
+    NoLeakedSecretPattern,
     _compile,
     _compiled_cache,
 )
@@ -73,8 +73,7 @@ class TestSelfDegrading:
 
     def test_empty_feed(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        with patch("agentlint.agentchute.cloud_feed.get",
-                   return_value={"patterns": []}):
+        with patch("agentlint.agentchute.cloud_feed.get", return_value={"patterns": []}):
             assert self.rule.evaluate(_ctx("AKIAFAKEXAMPLEKEY1234")) == []
 
     def test_non_file_tool(self):
@@ -105,17 +104,17 @@ class TestHappyPath:
 
     def test_fires_on_aws_pattern(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "id": "aws-access-token",
-            "title": "AWS access token",
-            "regex": r"AKIA[0-9A-Z]{16}",
-            "severity": "CRITICAL",
-            "tags": ["aws"],
-        })
+        feed = self._feed(
+            {
+                "id": "aws-access-token",
+                "title": "AWS access token",
+                "regex": r"AKIA[0-9A-Z]{16}",
+                "severity": "CRITICAL",
+                "tags": ["aws"],
+            }
+        )
         with self._patch(feed):
-            v = self.rule.evaluate(_ctx(
-                "AWS_KEY = 'AKIA1234567890ABCDEF'"
-            ))
+            v = self.rule.evaluate(_ctx("AWS_KEY = 'AKIA1234567890ABCDEF'"))
         assert len(v) == 1
         assert v[0].rule_id == "no-leaked-secret-pattern"
         assert "aws-access-token" in v[0].message
@@ -126,12 +125,14 @@ class TestHappyPath:
     def test_redaction_short_match(self, monkeypatch):
         # Short matches (≤8 chars) become *** rather than partial reveal
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "id": "tiny",
-            "title": "tiny secret",
-            "regex": r"sk-\d+",
-            "severity": "HIGH",
-        })
+        feed = self._feed(
+            {
+                "id": "tiny",
+                "title": "tiny secret",
+                "regex": r"sk-\d+",
+                "severity": "HIGH",
+            }
+        )
         with self._patch(feed):
             v = self.rule.evaluate(_ctx("token = 'sk-123'"))
         assert len(v) == 1
@@ -141,12 +142,14 @@ class TestHappyPath:
     def test_severity_downgrade_for_low_severity_pattern(self, monkeypatch):
         # MEDIUM severity from feed maps to WARNING (not ERROR)
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "id": "obscure",
-            "title": "obscure pattern",
-            "regex": r"obscure-[a-z]+",
-            "severity": "MEDIUM",
-        })
+        feed = self._feed(
+            {
+                "id": "obscure",
+                "title": "obscure pattern",
+                "regex": r"obscure-[a-z]+",
+                "severity": "MEDIUM",
+            }
+        )
         with self._patch(feed):
             v = self.rule.evaluate(_ctx("x = obscure-thing"))
         assert len(v) == 1
@@ -183,12 +186,14 @@ class TestHappyPath:
         tokens = []
         for i in range(_MAX_VIOLATIONS_PER_FILE + 3):
             tokens.append(f"TOKEN{i}_LITERAL")
-            patterns.append({
-                "id": f"rule-{i}",
-                "title": f"rule {i}",
-                "regex": rf"TOKEN{i}_LITERAL",
-                "severity": "HIGH",
-            })
+            patterns.append(
+                {
+                    "id": f"rule-{i}",
+                    "title": f"rule {i}",
+                    "regex": rf"TOKEN{i}_LITERAL",
+                    "severity": "HIGH",
+                }
+            )
         content = " ".join(tokens)
         with self._patch({"patterns": patterns}):
             v = self.rule.evaluate(_ctx(content))
@@ -198,11 +203,13 @@ class TestHappyPath:
 
     def test_no_match_no_violations(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        feed = self._feed({
-            "id": "aws-access-token",
-            "title": "AWS access token",
-            "regex": r"AKIA[0-9A-Z]{16}",
-            "severity": "CRITICAL",
-        })
+        feed = self._feed(
+            {
+                "id": "aws-access-token",
+                "title": "AWS access token",
+                "regex": r"AKIA[0-9A-Z]{16}",
+                "severity": "CRITICAL",
+            }
+        )
         with self._patch(feed):
             assert self.rule.evaluate(_ctx("nothing matching here")) == []

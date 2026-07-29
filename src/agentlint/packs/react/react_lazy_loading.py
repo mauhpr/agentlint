@@ -1,4 +1,5 @@
 """Rule: heavy components imported at top level in page files."""
+
 from __future__ import annotations
 
 import re
@@ -9,8 +10,14 @@ _WRITE_TOOLS = {"Write", "Edit"}
 _REACT_EXTENSIONS = {".tsx", ".jsx"}
 
 _DEFAULT_HEAVY_COMPONENTS = {
-    "Chart", "DataTable", "Editor", "Calendar", "Map",
-    "RichTextEditor", "CodeEditor", "Spreadsheet",
+    "Chart",
+    "DataTable",
+    "Editor",
+    "Calendar",
+    "Map",
+    "RichTextEditor",
+    "CodeEditor",
+    "Spreadsheet",
 }
 
 _DEFAULT_PAGE_PATTERNS = {"pages/", "app/", "routes/"}
@@ -62,7 +69,7 @@ class ReactLazyLoading(Rule):
                     re.MULTILINE,
                 )
                 for match in import_re.finditer(content):
-                    line_num = content[:match.start()].count("\n") + 1
+                    line_num = content[: match.start()].count("\n") + 1
                     violations.append(
                         Violation(
                             rule_id=self.id,
@@ -77,7 +84,7 @@ class ReactLazyLoading(Rule):
         # Check 2: React.lazy() without <Suspense>
         if _LAZY_RE.search(content) and not _SUSPENSE_RE.search(content):
             for match in _LAZY_RE.finditer(content):
-                line_num = content[:match.start()].count("\n") + 1
+                line_num = content[: match.start()].count("\n") + 1
                 violations.append(
                     Violation(
                         rule_id=self.id,

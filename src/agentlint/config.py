@@ -1,4 +1,5 @@
 """Configuration loading and parsing for AgentLint."""
+
 from __future__ import annotations
 
 import logging
@@ -25,6 +26,7 @@ _DISABLED_BY_DEFAULT = {"git-checkpoint"}
 @dataclass
 class AgentLintConfig:
     """Parsed AgentLint configuration."""
+
     severity: str = "standard"
     packs: list[str] = field(default_factory=lambda: ["universal"])
     rules: dict[str, dict] = field(default_factory=dict)
@@ -73,10 +75,11 @@ class AgentLintConfig:
         best_packs = None
         for prefix, project_config in self.projects.items():
             clean = prefix.rstrip("/")
-            if relative.startswith(clean + "/") or relative.startswith(clean + os.sep):
-                if len(clean) > len(best_match):
-                    best_match = clean
-                    best_packs = project_config.get("packs")
+            if (relative.startswith(clean + "/") or relative.startswith(clean + os.sep)) and len(
+                clean
+            ) > len(best_match):
+                best_match = clean
+                best_packs = project_config.get("packs")
         return best_packs if best_packs else self.packs
 
     def with_packs(self, packs: list[str]) -> AgentLintConfig:

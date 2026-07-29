@@ -1,4 +1,5 @@
 """Integration tests: autopilot pack loaded via full load_rules pipeline."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity

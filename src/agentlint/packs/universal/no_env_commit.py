@@ -1,4 +1,5 @@
 """Rule: block writing to .env files that may contain secrets."""
+
 from __future__ import annotations
 
 import os
@@ -13,9 +14,7 @@ _BASH_TOOLS = {"Bash"}
 _SAFE_SUFFIXES = (".example", ".template", ".sample")
 
 # .env filenames that should be blocked.
-_BLOCKED_RE = re.compile(
-    r"(^|/)\.env(\.local|\.production|\.staging|\.development)?$"
-)
+_BLOCKED_RE = re.compile(r"(^|/)\.env(\.local|\.production|\.staging|\.development)?$")
 
 # Patterns that extract file paths from Bash commands targeting .env files.
 # Matches: cat > .env, echo ... > .env, tee .env, cp ... .env, sed -i ... .env,

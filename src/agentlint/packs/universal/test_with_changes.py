@@ -1,4 +1,5 @@
 """Rule: warn when source files change without corresponding test changes."""
+
 from __future__ import annotations
 
 from pathlib import Path

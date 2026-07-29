@@ -1,4 +1,5 @@
 """Rule: warn on git commits that skip hooks or GPG signing."""
+
 from __future__ import annotations
 
 import re

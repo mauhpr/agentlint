@@ -1,4 +1,5 @@
 """Tests for session recording."""
+
 from __future__ import annotations
 
 import time
@@ -23,20 +24,26 @@ class TestSummarizeToolInput:
         assert result["file_path"] is None
 
     def test_write_omits_content(self):
-        result = summarize_tool_input("Write", {
-            "file_path": "/foo/bar.py",
-            "content": "a" * 1000,
-        })
+        result = summarize_tool_input(
+            "Write",
+            {
+                "file_path": "/foo/bar.py",
+                "content": "a" * 1000,
+            },
+        )
         assert result["file_path"] == "/foo/bar.py"
         assert result["content_length"] == 1000
         assert "a" * 1000 not in str(result)
 
     def test_edit_uses_new_string_length(self):
-        result = summarize_tool_input("Edit", {
-            "file_path": "/f.py",
-            "old_string": "old",
-            "new_string": "new content here",
-        })
+        result = summarize_tool_input(
+            "Edit",
+            {
+                "file_path": "/f.py",
+                "old_string": "old",
+                "new_string": "new content here",
+            },
+        )
         assert result["file_path"] == "/f.py"
         assert result["content_length"] == len("new content here")
         assert result["old_content_length"] == len("old")
@@ -55,23 +62,32 @@ class TestSummarizeToolInput:
         assert result["file_path"] == "TODO"
 
     def test_agent_captures_subagent_type_and_description(self):
-        result = summarize_tool_input("Agent", {
-            "subagent_type": "Explore",
-            "description": "Find auth middleware",
-        })
+        result = summarize_tool_input(
+            "Agent",
+            {
+                "subagent_type": "Explore",
+                "description": "Find auth middleware",
+            },
+        )
         assert result["subagent_type"] == "Explore"
         assert result["description"] == "Find auth middleware"
 
     def test_agent_truncates_long_description(self):
-        result = summarize_tool_input("Task", {
-            "description": "d" * 300,
-        })
+        result = summarize_tool_input(
+            "Task",
+            {
+                "description": "d" * 300,
+            },
+        )
         assert result["description"] == "d" * 100
 
     def test_webfetch_captures_url(self):
-        result = summarize_tool_input("WebFetch", {
-            "url": "https://example.com/api/docs",
-        })
+        result = summarize_tool_input(
+            "WebFetch",
+            {
+                "url": "https://example.com/api/docs",
+            },
+        )
         assert result["url"] == "https://example.com/api/docs"
 
     def test_webfetch_truncates_long_url(self):
@@ -84,10 +100,13 @@ class TestSummarizeToolInput:
         assert result["query"] == "python asyncio tutorial"
 
     def test_notebook_edit_captures_cell(self):
-        result = summarize_tool_input("NotebookEdit", {
-            "file_path": "/nb.ipynb",
-            "cell_number": 3,
-        })
+        result = summarize_tool_input(
+            "NotebookEdit",
+            {
+                "file_path": "/nb.ipynb",
+                "cell_number": 3,
+            },
+        )
         assert result["file_path"] == "/nb.ipynb"
         assert result["cell_index"] == 3
 
@@ -172,15 +191,24 @@ class TestRecordingStats:
     def test_aggregation(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENTLINT_RECORDINGS_DIR", str(tmp_path))
         for i in range(3):
-            append_event({
-                "ts": float(i), "event": "PreToolUse",
-                "tool_name": "Bash", "violations": [],
-            }, "s1")
-        append_event({
-            "ts": 10.0, "event": "PreToolUse",
-            "tool_name": "Write",
-            "violations": [{"rule_id": "no-secrets", "severity": "error"}],
-        }, "s1")
+            append_event(
+                {
+                    "ts": float(i),
+                    "event": "PreToolUse",
+                    "tool_name": "Bash",
+                    "violations": [],
+                },
+                "s1",
+            )
+        append_event(
+            {
+                "ts": 10.0,
+                "event": "PreToolUse",
+                "tool_name": "Write",
+                "violations": [{"rule_id": "no-secrets", "severity": "error"}],
+            },
+            "s1",
+        )
 
         stats = recording_stats()
         assert stats["total_events"] == 4
@@ -214,6 +242,7 @@ class TestClearRecordings:
 
         # Artificially age one file
         import os
+
         old_path = tmp_path / "old.jsonl"
         old_path.write_text('{"ts":0}\n')
         old_time = time.time() - 86400 * 10  # 10 days ago

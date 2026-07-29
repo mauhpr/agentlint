@@ -4,6 +4,7 @@ Generic subprocess integration — configure any CLI tool (linter, scanner,
 test runner, custom script) as a PostToolUse check. Non-zero exit codes
 become violations. All placeholder values are shell-escaped via shlex.quote().
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,13 +30,16 @@ _SEVERITY_MAP = {
 
 
 def _filter_diff_violations(
-    output: str, content_before: str | None, content_after: str | None,
+    output: str,
+    content_before: str | None,
+    content_after: str | None,
 ) -> str:
     """Filter CLI output to only violations on changed lines."""
     if content_before is None or content_after is None:
         return output  # new file or no before content — show everything
 
     import difflib
+
     before_lines = content_before.splitlines(keepends=True)
     after_lines = content_after.splitlines(keepends=True)
     changed_lines: set[int] = set()
@@ -49,6 +53,7 @@ def _filter_diff_violations(
         return ""  # no changes — suppress all output
 
     import re
+
     filtered = []
     for line in output.splitlines():
         match = re.search(r":(\d+)(?:[:\s]|$)|line\s+(\d+)", line)
@@ -103,7 +108,9 @@ class CliIntegration(Rule):
                 rel = template_ctx.get("file.relative", "")
                 if not fnmatch(rel, glob_pattern) and not fnmatch(file_path, glob_pattern):
                     continue
-            elif any(k.startswith("file.") for k in _extract_placeholders(cmd_config.get("command", ""))):
+            elif any(
+                k.startswith("file.") for k in _extract_placeholders(cmd_config.get("command", ""))
+            ):
                 # Command uses file placeholders but no file path available — skip
                 continue
 
@@ -143,13 +150,15 @@ class CliIntegration(Rule):
                     output = (result.stdout or result.stderr or "").strip()
                     if output and len(output) > max_output:
                         output = output[:max_output] + "..."
-                    violations.append(Violation(
-                        rule_id=f"{self.id}/{name}",
-                        message=output or f"Auto-fix failed with code {result.returncode}",
-                        severity=severity,
-                        file_path=file_path,
-                        suggestion=f"Run `{command_template}` manually to debug",
-                    ))
+                    violations.append(
+                        Violation(
+                            rule_id=f"{self.id}/{name}",
+                            message=output or f"Auto-fix failed with code {result.returncode}",
+                            severity=severity,
+                            file_path=file_path,
+                            suggestion=f"Run `{command_template}` manually to debug",
+                        )
+                    )
                 else:
                     logger.debug("Auto-fix '%s' succeeded on %s", name, file_path or "(no file)")
                 continue
@@ -160,20 +169,24 @@ class CliIntegration(Rule):
                 # diff_only: filter to changed lines only
                 if diff_only:
                     output = _filter_diff_violations(
-                        output, context.file_content_before, context.file_content,
+                        output,
+                        context.file_content_before,
+                        context.file_content,
                     )
                     if not output:
                         continue  # all violations were pre-existing
 
                 if len(output) > max_output:
                     output = output[:max_output] + "..."
-                violations.append(Violation(
-                    rule_id=f"{self.id}/{name}",
-                    message=output or f"Command exited with code {result.returncode}",
-                    severity=severity,
-                    file_path=file_path,
-                    suggestion=f"Run `{command_template}` to see full output",
-                ))
+                violations.append(
+                    Violation(
+                        rule_id=f"{self.id}/{name}",
+                        message=output or f"Command exited with code {result.returncode}",
+                        severity=severity,
+                        file_path=file_path,
+                        suggestion=f"Run `{command_template}` to see full output",
+                    )
+                )
 
         return violations
 
@@ -181,4 +194,5 @@ class CliIntegration(Rule):
 def _extract_placeholders(template: str) -> set[str]:
     """Extract placeholder keys from a template string."""
     import re
+
     return set(re.findall(r"\{([^}]+)\}", template))

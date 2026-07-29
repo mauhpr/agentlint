@@ -1,4 +1,5 @@
 """Tests for git utilities."""
+
 from __future__ import annotations
 
 import subprocess
@@ -14,8 +15,12 @@ class TestGetChangedFiles:
     def test_returns_changed_files_in_git_repo(self, tmp_path):
         # Initialize a git repo with a commit
         subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), capture_output=True
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"], cwd=str(tmp_path), capture_output=True
+        )
 
         # Create and commit a file
         (tmp_path / "file.py").write_text("x = 1\n")
@@ -31,8 +36,12 @@ class TestGetChangedFiles:
     def test_includes_untracked_files(self, tmp_path):
         # Initialize a git repo with a commit
         subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), capture_output=True
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"], cwd=str(tmp_path), capture_output=True
+        )
 
         # Create and commit a file
         (tmp_path / "file.py").write_text("x = 1\n")
@@ -47,8 +56,12 @@ class TestGetChangedFiles:
 
     def test_returns_empty_for_clean_repo(self, tmp_path):
         subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), capture_output=True
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"], cwd=str(tmp_path), capture_output=True
+        )
 
         (tmp_path / "file.py").write_text("x = 1\n")
         subprocess.run(["git", "add", "."], cwd=str(tmp_path), capture_output=True)

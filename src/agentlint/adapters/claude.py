@@ -1,4 +1,5 @@
 """Claude Code adapter for AgentLint."""
+
 from __future__ import annotations
 
 import json
@@ -15,7 +16,6 @@ from agentlint.adapters._utils import (
 from agentlint.adapters.base import AgentAdapter
 from agentlint.formats.claude_hooks import ClaudeHookFormatter
 from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext
-
 
 # Mapping from Claude Code native event names to generic AgentEvent
 _CLAUDE_EVENT_MAP: dict[str, AgentEvent] = {
@@ -183,8 +183,8 @@ class ClaudeAdapter(AgentAdapter):
     def translate_event(self, native_event: str) -> AgentEvent:
         try:
             return _CLAUDE_EVENT_MAP[native_event]
-        except KeyError:
-            raise ValueError(f"Unknown Claude event: {native_event}")
+        except KeyError as exc:
+            raise ValueError(f"Unknown Claude event: {native_event}") from exc
 
     def normalize_tool_name(self, native_tool: str) -> str:
         return _CLAUDE_TOOL_MAP.get(native_tool, NormalizedTool.UNKNOWN).value
@@ -205,7 +205,8 @@ class ClaudeAdapter(AgentAdapter):
             config={},
             session_state=session_state,
             prompt=raw_payload.get("prompt"),
-            subagent_output=raw_payload.get("last_assistant_message") or raw_payload.get("subagent_output"),
+            subagent_output=raw_payload.get("last_assistant_message")
+            or raw_payload.get("subagent_output"),
             notification_type=raw_payload.get("notification_type"),
             compact_source=raw_payload.get("compact_source"),
             agent_transcript_path=raw_payload.get("agent_transcript_path"),
@@ -240,6 +241,7 @@ class ClaudeAdapter(AgentAdapter):
 
         if dry_run:
             import click
+
             click.echo(f"\nDry run — would write to {path}:")
             click.echo(json.dumps(settings, indent=2))
             return

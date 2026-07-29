@@ -1,10 +1,10 @@
 """Tests for agentlint core models."""
+
 from __future__ import annotations
 
 import pytest
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
-
 
 # --- Severity tests ---
 
@@ -409,31 +409,37 @@ class TestPackageExports:
 
 class TestToHookEvent:
     def test_hook_event_passes_through(self):
-        from agentlint.models import to_hook_event, HookEvent
+        from agentlint.models import HookEvent, to_hook_event
+
         assert to_hook_event(HookEvent.PRE_TOOL_USE) == HookEvent.PRE_TOOL_USE
 
     def test_agent_event_converts(self):
-        from agentlint.models import to_hook_event, AgentEvent, HookEvent
+        from agentlint.models import AgentEvent, HookEvent, to_hook_event
+
         assert to_hook_event(AgentEvent.PRE_TOOL_USE) == HookEvent.PRE_TOOL_USE
         assert to_hook_event(AgentEvent.STOP) == HookEvent.STOP
 
     def test_hook_event_string_converts(self):
-        from agentlint.models import to_hook_event, HookEvent
+        from agentlint.models import HookEvent, to_hook_event
+
         assert to_hook_event("PreToolUse") == HookEvent.PRE_TOOL_USE
         assert to_hook_event("Stop") == HookEvent.STOP
 
     def test_agent_event_string_converts(self):
-        from agentlint.models import to_hook_event, HookEvent
+        from agentlint.models import HookEvent, to_hook_event
+
         assert to_hook_event("pre_tool_use") == HookEvent.PRE_TOOL_USE
         assert to_hook_event("stop") == HookEvent.STOP
 
     def test_invalid_string_raises(self):
         from agentlint.models import to_hook_event
+
         with pytest.raises(ValueError, match="No HookEvent mapping for string"):
             to_hook_event("NotAValidEvent")
 
     def test_invalid_agent_event_raises(self):
-        from agentlint.models import to_hook_event, AgentEvent
+        from agentlint.models import AgentEvent, to_hook_event
+
         # AgentEvent doesn't have an invalid member, so we can't test KeyError directly
         # But we can test that valid ones work
         assert to_hook_event(AgentEvent.PRE_TOOL_USE)
@@ -441,26 +447,31 @@ class TestToHookEvent:
 
 class TestToAgentEvent:
     def test_agent_event_passes_through(self):
-        from agentlint.models import to_agent_event, AgentEvent
+        from agentlint.models import AgentEvent, to_agent_event
+
         assert to_agent_event(AgentEvent.PRE_TOOL_USE) == AgentEvent.PRE_TOOL_USE
 
     def test_hook_event_converts(self):
-        from agentlint.models import to_agent_event, AgentEvent, HookEvent
+        from agentlint.models import AgentEvent, HookEvent, to_agent_event
+
         assert to_agent_event(HookEvent.PRE_TOOL_USE) == AgentEvent.PRE_TOOL_USE
         assert to_agent_event(HookEvent.STOP) == AgentEvent.STOP
 
     def test_invalid_hook_event_raises(self):
-        from agentlint.models import to_agent_event, HookEvent
+        from agentlint.models import to_agent_event
+
         # Create a fake HookEvent to trigger KeyError
         class FakeHookEvent:
             pass
+
         with pytest.raises((ValueError, KeyError)):
             to_agent_event(FakeHookEvent())  # type: ignore
 
 
 class TestNormalizedTool:
     def test_known_platform_tool(self):
-        from agentlint.models import RuleContext, NormalizedTool, HookEvent
+        from agentlint.models import HookEvent, NormalizedTool, RuleContext
+
         ctx = RuleContext(
             event=HookEvent.PRE_TOOL_USE,
             tool_name="Write",
@@ -471,7 +482,8 @@ class TestNormalizedTool:
         assert ctx.normalized_tool == NormalizedTool.FILE_WRITE
 
     def test_unknown_platform_uses_claude_map(self):
-        from agentlint.models import RuleContext, NormalizedTool, HookEvent
+        from agentlint.models import HookEvent, NormalizedTool, RuleContext
+
         ctx = RuleContext(
             event=HookEvent.PRE_TOOL_USE,
             tool_name="Write",
@@ -482,7 +494,8 @@ class TestNormalizedTool:
         assert ctx.normalized_tool == NormalizedTool.FILE_WRITE
 
     def test_unknown_tool_returns_unknown(self):
-        from agentlint.models import RuleContext, NormalizedTool, HookEvent
+        from agentlint.models import HookEvent, NormalizedTool, RuleContext
+
         ctx = RuleContext(
             event=HookEvent.PRE_TOOL_USE,
             tool_name="NonExistentTool",
@@ -495,8 +508,9 @@ class TestNormalizedTool:
 
 class TestToHookEventKeyError:
     def test_agent_event_not_in_map_raises(self, monkeypatch):
-        from agentlint.models import to_hook_event, AgentEvent
         from agentlint.core.models import _AGENT_EVENT_TO_HOOK_EVENT
+        from agentlint.models import AgentEvent, to_hook_event
+
         # Temporarily remove a mapping to trigger KeyError
         original = _AGENT_EVENT_TO_HOOK_EVENT.copy()
         monkeypatch.setitem(_AGENT_EVENT_TO_HOOK_EVENT, AgentEvent.PRE_TOOL_USE, None)
@@ -512,11 +526,12 @@ class TestToHookEventKeyError:
 class TestBaseFormatter:
     def test_format_subagent_start_default(self):
         from agentlint.formats.base import OutputFormatter
-        from agentlint.models import Severity, Violation, AgentEvent
+        from agentlint.models import Severity, Violation
 
         class DummyFormatter(OutputFormatter):
             def format(self, violations, event=""):
                 return "formatted"
+
             def exit_code(self, violations, event=""):
                 return 0
 

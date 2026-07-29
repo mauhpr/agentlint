@@ -5,9 +5,9 @@ Configuration is done via TOML in ~/.kimi/config.toml using [[hooks]] arrays.
 
 Reference: https://www.kimi-cli.com/en/customization/hooks.html
 """
+
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any
@@ -18,8 +18,7 @@ from agentlint.adapters._utils import (
 )
 from agentlint.adapters.base import AgentAdapter
 from agentlint.formats.claude_hooks import ClaudeHookFormatter
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext, to_hook_event
-
+from agentlint.models import AgentEvent, NormalizedTool, RuleContext, to_hook_event
 
 # Mapping from Kimi native event names to generic AgentEvent
 _KIMI_EVENT_MAP: dict[str, AgentEvent] = {
@@ -60,13 +59,50 @@ def _build_hooks(cmd: str) -> list[dict]:
     Each hook has: event, command, matcher (optional), timeout (optional).
     """
     return [
-        {"event": "PreToolUse", "matcher": "Shell|WriteFile|StrReplaceFile", "_agentlint": "v2", "command": f"{cmd} check --event PreToolUse --adapter kimi", "timeout": 5},
-        {"event": "PostToolUse", "matcher": "WriteFile|StrReplaceFile", "_agentlint": "v2", "command": f"{cmd} check --event PostToolUse --adapter kimi", "timeout": 10},
-        {"event": "UserPromptSubmit", "_agentlint": "v2", "command": f"{cmd} check --event UserPromptSubmit --adapter kimi", "timeout": 5},
-        {"event": "SubagentStart", "_agentlint": "v2", "command": f"{cmd} check --event SubagentStart --adapter kimi", "timeout": 5},
-        {"event": "SubagentStop", "_agentlint": "v2", "command": f"{cmd} check --event SubagentStop --adapter kimi", "timeout": 10},
-        {"event": "Notification", "_agentlint": "v2", "command": f"{cmd} check --event Notification --adapter kimi", "timeout": 5},
-        {"event": "Stop", "_agentlint": "v2", "command": f"{cmd} report --adapter kimi", "timeout": 30},
+        {
+            "event": "PreToolUse",
+            "matcher": "Shell|WriteFile|StrReplaceFile",
+            "_agentlint": "v2",
+            "command": f"{cmd} check --event PreToolUse --adapter kimi",
+            "timeout": 5,
+        },
+        {
+            "event": "PostToolUse",
+            "matcher": "WriteFile|StrReplaceFile",
+            "_agentlint": "v2",
+            "command": f"{cmd} check --event PostToolUse --adapter kimi",
+            "timeout": 10,
+        },
+        {
+            "event": "UserPromptSubmit",
+            "_agentlint": "v2",
+            "command": f"{cmd} check --event UserPromptSubmit --adapter kimi",
+            "timeout": 5,
+        },
+        {
+            "event": "SubagentStart",
+            "_agentlint": "v2",
+            "command": f"{cmd} check --event SubagentStart --adapter kimi",
+            "timeout": 5,
+        },
+        {
+            "event": "SubagentStop",
+            "_agentlint": "v2",
+            "command": f"{cmd} check --event SubagentStop --adapter kimi",
+            "timeout": 10,
+        },
+        {
+            "event": "Notification",
+            "_agentlint": "v2",
+            "command": f"{cmd} check --event Notification --adapter kimi",
+            "timeout": 5,
+        },
+        {
+            "event": "Stop",
+            "_agentlint": "v2",
+            "command": f"{cmd} report --adapter kimi",
+            "timeout": 30,
+        },
     ]
 
 
@@ -85,6 +121,7 @@ def _read_config(path: Path) -> dict | None:
     try:
         with open(path, "rb") as f:
             import tomllib
+
             return tomllib.load(f)
     except Exception:
         return None
@@ -108,9 +145,7 @@ def _write_config(path: Path, data: dict) -> None:
             lines.append(f'{key} = "{val}"')
         elif isinstance(val, bool):
             lines.append(f"{key} = {str(val).lower()}")
-        elif isinstance(val, int):
-            lines.append(f"{key} = {val}")
-        elif isinstance(val, float):
+        elif isinstance(val, (int, float)):
             lines.append(f"{key} = {val}")
 
     # Write hooks arrays
@@ -154,8 +189,8 @@ class KimiAdapter(AgentAdapter):
     def translate_event(self, native_event: str) -> AgentEvent:
         try:
             return _KIMI_EVENT_MAP[native_event]
-        except KeyError:
-            raise ValueError(f"Unknown Kimi event: {native_event}")
+        except KeyError as exc:
+            raise ValueError(f"Unknown Kimi event: {native_event}") from exc
 
     def normalize_tool_name(self, native_tool: str) -> str:
         return _KIMI_TOOL_MAP.get(native_tool, NormalizedTool.UNKNOWN).value
@@ -176,7 +211,8 @@ class KimiAdapter(AgentAdapter):
             config={},
             session_state=session_state,
             prompt=raw_payload.get("prompt"),
-            subagent_output=raw_payload.get("last_assistant_message") or raw_payload.get("subagent_output"),
+            subagent_output=raw_payload.get("last_assistant_message")
+            or raw_payload.get("subagent_output"),
             notification_type=raw_payload.get("notification_type"),
             compact_source=raw_payload.get("compact_source"),
             agent_transcript_path=raw_payload.get("agent_transcript_path"),
@@ -208,9 +244,10 @@ class KimiAdapter(AgentAdapter):
 
         if dry_run:
             import click
+
             click.echo(f"\nDry run — would write to {path}:")
             for hook in our_hooks:
-                click.echo(f"  [[hooks]]")
+                click.echo("  [[hooks]]")
                 for k, v in hook.items():
                     click.echo(f"    {k} = {v!r}")
             return

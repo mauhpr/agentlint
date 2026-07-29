@@ -1,4 +1,5 @@
 """Tests for agentlint setup/uninstall (hook installation)."""
+
 from __future__ import annotations
 
 import json
@@ -76,11 +77,22 @@ class TestIsAgentlintEntry:
         assert _is_agentlint_entry(entry) is True
 
     def test_identifies_absolute_path_entry(self) -> None:
-        entry = {"hooks": [{"type": "command", "command": "/usr/local/bin/agentlint check --event PreToolUse"}]}
+        entry = {
+            "hooks": [
+                {"type": "command", "command": "/usr/local/bin/agentlint check --event PreToolUse"}
+            ]
+        }
         assert _is_agentlint_entry(entry) is True
 
     def test_identifies_python_m_entry(self) -> None:
-        entry = {"hooks": [{"type": "command", "command": "/usr/bin/python -m agentlint check --event PreToolUse"}]}
+        entry = {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "/usr/bin/python -m agentlint check --event PreToolUse",
+                }
+            ]
+        }
         assert _is_agentlint_entry(entry) is True
 
     def test_rejects_third_party_entry(self) -> None:
@@ -101,7 +113,9 @@ class TestResolveCommand:
 
     def test_step1_which_succeeds(self) -> None:
         """Step 1: shutil.which finds the binary on PATH."""
-        with patch("agentlint.adapters._utils.shutil.which", return_value="/usr/local/bin/agentlint"):
+        with patch(
+            "agentlint.adapters._utils.shutil.which", return_value="/usr/local/bin/agentlint"
+        ):
             result = _resolve_command()
         assert result == "/usr/local/bin/agentlint"
 
@@ -136,8 +150,10 @@ class TestResolveCommand:
         scripts_bin = scripts_dir / "agentlint"
         scripts_bin.write_text("#!/bin/sh\n")
 
-        with self._no_which(), \
-             patch("agentlint.adapters._utils.sysconfig.get_path", return_value=str(scripts_dir)):
+        with (
+            self._no_which(),
+            patch("agentlint.adapters._utils.sysconfig.get_path", return_value=str(scripts_dir)),
+        ):
             result = _resolve_command()
         assert result == str(scripts_bin)
 
@@ -145,8 +161,10 @@ class TestResolveCommand:
         """Step 5: Falls back to sys.executable -m agentlint."""
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-        with self._no_which(), \
-             patch("agentlint.adapters._utils.sysconfig.get_path", return_value=None):
+        with (
+            self._no_which(),
+            patch("agentlint.adapters._utils.sysconfig.get_path", return_value=None),
+        ):
             result = _resolve_command()
         assert result == f"{sys.executable} -m agentlint"
 
@@ -157,8 +175,10 @@ class TestResolveCommand:
         scripts_dir.mkdir()
         # No binary created
 
-        with self._no_which(), \
-             patch("agentlint.adapters._utils.sysconfig.get_path", return_value=str(scripts_dir)):
+        with (
+            self._no_which(),
+            patch("agentlint.adapters._utils.sysconfig.get_path", return_value=str(scripts_dir)),
+        ):
             result = _resolve_command()
         assert result == f"{sys.executable} -m agentlint"
 
@@ -169,7 +189,9 @@ class TestResolveCommand:
         pipx_bin.parent.mkdir(parents=True)
         pipx_bin.write_text("#!/bin/sh\n")
 
-        with patch("agentlint.adapters._utils.shutil.which", return_value="/usr/local/bin/agentlint"):
+        with patch(
+            "agentlint.adapters._utils.shutil.which", return_value="/usr/local/bin/agentlint"
+        ):
             result = _resolve_command()
         assert result == "/usr/local/bin/agentlint"
 
@@ -183,8 +205,10 @@ class TestResolveCommand:
         scripts_dir.mkdir()
         (scripts_dir / "agentlint").write_text("#!/bin/sh\n")
 
-        with self._no_which(), \
-             patch("agentlint.adapters._utils.sysconfig.get_path", return_value=str(scripts_dir)):
+        with (
+            self._no_which(),
+            patch("agentlint.adapters._utils.sysconfig.get_path", return_value=str(scripts_dir)),
+        ):
             result = _resolve_command()
         assert result == str(pipx_bin)
 
@@ -195,7 +219,15 @@ class TestResolveCommand:
 
 
 class TestBuildHooks:
-    EXPECTED_EVENTS = {"PreToolUse", "PostToolUse", "UserPromptSubmit", "SubagentStart", "SubagentStop", "Notification", "Stop"}
+    EXPECTED_EVENTS = {
+        "PreToolUse",
+        "PostToolUse",
+        "UserPromptSubmit",
+        "SubagentStart",
+        "SubagentStop",
+        "Notification",
+        "Stop",
+    }
 
     def test_builds_all_events(self) -> None:
         hooks = build_hooks("agentlint")
@@ -257,7 +289,10 @@ class TestMergeHooks:
         existing = {
             "hooks": {
                 "PreToolUse": [
-                    {"matcher": "Bash", "hooks": [{"type": "command", "command": "other-tool lint"}]}
+                    {
+                        "matcher": "Bash",
+                        "hooks": [{"type": "command", "command": "other-tool lint"}],
+                    }
                 ]
             }
         }
@@ -280,7 +315,13 @@ class TestMergeHooks:
                 "PreToolUse": [
                     {
                         "matcher": "Bash|Edit|Write",
-                        "hooks": [{"type": "command", "command": "agentlint check --event PreToolUse", "timeout": 99}],
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "agentlint check --event PreToolUse",
+                                "timeout": 99,
+                            }
+                        ],
                     }
                 ]
             }
@@ -337,13 +378,19 @@ class TestRemoveHooks:
         assert "hooks" not in result
 
     def test_preserves_third_party_hooks(self) -> None:
-        existing = merge_hooks({
-            "hooks": {
-                "PreToolUse": [
-                    {"matcher": "Bash", "hooks": [{"type": "command", "command": "other-tool lint"}]}
-                ]
-            }
-        }, agentlint_cmd="agentlint")
+        existing = merge_hooks(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "Bash",
+                            "hooks": [{"type": "command", "command": "other-tool lint"}],
+                        }
+                    ]
+                }
+            },
+            agentlint_cmd="agentlint",
+        )
         result = remove_hooks(existing)
         assert "PreToolUse" in result["hooks"]
         assert len(result["hooks"]["PreToolUse"]) == 1

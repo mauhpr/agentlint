@@ -4,6 +4,7 @@ Provides two integration modes:
 1. MCP Server mode — exposes AgentLint as an MCP server (existing functionality)
 2. MCP Interceptor mode — prepares for SEP-1763 interceptor framework
 """
+
 from __future__ import annotations
 
 import json
@@ -13,9 +14,15 @@ from typing import Any
 from agentlint.adapters.base import AgentAdapter
 from agentlint.config import load_config
 from agentlint.engine import Engine
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext, to_hook_event, to_agent_event
+from agentlint.models import (
+    AgentEvent,
+    HookEvent,
+    NormalizedTool,
+    RuleContext,
+    to_agent_event,
+    to_hook_event,
+)
 from agentlint.packs import load_project_rules
-
 
 # Mapping from MCP tool event names to generic AgentEvent
 _MCP_EVENT_MAP: dict[str, AgentEvent] = {
@@ -40,6 +47,7 @@ class MCPAdapter(AgentAdapter):
     @property
     def formatter(self):
         from agentlint.formats.plain_json import PlainJsonFormatter
+
         return PlainJsonFormatter()
 
     def resolve_project_dir(self) -> str:
@@ -109,19 +117,25 @@ class MCPAdapter(AgentAdapter):
     ) -> None:
         """Print MCP server configuration for various hosts."""
         import click
+
         cmd = cmd or "agentlint-mcp"
         click.echo("Add this to your MCP host configuration:")
-        click.echo(json.dumps({
-            "mcpServers": {
-                "agentlint": {
-                    "command": cmd,
-                    "args": [],
-                    "env": {
-                        "AGENTLINT_PROJECT_DIR": project_dir,
-                    },
-                }
-            }
-        }, indent=2))
+        click.echo(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "agentlint": {
+                            "command": cmd,
+                            "args": [],
+                            "env": {
+                                "AGENTLINT_PROJECT_DIR": project_dir,
+                            },
+                        }
+                    }
+                },
+                indent=2,
+            )
+        )
 
     def uninstall_hooks(
         self,
@@ -179,7 +193,12 @@ class MCPAdapter(AgentAdapter):
 
     def list_rules(self, pack: str | None = None) -> list[dict[str, Any]]:
         """MCP server mode: list all available rules."""
-        from agentlint.packs import PACK_MODULES, load_installed_rules, load_custom_rules, load_rules
+        from agentlint.packs import (
+            PACK_MODULES,
+            load_custom_rules,
+            load_installed_rules,
+            load_rules,
+        )
 
         project_dir = self.resolve_project_dir()
         config = load_config(project_dir)
@@ -189,6 +208,7 @@ class MCPAdapter(AgentAdapter):
             all_rules.extend(load_custom_rules(config.custom_rules_dir, project_dir))
         try:
             from agentlint.agentchute.policy import build_policy_rules
+
             all_rules.extend(build_policy_rules())
         except Exception:
             pass

@@ -1,4 +1,5 @@
 """Tests for the agentlint ci command."""
+
 from __future__ import annotations
 
 import json
@@ -19,7 +20,9 @@ class TestCiCommand:
 
         # Init git repo and commit files
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True
+        )
         subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, capture_output=True)
 
         if files:
@@ -108,8 +111,7 @@ class TestCiCommand:
             tmp_path,
             files={"init.py": "x = 1\n"},
             config=(
-                "packs:\n  - universal\n"
-                "projects:\n  backend/:\n    packs: [universal, python]\n"
+                "packs:\n  - universal\nprojects:\n  backend/:\n    packs: [universal, python]\n"
             ),
         )
         (tmp_path / "backend").mkdir(exist_ok=True)
@@ -148,8 +150,20 @@ class TestCiTextGrouping:
         from agentlint.cli import _group_ci_violations
 
         violations = [
-            Violation("no-unnecessary-async", "async def one() has no await expression", Severity.INFO, "app.py", 1),
-            Violation("no-unnecessary-async", "async def two() has no await expression", Severity.INFO, "app.py", 4),
+            Violation(
+                "no-unnecessary-async",
+                "async def one() has no await expression",
+                Severity.INFO,
+                "app.py",
+                1,
+            ),
+            Violation(
+                "no-unnecessary-async",
+                "async def two() has no await expression",
+                Severity.INFO,
+                "app.py",
+                4,
+            ),
             Violation("max-file-size", "File has 600 lines", Severity.WARNING, "app.py"),
         ]
 
@@ -165,8 +179,11 @@ class TestCiTextGrouping:
 class TestGetDiffFiles:
     def test_diff_range_returns_files(self, tmp_path):
         from agentlint.utils.git import get_diff_files
+
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"], cwd=tmp_path, capture_output=True
+        )
         subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, capture_output=True)
         (tmp_path / "a.py").write_text("x = 1\n")
         subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
@@ -179,8 +196,11 @@ class TestGetDiffFiles:
 
     def test_diff_range_invalid_returns_empty(self, tmp_path):
         from agentlint.utils.git import get_diff_files
+
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"], cwd=tmp_path, capture_output=True
+        )
         subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, capture_output=True)
         (tmp_path / "a.py").write_text("x = 1\n")
         subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
@@ -190,8 +210,11 @@ class TestGetDiffFiles:
 
     def test_diff_no_range_falls_back(self, tmp_path):
         from agentlint.utils.git import get_diff_files
+
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"], cwd=tmp_path, capture_output=True
+        )
         subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, capture_output=True)
         (tmp_path / "a.py").write_text("x = 1\n")
         subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
@@ -204,6 +227,7 @@ class TestGetDiffFiles:
 class TestCiEndToEnd:
     def _run_agentlint(self, args, project_dir, env=None):
         import os
+
         cmd = [sys.executable, "-m", "agentlint.cli"] + args + ["--project-dir", project_dir]
         run_env = {**os.environ, **(env or {})}
         return subprocess.run(cmd, capture_output=True, text=True, timeout=15, env=run_env)
@@ -211,7 +235,9 @@ class TestCiEndToEnd:
     def test_ci_end_to_end(self, tmp_path):
         """Full E2E: init repo, commit secret, run agentlint ci."""
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True
+        )
         subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, capture_output=True)
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
         (tmp_path / "ok.py").write_text("x = 1\n")

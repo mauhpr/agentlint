@@ -1,4 +1,5 @@
 """Tests for cloud-paid-resource-creation rule."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -65,7 +66,9 @@ class TestCloudPaidResourceCreation:
         assert violations[0].severity == Severity.WARNING
 
     def test_aws_rds_create_db_instance(self):
-        ctx = _ctx("aws rds create-db-instance --db-instance-identifier mydb --db-instance-class db.t3.micro")
+        ctx = _ctx(
+            "aws rds create-db-instance --db-instance-identifier mydb --db-instance-class db.t3.micro"
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
         assert violations[0].severity == Severity.WARNING
@@ -122,7 +125,10 @@ class TestCloudPaidResourceCreation:
         ctx = RuleContext(
             event=HookEvent.PRE_TOOL_USE,
             tool_name="Edit",
-            tool_input={"file_path": "infra.sh", "new_string": "gcloud compute addresses create my-ip"},
+            tool_input={
+                "file_path": "infra.sh",
+                "new_string": "gcloud compute addresses create my-ip",
+            },
             project_dir="/tmp",
         )
         assert self.rule.evaluate(ctx) == []

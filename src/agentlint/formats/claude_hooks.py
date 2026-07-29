@@ -1,4 +1,5 @@
 """Claude Code hook protocol formatter."""
+
 from __future__ import annotations
 
 import json
@@ -50,28 +51,37 @@ class ClaudeHookFormatter(OutputFormatter):
             reason_lines = self._format_violation_lines(errors)
             reason_lines.extend(self._format_violation_lines(warnings + infos))
 
-            return json.dumps({
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": "\n".join(reason_lines),
+            return json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": "\n".join(reason_lines),
+                    }
                 }
-            })
+            )
 
         # Build formatted violation lines for reuse across output paths
         context_lines = self._format_violation_lines(errors + warnings + infos)
 
         # PreToolUse advisory (no errors) — inject into agent context before tool runs
         if event_str == AgentEvent.PRE_TOOL_USE.value or event_str == "PreToolUse":
-            return json.dumps({
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "additionalContext": "\n".join(context_lines),
+            return json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "additionalContext": "\n".join(context_lines),
+                    }
                 }
-            })
+            )
 
         # PostToolUse — inject into agent context so it influences next action
-        if event_str in (AgentEvent.POST_TOOL_USE.value, AgentEvent.POST_TOOL_FAILURE.value, "PostToolUse", "PostToolUseFailure"):
+        if event_str in (
+            AgentEvent.POST_TOOL_USE.value,
+            AgentEvent.POST_TOOL_FAILURE.value,
+            "PostToolUse",
+            "PostToolUseFailure",
+        ):
             result: dict = {
                 "hookSpecificOutput": {
                     "hookEventName": event_str,
@@ -117,9 +127,11 @@ class ClaudeHookFormatter(OutputFormatter):
             return None
 
         context_lines = [v.message for v in violations]
-        return json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "SubagentStart",
-                "additionalContext": "\n".join(context_lines),
+        return json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "SubagentStart",
+                    "additionalContext": "\n".join(context_lines),
+                }
             }
-        })
+        )

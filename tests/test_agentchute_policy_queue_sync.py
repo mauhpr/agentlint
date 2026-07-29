@@ -46,12 +46,8 @@ def test_policy_refresh_handles_304_with_cached_policy(tmp_path, monkeypatch):
 
     monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path))
     monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test_x")
-    (tmp_path / "policy.json").write_text(
-        json.dumps({"version": 3, "rules": []}), encoding="utf-8"
-    )
-    (tmp_path / "policy-meta.json").write_text(
-        json.dumps({"etag": "old"}), encoding="utf-8"
-    )
+    (tmp_path / "policy.json").write_text(json.dumps({"version": 3, "rules": []}), encoding="utf-8")
+    (tmp_path / "policy-meta.json").write_text(json.dumps({"etag": "old"}), encoding="utf-8")
     response = MagicMock(status_code=304, content=b"", headers={})
 
     with patch("requests.get", return_value=response) as mock_get:
@@ -167,13 +163,23 @@ def test_declarative_policy_rules_match_supported_operators():
     raw_rules = [
         {"id": "eq", "match": {"field": "tool_name", "operator": "equals", "value": "Bash"}},
         {"id": "contains", "match": {"field": "command", "operator": "contains", "value": "-rf"}},
-        {"id": "starts", "match": {"field": "file_path", "operator": "starts_with", "value": "src/"}},
+        {
+            "id": "starts",
+            "match": {"field": "file_path", "operator": "starts_with", "value": "src/"},
+        },
         {"id": "ends", "match": {"field": "file_path", "operator": "ends_with", "value": ".py"}},
         {"id": "glob", "match": {"field": "file_path", "operator": "glob", "value": "src/*.py"}},
         {"id": "under", "match": {"field": "file_path", "operator": "path_under", "value": "src"}},
         {"id": "verb", "match": {"field": "command", "operator": "command_verb", "value": "rm"}},
-        {"id": "pkg", "match": {"field": "tool_input.name", "operator": "package_name", "value": "Requests"}},
-        {"id": "disabled", "enabled": False, "match": {"field": "tool_name", "operator": "equals", "value": "Bash"}},
+        {
+            "id": "pkg",
+            "match": {"field": "tool_input.name", "operator": "package_name", "value": "Requests"},
+        },
+        {
+            "id": "disabled",
+            "enabled": False,
+            "match": {"field": "tool_name", "operator": "equals", "value": "Bash"},
+        },
     ]
     rules = build_policy_rules({"rules": raw_rules})
     ctx = RuleContext(
@@ -190,7 +196,11 @@ def test_declarative_policy_rules_match_supported_operators():
     fired = {rule.id for rule in rules for _ in rule.evaluate(ctx)}
 
     assert fired == {"eq", "contains", "starts", "ends", "glob", "under", "verb", "pkg"}
-    assert all(v.severity in {Severity.WARNING, Severity.ERROR, Severity.INFO} for rule in rules for v in rule.evaluate(ctx))
+    assert all(
+        v.severity in {Severity.WARNING, Severity.ERROR, Severity.INFO}
+        for rule in rules
+        for v in rule.evaluate(ctx)
+    )
 
 
 def test_declarative_policy_rules_skip_non_matches_and_invalid_rules():
@@ -198,12 +208,29 @@ def test_declarative_policy_rules_skip_non_matches_and_invalid_rules():
 
     policy_doc = {
         "rules": [
-            {"id": "external", "source": "manual", "match": {"field": "tool_name", "operator": "equals", "value": "Bash"}},
-            {"source": "declarative", "match": {"field": "tool_name", "operator": "equals", "value": "Bash"}},
-            {"id": "tool-miss", "tool": "Write", "match": {"field": "tool_name", "operator": "equals", "value": "Bash"}},
+            {
+                "id": "external",
+                "source": "manual",
+                "match": {"field": "tool_name", "operator": "equals", "value": "Bash"},
+            },
+            {
+                "source": "declarative",
+                "match": {"field": "tool_name", "operator": "equals", "value": "Bash"},
+            },
+            {
+                "id": "tool-miss",
+                "tool": "Write",
+                "match": {"field": "tool_name", "operator": "equals", "value": "Bash"},
+            },
             {"id": "prompt", "match": {"field": "prompt", "operator": "contains", "value": "ship"}},
-            {"id": "missing", "match": {"field": "tool_input.deep.value", "operator": "equals", "value": "x"}},
-            {"id": "unknown", "match": {"field": "tool_name", "operator": "unknown", "value": "Bash"}},
+            {
+                "id": "missing",
+                "match": {"field": "tool_input.deep.value", "operator": "equals", "value": "x"},
+            },
+            {
+                "id": "unknown",
+                "match": {"field": "tool_name", "operator": "unknown", "value": "Bash"},
+            },
         ]
     }
     rules = build_policy_rules(policy_doc)
@@ -223,6 +250,7 @@ def test_declarative_policy_rules_skip_non_matches_and_invalid_rules():
 
 def test_required_packs_filters_and_reports_missing(monkeypatch):
     from importlib.metadata import PackageNotFoundError
+
     from agentlint.agentchute import policy
 
     doc = {"required_packs": [{"name": "present"}, {}, "bad", {"name": "missing"}]}

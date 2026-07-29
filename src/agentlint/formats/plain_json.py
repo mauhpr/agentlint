@@ -1,4 +1,5 @@
 """Plain JSON formatter — agent-agnostic output."""
+
 from __future__ import annotations
 
 import json
@@ -32,10 +33,12 @@ class PlainJsonFormatter(OutputFormatter):
             return None
 
         has_errors = any(v.severity == Severity.ERROR for v in violations)
-        return json.dumps({
-            "blocked": has_errors,
-            "violations": [v.to_dict() for v in violations],
-        })
+        return json.dumps(
+            {
+                "blocked": has_errors,
+                "violations": [v.to_dict() for v in violations],
+            }
+        )
 
     def format_subagent_start(
         self,

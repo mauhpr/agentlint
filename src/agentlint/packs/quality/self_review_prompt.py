@@ -1,4 +1,5 @@
 """Rule: inject self-review prompt at session end."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation

@@ -2,6 +2,7 @@
 
 Each formatter translates violations into a platform-specific output shape.
 """
+
 from agentlint.formats.base import OutputFormatter
 from agentlint.formats.claude_hooks import ClaudeHookFormatter
 from agentlint.formats.cursor_hooks import CursorHookFormatter

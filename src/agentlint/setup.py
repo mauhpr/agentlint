@@ -3,19 +3,43 @@
 This module re-exports Claude-specific setup utilities for backward
 compatibility. New code should use agentlint.adapters.claude.ClaudeAdapter.
 """
+
 from __future__ import annotations
 
 from agentlint.adapters._utils import (
     is_agentlint_nested_entry as _is_agentlint_entry,
+)
+from agentlint.adapters._utils import (
     read_json_config as read_settings,
+)
+from agentlint.adapters._utils import (
     resolve_command as _resolve_command,
+)
+from agentlint.adapters._utils import (
     write_json_config as write_settings,
 )
 from agentlint.adapters.claude import (
-    _build_hooks as build_hooks,
-    _settings_path as settings_path,
     ClaudeAdapter,
 )
+from agentlint.adapters.claude import (
+    _build_hooks as build_hooks,
+)
+from agentlint.adapters.claude import (
+    _settings_path as settings_path,
+)
+
+__all__ = [
+    "AGENTLINT_HOOKS",
+    "ClaudeAdapter",
+    "_is_agentlint_entry",
+    "_resolve_command",
+    "build_hooks",
+    "merge_hooks",
+    "read_settings",
+    "remove_hooks",
+    "settings_path",
+    "write_settings",
+]
 
 # Backward-compatible alias
 AGENTLINT_HOOKS: dict = build_hooks("agentlint")

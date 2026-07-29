@@ -1,4 +1,5 @@
 """Tests for quality pack PostToolUse rules."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext
@@ -193,7 +194,6 @@ class TestNoDeadImports:
         assert len(violations) == 1
         assert "Bar" in violations[0].message
 
-
     # --- v1.9.0: __future__ import exemption tests ---
 
     def test_future_annotations_not_flagged(self):
@@ -318,7 +318,9 @@ class TestNoDeadImportsGracePeriod:
         session = {"_dead_imports_pending": {"other.py": ["os"]}}
         content = "import sys\n\nprint('hello')\n"
         ctx = self._ctx_with_session(
-            file_path="app.py", content=content, session_state=session,
+            file_path="app.py",
+            content=content,
+            session_state=session,
         )
         violations = self.rule.evaluate(ctx)
         assert violations == []

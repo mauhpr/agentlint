@@ -4,6 +4,7 @@ These broad-match patterns are used by the subagent transcript audit for post-ho
 detection.  PreToolUse blocking rules (cloud_resource_deletion, destructive_confirmation_gate,
 etc.) keep their own precision patterns with per-operation confirmation keys.
 """
+
 from __future__ import annotations
 
 import re
@@ -26,7 +27,10 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\biptables\s+-F\b", re.I), "iptables flush"),
     (re.compile(r"\bufw\s+disable\b", re.I), "ufw disable"),
     # Production environment targeting
-    (re.compile(r"\b(?:psql|mysql)\b.*(?:prod(?:uction)?|live)[-.]", re.I), "production database access"),
+    (
+        re.compile(r"\b(?:psql|mysql)\b.*(?:prod(?:uction)?|live)[-.]", re.I),
+        "production database access",
+    ),
     # Git destructive
     (re.compile(r"\bgit\s+push\b.*--force\b", re.I), "git force push"),
     (re.compile(r"\bgit\s+reset\s+--hard\b", re.I), "git reset --hard"),

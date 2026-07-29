@@ -1,4 +1,5 @@
 """Tests for git checkpoint utilities."""
+
 from __future__ import annotations
 
 import subprocess
@@ -92,7 +93,7 @@ class TestGitCleanStashes:
             if "stash" in cmd and "list" in cmd:
                 return MagicMock(
                     returncode=0,
-                    stdout=f"stash@{{0}}: On main: agentlint-checkpoint-123\nstash@{{1}}: On main: unrelated\n",
+                    stdout="stash@{0}: On main: agentlint-checkpoint-123\nstash@{1}: On main: unrelated\n",
                 )
             if "log" in cmd:
                 return MagicMock(returncode=0, stdout=f"{old_ts}\n")
@@ -153,6 +154,7 @@ class TestGitCleanStashes:
     @patch("agentlint.utils.git.subprocess.run")
     def test_skips_malformed_stash_lines(self, mock_run):
         """Malformed stash line (no index) should be skipped gracefully."""
+
         def run_side_effect(cmd, **kwargs):
             if "stash" in cmd and "list" in cmd:
                 return MagicMock(
@@ -213,11 +215,13 @@ class TestGitCheckpointIntegration:
         subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
         subprocess.run(
             ["git", "config", "user.email", "test@test.com"],
-            cwd=str(tmp_path), capture_output=True,
+            cwd=str(tmp_path),
+            capture_output=True,
         )
         subprocess.run(
             ["git", "config", "user.name", "Test"],
-            cwd=str(tmp_path), capture_output=True,
+            cwd=str(tmp_path),
+            capture_output=True,
         )
 
         # Create initial commit.
@@ -225,7 +229,8 @@ class TestGitCheckpointIntegration:
         subprocess.run(["git", "add", "."], cwd=str(tmp_path), capture_output=True)
         subprocess.run(
             ["git", "commit", "-m", "init"],
-            cwd=str(tmp_path), capture_output=True,
+            cwd=str(tmp_path),
+            capture_output=True,
         )
 
         # Dirty the working tree.
@@ -241,7 +246,9 @@ class TestGitCheckpointIntegration:
         # Verify stash exists.
         stash_list = subprocess.run(
             ["git", "stash", "list"],
-            cwd=str(tmp_path), capture_output=True, text=True,
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
         )
         assert "agentlint-checkpoint-test" in stash_list.stdout
 
@@ -252,17 +259,20 @@ class TestGitCheckpointIntegration:
         subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
         subprocess.run(
             ["git", "config", "user.email", "test@test.com"],
-            cwd=str(tmp_path), capture_output=True,
+            cwd=str(tmp_path),
+            capture_output=True,
         )
         subprocess.run(
             ["git", "config", "user.name", "Test"],
-            cwd=str(tmp_path), capture_output=True,
+            cwd=str(tmp_path),
+            capture_output=True,
         )
         (tmp_path / "file.txt").write_text("hello")
         subprocess.run(["git", "add", "."], cwd=str(tmp_path), capture_output=True)
         subprocess.run(
             ["git", "commit", "-m", "init"],
-            cwd=str(tmp_path), capture_output=True,
+            cwd=str(tmp_path),
+            capture_output=True,
         )
 
         assert git_has_changes(str(tmp_path)) is False

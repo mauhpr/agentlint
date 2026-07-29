@@ -1,4 +1,5 @@
 """Rule: warn about debug artifacts left in changed files."""
+
 from __future__ import annotations
 
 import re
@@ -32,9 +33,7 @@ def _allows_print(path: str, content: str) -> bool:
     name = Path(path).name.lower()
     if name in _PRINT_ALLOWED_NAMES:
         return True
-    if 'if __name__' in content:
-        return True
-    return False
+    return "if __name__" in content
 
 
 class NoDebugArtifacts(Rule):

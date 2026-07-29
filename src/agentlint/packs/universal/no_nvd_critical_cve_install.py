@@ -13,24 +13,29 @@ _BASH_TOOLS = {"Bash"}
 _INSTALL_PATTERNS: list[re.Pattern[str]] = [
     re.compile(
         r"\b(?:npm|yarn|pnpm)\s+(?:install|i|add)\s+(?!-)"
-        r"(?P<name>@?[\w][\w@/\-.]*)@(?P<version>[\w][\w\-+.~:]*)", re.I,
+        r"(?P<name>@?[\w][\w@/\-.]*)@(?P<version>[\w][\w\-+.~:]*)",
+        re.I,
     ),
     re.compile(
         r"\bpip3?\s+install\s+(?!-)"
-        r"(?P<name>[\w][\w\-.]*)==(?P<version>[\w][\w\-+.~:]*)", re.I,
+        r"(?P<name>[\w][\w\-.]*)==(?P<version>[\w][\w\-+.~:]*)",
+        re.I,
     ),
     re.compile(
         r"\bcargo\s+(?:add|install)\s+(?!-)"
-        r"(?P<name>[\w][\w\-.]*)\s+--version\s+(?P<version>[\w][\w\-+.~:]*)", re.I,
+        r"(?P<name>[\w][\w\-.]*)\s+--version\s+(?P<version>[\w][\w\-+.~:]*)",
+        re.I,
     ),
     re.compile(
         r"\b(?:apt|apt-get)\s+install\s+(?:-[\w-]+\s+)*"
-        r"(?P<name>[\w][\w+.-]*)=(?P<version>[\w][\w\-+.~:]*)", re.I,
+        r"(?P<name>[\w][\w+.-]*)=(?P<version>[\w][\w\-+.~:]*)",
+        re.I,
     ),
 ]
 _DOCKER_IMAGE = re.compile(
     r"\bdocker\s+(?:pull|run|create)\s+(?:-[\w-]+(?:\s+\S+)?\s+)*"
-    r"(?P<image>[\w./:-]+:[\w][\w.\-+_]*)", re.I,
+    r"(?P<image>[\w./:-]+:[\w][\w.\-+_]*)",
+    re.I,
 )
 _SEPARATORS = re.compile(r"[\s_.]+")
 
@@ -192,7 +197,9 @@ class NoNvdCriticalCveInstall(Rule):
                 f"in the cached NVD feed (severity: {severity}){suffix}"
             ),
             severity=self.severity,
-            suggestion=("Use a fixed version or verify the artifact is not the affected product. "
-                        "NVD CPE matches are exact local cache matches; refresh with "
-                        "`agentlint policy refresh` if needed."),
+            suggestion=(
+                "Use a fixed version or verify the artifact is not the affected product. "
+                "NVD CPE matches are exact local cache matches; refresh with "
+                "`agentlint policy refresh` if needed."
+            ),
         )

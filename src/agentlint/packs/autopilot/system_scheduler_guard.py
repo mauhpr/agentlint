@@ -1,4 +1,5 @@
 """Rule: warn on cron, systemd, and launchctl mutations that establish persistence."""
+
 from __future__ import annotations
 
 import re
@@ -15,10 +16,16 @@ _SCHEDULER_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bcrontab\s+(?!-)[^\s]", re.I), "crontab file install"),
     (re.compile(r"\becho\b.*\|\s*crontab\b", re.I), "crontab pipe injection"),
     # Systemd.
-    (re.compile(r"\bsystemctl\s+(?:enable|disable|mask|unmask|edit)\b", re.I), "systemctl service modification"),
+    (
+        re.compile(r"\bsystemctl\s+(?:enable|disable|mask|unmask|edit)\b", re.I),
+        "systemctl service modification",
+    ),
     (re.compile(r"\bsystemctl\s+daemon-reload\b", re.I), "systemctl daemon-reload"),
     # macOS launchctl.
-    (re.compile(r"\blaunchctl\s+(?:load|unload|bootstrap|bootout)\b", re.I), "launchctl service modification"),
+    (
+        re.compile(r"\blaunchctl\s+(?:load|unload|bootstrap|bootout)\b", re.I),
+        "launchctl service modification",
+    ),
     # at/batch schedulers.
     (re.compile(r"\bat\s+now\b|\bat\s+\d", re.I), "at scheduler job"),
 ]
@@ -41,9 +48,7 @@ def _is_scheduler_file(path: str) -> bool:
         if path.startswith(prefix):
             return True
     # Handle ~/Library/LaunchAgents
-    if _SCHEDULER_FILE_HOME in path:
-        return True
-    return False
+    return _SCHEDULER_FILE_HOME in path
 
 
 class SystemSchedulerGuard(Rule):

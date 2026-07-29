@@ -1,4 +1,5 @@
 """Rule: detect SQL injection via string interpolation in Python files."""
+
 from __future__ import annotations
 
 import re
@@ -83,10 +84,12 @@ class NoSqlInjection(Rule):
         # Build extra patterns if configured
         if extra_keywords:
             extra_joined = "|".join(re.escape(k) for k in extra_keywords)
-            patterns.append((
-                re.compile(r"""f['"](?:""" + extra_joined + r""")\b""", re.IGNORECASE),
-                "f-string interpolation with custom keyword",
-            ))
+            patterns.append(
+                (
+                    re.compile(r"""f['"](?:""" + extra_joined + r""")\b""", re.IGNORECASE),
+                    "f-string interpolation with custom keyword",
+                )
+            )
 
         for line_num, line in enumerate(content.splitlines(), start=1):
             if _is_comment_line(line):

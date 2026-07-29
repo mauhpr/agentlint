@@ -1,4 +1,5 @@
 """Rule: detect patterns that weaken test suites."""
+
 from __future__ import annotations
 
 import re
@@ -8,7 +9,9 @@ from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 _WRITE_TOOLS = {"Write", "Edit"}
 
 # File patterns that indicate test files.
-_TEST_FILE_RE = re.compile(r"(?:^|/)(?:test_|tests?/|spec_|__tests__/|.*\.test\.|.*\.spec\.)", re.IGNORECASE)
+_TEST_FILE_RE = re.compile(
+    r"(?:^|/)(?:test_|tests?/|spec_|__tests__/|.*\.test\.|.*\.spec\.)", re.IGNORECASE
+)
 
 # --- Weakening patterns ---
 # Skip markers.

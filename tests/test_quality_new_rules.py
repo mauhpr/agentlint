@@ -1,7 +1,8 @@
 """Tests for new quality rules: no-large-diff, no-file-creation-sprawl, naming-conventions."""
+
 from __future__ import annotations
 
-from agentlint.models import HookEvent, RuleContext, Severity
+from agentlint.models import HookEvent, RuleContext
 from agentlint.packs.quality.naming_conventions import NamingConventions
 from agentlint.packs.quality.no_file_creation_sprawl import NoFileCreationSprawl
 from agentlint.packs.quality.no_large_diff import NoLargeDiff
@@ -29,6 +30,7 @@ def _make_context(
 
 
 # === no-large-diff ===
+
 
 class TestNoLargeDiff:
     def test_small_edit_passes(self):
@@ -133,12 +135,12 @@ class TestNoLargeDiff:
         """Various test file naming conventions should all be exempt."""
         rule = NoLargeDiff()
         test_paths = [
-            "/project/tests/test_models.py",        # test_ prefix
-            "/project/src/auth_test.go",             # _test suffix
-            "/project/src/Button.spec.tsx",          # .spec.
-            "/project/src/api.test.ts",              # .test.
-            "/project/tests/conftest.py",            # conftest
-            "/project/spec/models_spec.rb",          # _spec suffix
+            "/project/tests/test_models.py",  # test_ prefix
+            "/project/src/auth_test.go",  # _test suffix
+            "/project/src/Button.spec.tsx",  # .spec.
+            "/project/src/api.test.ts",  # .test.
+            "/project/tests/conftest.py",  # conftest
+            "/project/spec/models_spec.rb",  # _spec suffix
         ]
         for path in test_paths:
             ctx = _make_context(
@@ -338,6 +340,7 @@ class TestNoLargeDiffMigrationExempt:
 
 # === no-file-creation-sprawl ===
 
+
 class TestNoFileCreationSprawl:
     def test_first_file_passes(self):
         rule = NoFileCreationSprawl()
@@ -517,6 +520,7 @@ class TestNoFileCreationSprawlExemptPaths:
 
 # === naming-conventions ===
 
+
 class TestNamingConventions:
     def _pre_context(self, file_path: str, config: dict | None = None) -> RuleContext:
         return RuleContext(
@@ -672,16 +676,26 @@ class TestNamingConventions:
     def test_alembic_migration_exempt(self):
         """Alembic revision files should be exempt."""
         rule = NamingConventions()
-        assert rule.evaluate(self._pre_context(
-            "/project/alembic/versions/92cd48a3c5f4_change_merged_from_.py",
-        )) == []
+        assert (
+            rule.evaluate(
+                self._pre_context(
+                    "/project/alembic/versions/92cd48a3c5f4_change_merged_from_.py",
+                )
+            )
+            == []
+        )
 
     def test_migrations_versions_exempt(self):
         """Django/generic migrations should be exempt."""
         rule = NamingConventions()
-        assert rule.evaluate(self._pre_context(
-            "/project/migrations/versions/abc123def456_init.py",
-        )) == []
+        assert (
+            rule.evaluate(
+                self._pre_context(
+                    "/project/migrations/versions/abc123def456_init.py",
+                )
+            )
+            == []
+        )
 
     def test_regular_file_still_checked(self):
         """Non-migration files should still be checked."""

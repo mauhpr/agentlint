@@ -1,4 +1,5 @@
 """Gemini CLI hook protocol formatter."""
+
 from __future__ import annotations
 
 import json
@@ -55,11 +56,13 @@ class GeminiHookFormatter(OutputFormatter):
             "BeforeToolSelection",
         ):
             reason_lines = self._format_violation_lines(errors)
-            return json.dumps({
-                "decision": "deny",
-                "reason": "\n".join(reason_lines),
-                "systemMessage": "AgentLint blocked this action.",
-            })
+            return json.dumps(
+                {
+                    "decision": "deny",
+                    "reason": "\n".join(reason_lines),
+                    "systemMessage": "AgentLint blocked this action.",
+                }
+            )
 
         # For post-execution events (AfterTool, AfterAgent, AfterModel)
         if event_str in (
@@ -68,20 +71,24 @@ class GeminiHookFormatter(OutputFormatter):
             "AfterAgent",
             "AfterModel",
         ):
-            return json.dumps({
+            return json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": event_str,
+                        "additionalContext": "\n".join(context_lines),
+                    }
+                }
+            )
+
+        # For other events — use additionalContext via hookSpecificOutput
+        return json.dumps(
+            {
                 "hookSpecificOutput": {
                     "hookEventName": event_str,
                     "additionalContext": "\n".join(context_lines),
                 }
-            })
-
-        # For other events — use additionalContext via hookSpecificOutput
-        return json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": event_str,
-                "additionalContext": "\n".join(context_lines),
             }
-        })
+        )
 
     def format_subagent_start(
         self,
@@ -92,9 +99,11 @@ class GeminiHookFormatter(OutputFormatter):
             return None
 
         context_lines = [v.message for v in violations]
-        return json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "SubagentStart",
-                "additionalContext": "\n".join(context_lines),
+        return json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "SubagentStart",
+                    "additionalContext": "\n".join(context_lines),
+                }
             }
-        })
+        )

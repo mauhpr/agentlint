@@ -1,4 +1,5 @@
 """Tests for remote-chroot-guard rule."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -72,7 +73,9 @@ class TestRemoteChrootGuard:
     def test_allowed_ops_bypasses_error(self):
         ctx = _ctx(
             "chroot /mnt dpkg --purge grub-efi-amd64",
-            config={"remote-chroot-guard": {"allowed_ops": ["chroot dpkg --purge bootloader package"]}},
+            config={
+                "remote-chroot-guard": {"allowed_ops": ["chroot dpkg --purge bootloader package"]}
+            },
         )
         assert self.rule.evaluate(ctx) == []
 

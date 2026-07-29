@@ -1,4 +1,5 @@
 """Cursor IDE hook protocol formatter."""
+
 from __future__ import annotations
 
 import json
@@ -61,11 +62,13 @@ class CursorHookFormatter(OutputFormatter):
             "beforeSubmitPrompt",
         ):
             reason_lines = self._format_violation_lines(errors)
-            return json.dumps({
-                "permission": "deny",
-                "user_message": "AgentLint blocked this action.",
-                "agent_message": "\n".join(reason_lines),
-            })
+            return json.dumps(
+                {
+                    "permission": "deny",
+                    "user_message": "AgentLint blocked this action.",
+                    "agent_message": "\n".join(reason_lines),
+                }
+            )
 
         # For postToolUse / afterFileEdit / afterShellExecution — inject additional_context
         if event_str in (
@@ -75,14 +78,18 @@ class CursorHookFormatter(OutputFormatter):
             "afterShellExecution",
             "afterMCPExecution",
         ):
-            return json.dumps({
-                "additional_context": "\n".join(context_lines),
-            })
+            return json.dumps(
+                {
+                    "additional_context": "\n".join(context_lines),
+                }
+            )
 
         # For stop / sessionEnd / other events — return as text info
-        return json.dumps({
-            "additional_context": "\n".join(context_lines),
-        })
+        return json.dumps(
+            {
+                "additional_context": "\n".join(context_lines),
+            }
+        )
 
     def format_subagent_start(
         self,
@@ -97,6 +104,8 @@ class CursorHookFormatter(OutputFormatter):
             return None
 
         context_lines = [v.message for v in violations]
-        return json.dumps({
-            "additional_context": "\n".join(context_lines),
-        })
+        return json.dumps(
+            {
+                "additional_context": "\n".join(context_lines),
+            }
+        )

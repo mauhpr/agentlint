@@ -31,8 +31,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentlint.recorder import _recordings_dir, list_recordings
 from agentlint.agentchute.client import AgentChuteClient
+from agentlint.recorder import _recordings_dir, list_recordings
 
 logger = logging.getLogger("agentlint.agentchute.sync")
 
@@ -65,6 +65,7 @@ def _save_cursor(cursor: dict[str, int]) -> None:
 @dataclass
 class SyncResult:
     """Summary of a single ``agentlint sync`` invocation."""
+
     files_scanned: int = 0
     events_attempted: int = 0
     events_succeeded: int = 0
@@ -73,16 +74,10 @@ class SyncResult:
 
     @property
     def all_succeeded(self) -> bool:
-        return (
-            self.aborted_reason is None
-            and self.events_failed == 0
-            and self.events_attempted > 0
-        )
+        return self.aborted_reason is None and self.events_failed == 0 and self.events_attempted > 0
 
 
-def sync_recordings(
-    *, max_events: int | None = None, dry_run: bool = False
-) -> SyncResult:
+def sync_recordings(*, max_events: int | None = None, dry_run: bool = False) -> SyncResult:
     """Walk the recordings directory and POST any new events.
 
     Args:
@@ -98,9 +93,7 @@ def sync_recordings(
     result = SyncResult()
     client = AgentChuteClient.from_env()
     if client is None:
-        result.aborted_reason = (
-            "AGENTCHUTE_LICENSE_KEY not set — nothing to sync to"
-        )
+        result.aborted_reason = "AGENTCHUTE_LICENSE_KEY not set — nothing to sync to"
         return result
 
     recordings = list_recordings()

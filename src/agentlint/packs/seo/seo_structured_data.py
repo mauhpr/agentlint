@@ -1,4 +1,5 @@
 """Rule: content pages without JSON-LD structured data."""
+
 from __future__ import annotations
 
 import re
@@ -35,7 +36,9 @@ class SeoStructuredData(Rule):
         if not content:
             return []
 
-        content_patterns = set(context.config.get("content_path_patterns", [])) or _DEFAULT_CONTENT_PATTERNS
+        content_patterns = (
+            set(context.config.get("content_path_patterns", [])) or _DEFAULT_CONTENT_PATTERNS
+        )
         path_lower = file_path.lower()
 
         # Only check files whose path contains content-related keywords

@@ -1,4 +1,5 @@
 """Rule: warn when error handling patterns are removed from code."""
+
 from __future__ import annotations
 
 import re
@@ -35,10 +36,7 @@ def _count_error_handling(content: str, file_path: str) -> int:
 
 
 def _is_code_file(path: str) -> bool:
-    return any(
-        path.endswith(ext)
-        for ext in (".py", ".js", ".jsx", ".ts", ".tsx")
-    )
+    return any(path.endswith(ext) for ext in (".py", ".js", ".jsx", ".ts", ".tsx"))
 
 
 class NoErrorHandlingRemoval(Rule):

@@ -1,4 +1,5 @@
 """Tests for universal pack Stop rules."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -107,7 +108,9 @@ class TestNoDebugArtifacts:
 
     def test_ignores_file_with_name_main(self, tmp_path: Path):
         py_file = tmp_path / "app.py"
-        py_file.write_text('def run():\n    print("hello")\n\nif __name__ == "__main__":\n    run()\n')
+        py_file.write_text(
+            'def run():\n    print("hello")\n\nif __name__ == "__main__":\n    run()\n'
+        )
         ctx = _stop_ctx()
         ctx.session_state = {"changed_files": [str(py_file)]}
         violations = self.rule.evaluate(ctx)

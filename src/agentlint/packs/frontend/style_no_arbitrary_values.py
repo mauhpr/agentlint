@@ -1,4 +1,5 @@
 """Rule: arbitrary Tailwind values bypassing design tokens."""
+
 from __future__ import annotations
 
 import re
@@ -10,10 +11,14 @@ from agentlint.packs.frontend._helpers import _WRITE_TOOLS, is_frontend_file
 _HEX_COLOR_RE = re.compile(r"\b(?:bg|text|border|ring|fill|stroke)-\[#[0-9a-fA-F]+\]")
 
 # Pixel spacing: p-[24px], m-[16px], gap-[8px]
-_PIXEL_SPACING_RE = re.compile(r"\b(?:p|px|py|pt|pr|pb|pl|m|mx|my|mt|mr|mb|ml|gap|space-[xy])-\[\d+px\]")
+_PIXEL_SPACING_RE = re.compile(
+    r"\b(?:p|px|py|pt|pr|pb|pl|m|mx|my|mt|mr|mb|ml|gap|space-[xy])-\[\d+px\]"
+)
 
 # Layout arbitrary values (allowed by default)
-_LAYOUT_ARBITRARY_RE = re.compile(r"\b(?:w|h|min-w|min-h|max-w|max-h|top|right|bottom|left|inset)-\[")
+_LAYOUT_ARBITRARY_RE = re.compile(
+    r"\b(?:w|h|min-w|min-h|max-w|max-h|top|right|bottom|left|inset)-\["
+)
 
 
 class StyleNoArbitraryValues(Rule):

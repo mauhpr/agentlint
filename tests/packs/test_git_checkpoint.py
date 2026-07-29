@@ -1,4 +1,5 @@
 """Tests for the git-checkpoint rule."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -7,7 +8,9 @@ from agentlint.models import HookEvent, RuleContext, Severity
 from agentlint.packs.universal.git_checkpoint import GitCheckpoint
 
 
-def _ctx(command: str, config: dict | None = None, event: HookEvent = HookEvent.PRE_TOOL_USE) -> RuleContext:
+def _ctx(
+    command: str, config: dict | None = None, event: HookEvent = HookEvent.PRE_TOOL_USE
+) -> RuleContext:
     return RuleContext(
         event=event,
         tool_name="Bash",
@@ -175,7 +178,7 @@ class TestGitCheckpointCleanup:
     def test_custom_cleanup_hours(self, mock_repo, mock_clean):
         config = {"git-checkpoint": {"cleanup_hours": 48}}
         ctx = _stop_ctx(config=config)
-        violations = self.rule.evaluate(ctx)
+        self.rule.evaluate(ctx)
         mock_clean.assert_called_once_with("/tmp/project", "agentlint-checkpoint", 48)
 
 

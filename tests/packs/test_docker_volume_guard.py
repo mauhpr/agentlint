@@ -1,4 +1,5 @@
 """Tests for docker-volume-guard rule."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -119,7 +120,9 @@ class TestDockerVolumeGuard:
             tool_name="Bash",
             tool_input={"command": "docker volume rm mydb-data"},
             project_dir="/tmp",
-            config={"docker-volume-guard": {"allowed_ops": ["docker volume rm (permanent data loss)"]}},
+            config={
+                "docker-volume-guard": {"allowed_ops": ["docker volume rm (permanent data loss)"]}
+            },
         )
         assert self.rule.evaluate(ctx) == []
 
@@ -129,7 +132,9 @@ class TestDockerVolumeGuard:
             tool_name="Bash",
             tool_input={"command": "docker volume prune"},
             project_dir="/tmp",
-            config={"docker-volume-guard": {"allowed_ops": ["docker volume rm (permanent data loss)"]}},
+            config={
+                "docker-volume-guard": {"allowed_ops": ["docker volume rm (permanent data loss)"]}
+            },
         )
         assert len(self.rule.evaluate(ctx)) == 1
 

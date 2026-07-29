@@ -1,4 +1,5 @@
 """Rule: block force-push to main/master branches."""
+
 from __future__ import annotations
 
 import re

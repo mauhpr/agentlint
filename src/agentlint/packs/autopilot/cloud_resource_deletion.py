@@ -1,4 +1,5 @@
 """Rule: block cloud resource deletion commands without session confirmation."""
+
 from __future__ import annotations
 
 import re
@@ -10,25 +11,89 @@ _BASH_TOOLS = {"Bash"}
 # Each tuple: (compiled_regex, label, confirmation_key).
 _CLOUD_DELETE_OPS: list[tuple[re.Pattern[str], str, str]] = [
     # AWS
-    (re.compile(r"\baws\s+ec2\s+terminate-instances\b", re.I), "AWS EC2 terminate-instances", "aws-ec2-terminate"),
-    (re.compile(r"\baws\s+rds\s+delete-db-instance\b", re.I), "AWS RDS delete-db-instance", "aws-rds-delete"),
-    (re.compile(r"\baws\s+s3\s+rm\b.*--recursive", re.I), "AWS S3 recursive delete", "aws-s3-rm-recursive"),
-    (re.compile(r"\baws\s+dynamodb\s+delete-table\b", re.I), "AWS DynamoDB delete-table", "aws-dynamodb-delete"),
-    (re.compile(r"\baws\s+lambda\s+delete-function\b", re.I), "AWS Lambda delete-function", "aws-lambda-delete"),
-    (re.compile(r"\baws\s+iam\s+delete-(?:user|role|group|policy)\b", re.I), "AWS IAM delete", "aws-iam-delete"),
-    (re.compile(r"\baws\s+cloudformation\s+delete-stack\b", re.I), "AWS CloudFormation delete-stack", "aws-cfn-delete"),
+    (
+        re.compile(r"\baws\s+ec2\s+terminate-instances\b", re.I),
+        "AWS EC2 terminate-instances",
+        "aws-ec2-terminate",
+    ),
+    (
+        re.compile(r"\baws\s+rds\s+delete-db-instance\b", re.I),
+        "AWS RDS delete-db-instance",
+        "aws-rds-delete",
+    ),
+    (
+        re.compile(r"\baws\s+s3\s+rm\b.*--recursive", re.I),
+        "AWS S3 recursive delete",
+        "aws-s3-rm-recursive",
+    ),
+    (
+        re.compile(r"\baws\s+dynamodb\s+delete-table\b", re.I),
+        "AWS DynamoDB delete-table",
+        "aws-dynamodb-delete",
+    ),
+    (
+        re.compile(r"\baws\s+lambda\s+delete-function\b", re.I),
+        "AWS Lambda delete-function",
+        "aws-lambda-delete",
+    ),
+    (
+        re.compile(r"\baws\s+iam\s+delete-(?:user|role|group|policy)\b", re.I),
+        "AWS IAM delete",
+        "aws-iam-delete",
+    ),
+    (
+        re.compile(r"\baws\s+cloudformation\s+delete-stack\b", re.I),
+        "AWS CloudFormation delete-stack",
+        "aws-cfn-delete",
+    ),
     # GCP
-    (re.compile(r"\bgcloud\s+compute\s+instances\s+delete\b", re.I), "GCP compute instance delete", "gcloud-compute-delete"),
-    (re.compile(r"\bgcloud\s+sql\s+instances\s+delete\b", re.I), "GCP Cloud SQL delete", "gcloud-sql-delete"),
-    (re.compile(r"\bgcloud\s+container\s+clusters\s+delete\b", re.I), "GCP GKE cluster delete", "gcloud-gke-delete"),
-    (re.compile(r"\bgcloud\s+storage\s+(?:rm|buckets\s+delete)\b.*(?:--recursive|-r|\*)", re.I), "GCP Storage recursive delete", "gcloud-storage-delete"),
-    (re.compile(r"\bgcloud\s+run\s+services\s+delete\b", re.I), "GCP Cloud Run service delete", "gcloud-run-delete"),
+    (
+        re.compile(r"\bgcloud\s+compute\s+instances\s+delete\b", re.I),
+        "GCP compute instance delete",
+        "gcloud-compute-delete",
+    ),
+    (
+        re.compile(r"\bgcloud\s+sql\s+instances\s+delete\b", re.I),
+        "GCP Cloud SQL delete",
+        "gcloud-sql-delete",
+    ),
+    (
+        re.compile(r"\bgcloud\s+container\s+clusters\s+delete\b", re.I),
+        "GCP GKE cluster delete",
+        "gcloud-gke-delete",
+    ),
+    (
+        re.compile(r"\bgcloud\s+storage\s+(?:rm|buckets\s+delete)\b.*(?:--recursive|-r|\*)", re.I),
+        "GCP Storage recursive delete",
+        "gcloud-storage-delete",
+    ),
+    (
+        re.compile(r"\bgcloud\s+run\s+services\s+delete\b", re.I),
+        "GCP Cloud Run service delete",
+        "gcloud-run-delete",
+    ),
     # Azure
     (re.compile(r"\baz\s+vm\s+delete\b", re.I), "Azure VM delete", "az-vm-delete"),
-    (re.compile(r"\baz\s+(?:sql|mysql|postgres)\s+(?:server\s+)?delete\b", re.I), "Azure database delete", "az-db-delete"),
-    (re.compile(r"\baz\s+group\s+delete\b", re.I), "Azure resource group delete", "az-group-delete"),
-    (re.compile(r"\baz\s+storage\s+account\s+delete\b", re.I), "Azure storage account delete", "az-storage-delete"),
-    (re.compile(r"\baz\s+keyvault\s+delete\b", re.I), "Azure Key Vault delete", "az-keyvault-delete"),
+    (
+        re.compile(r"\baz\s+(?:sql|mysql|postgres)\s+(?:server\s+)?delete\b", re.I),
+        "Azure database delete",
+        "az-db-delete",
+    ),
+    (
+        re.compile(r"\baz\s+group\s+delete\b", re.I),
+        "Azure resource group delete",
+        "az-group-delete",
+    ),
+    (
+        re.compile(r"\baz\s+storage\s+account\s+delete\b", re.I),
+        "Azure storage account delete",
+        "az-storage-delete",
+    ),
+    (
+        re.compile(r"\baz\s+keyvault\s+delete\b", re.I),
+        "Azure Key Vault delete",
+        "az-keyvault-delete",
+    ),
 ]
 
 

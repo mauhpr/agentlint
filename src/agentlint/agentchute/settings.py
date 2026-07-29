@@ -3,8 +3,10 @@
 Environment variables still win, but ``agentlint login`` also writes a local
 credential file so the current shell can use AgentChute immediately.
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -49,9 +51,7 @@ def load_local_credentials() -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def save_local_credentials(
-    *, api_url: str, license_key: str, enabled: bool = True
-) -> Path:
+def save_local_credentials(*, api_url: str, license_key: str, enabled: bool = True) -> Path:
     path = local_credentials_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -63,10 +63,8 @@ def save_local_credentials(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    try:
+    with contextlib.suppress(OSError):
         path.chmod(0o600)
-    except OSError:
-        pass
     return path
 
 

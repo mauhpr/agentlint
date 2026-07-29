@@ -1,4 +1,5 @@
 """Rule: block catastrophic irreversible operations without explicit session confirmation."""
+
 from __future__ import annotations
 
 import re
@@ -11,10 +12,26 @@ _BASH_TOOLS = {"Bash"}
 _CATASTROPHIC_OPS: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"\bDROP\s+DATABASE\b", re.IGNORECASE), "DROP DATABASE", "DROP DATABASE"),
     (re.compile(r"\bDROP\s+TABLE\b", re.IGNORECASE), "DROP TABLE", "DROP TABLE"),
-    (re.compile(r"\bterraform\s+destroy\b", re.IGNORECASE), "terraform destroy", "terraform destroy"),
-    (re.compile(r"\bkubectl\s+delete\s+namespace\b", re.IGNORECASE), "kubectl delete namespace", "kubectl delete namespace"),
-    (re.compile(r"\bgcloud\s+projects?\s+delete\b", re.IGNORECASE), "gcloud projects delete", "gcloud projects delete"),
-    (re.compile(r"\bheroku\s+apps?\s+destroy\b", re.IGNORECASE), "heroku apps destroy", "heroku apps destroy"),
+    (
+        re.compile(r"\bterraform\s+destroy\b", re.IGNORECASE),
+        "terraform destroy",
+        "terraform destroy",
+    ),
+    (
+        re.compile(r"\bkubectl\s+delete\s+namespace\b", re.IGNORECASE),
+        "kubectl delete namespace",
+        "kubectl delete namespace",
+    ),
+    (
+        re.compile(r"\bgcloud\s+projects?\s+delete\b", re.IGNORECASE),
+        "gcloud projects delete",
+        "gcloud projects delete",
+    ),
+    (
+        re.compile(r"\bheroku\s+apps?\s+destroy\b", re.IGNORECASE),
+        "heroku apps destroy",
+        "heroku apps destroy",
+    ),
 ]
 
 
@@ -22,7 +39,9 @@ class DestructiveConfirmationGate(Rule):
     """Block catastrophic irreversible ops unless session_state has explicit confirmation."""
 
     id = "destructive-confirmation-gate"
-    description = "Blocks DROP DATABASE, terraform destroy, kubectl delete namespace without confirmation"
+    description = (
+        "Blocks DROP DATABASE, terraform destroy, kubectl delete namespace without confirmation"
+    )
     severity = Severity.ERROR
     events = [HookEvent.PRE_TOOL_USE]
     pack = "autopilot"

@@ -70,8 +70,7 @@ class TestSelfDegrading:
 
     def test_empty_feed(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        with patch("agentlint.agentchute.cloud_feed.get",
-                   return_value={"domains": []}):
+        with patch("agentlint.agentchute.cloud_feed.get", return_value={"domains": []}):
             assert self.rule.evaluate(_ctx("curl https://x.tld/y")) == []
 
     def test_non_bash(self):
@@ -80,8 +79,7 @@ class TestSelfDegrading:
 
     def test_no_fetch_verb(self, monkeypatch):
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
-        with patch("agentlint.agentchute.cloud_feed.get",
-                   return_value={"domains": ["bad.tld"]}):
+        with patch("agentlint.agentchute.cloud_feed.get", return_value={"domains": ["bad.tld"]}):
             assert self.rule.evaluate(_ctx('echo "see https://bad.tld"')) == []
 
 
@@ -122,16 +120,12 @@ class TestHappyPath:
         # Multiple URLs on the same blocked host → one violation
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
         with self._patch(["bad.tld"]):
-            v = self.rule.evaluate(_ctx(
-                "curl https://bad.tld/a && curl https://bad.tld/b"
-            ))
+            v = self.rule.evaluate(_ctx("curl https://bad.tld/a && curl https://bad.tld/b"))
         assert len(v) == 1
 
     def test_multiple_blocked_hosts(self, monkeypatch):
         # Distinct blocked hosts → one violation each
         monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "ac_team_test")
         with self._patch(["bad1.tld", "bad2.tld"]):
-            v = self.rule.evaluate(_ctx(
-                "curl https://bad1.tld/x; curl https://bad2.tld/y"
-            ))
+            v = self.rule.evaluate(_ctx("curl https://bad1.tld/x; curl https://bad2.tld/y"))
         assert len(v) == 2

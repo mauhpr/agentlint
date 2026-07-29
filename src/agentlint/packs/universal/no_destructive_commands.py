@@ -1,4 +1,5 @@
 """Rule: warn on destructive shell commands."""
+
 from __future__ import annotations
 
 import re
@@ -39,7 +40,10 @@ _CHMOD_777_RE = re.compile(r"\bchmod\s+(?:-R\s+)?777\b", re.IGNORECASE)
 _MKFS_RE = re.compile(r"\bmkfs\b", re.IGNORECASE)
 _DD_ZERO_RE = re.compile(r"\bdd\b.*\bif=/dev/zero\b", re.IGNORECASE)
 _FORK_BOMB_RE = re.compile(r":\(\)\s*\{\s*:\|:\s*&\s*\}\s*;|\./:0\b")
-_DOCKER_PRUNE_RE = re.compile(r"\bdocker\s+system\s+prune\s+-a\b.*--volumes\b|\bdocker\s+system\s+prune\b.*-a\b.*--volumes\b", re.IGNORECASE)
+_DOCKER_PRUNE_RE = re.compile(
+    r"\bdocker\s+system\s+prune\s+-a\b.*--volumes\b|\bdocker\s+system\s+prune\b.*-a\b.*--volumes\b",
+    re.IGNORECASE,
+)
 _KUBECTL_DELETE_NS_RE = re.compile(r"\bkubectl\s+delete\s+namespace\b", re.IGNORECASE)
 _GIT_BRANCH_DELETE_RE = re.compile(r"\bgit\s+branch\s+-D\s+(\S+)", re.IGNORECASE)
 
@@ -120,6 +124,7 @@ class NoDestructiveCommands(Rule):
         # Strip quoted string arguments to avoid false positives on SQL
         # inside cloud CLI commands: bq query "DROP TABLE foo"
         from agentlint.utils.bash import KNOWN_CLI_TOOLS, get_command_binary, strip_string_args
+
         stripped = strip_string_args(command)
         binary = get_command_binary(command)
 

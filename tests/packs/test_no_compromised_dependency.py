@@ -87,16 +87,12 @@ class TestSelfDegrading:
         monkeypatch.setenv("AGENTLINT_FEEDS_DIR", str(feeds_dir))
 
         # Stub cloud_feed.get to return an empty list
-        with patch(
-            "agentlint.agentchute.cloud_feed.get", return_value=set()
-        ) as mock_get:
+        with patch("agentlint.agentchute.cloud_feed.get", return_value=set()) as mock_get:
             ctx = _ctx("pip install requests")
             assert self.rule.evaluate(ctx) == []
         # Rule SHOULD have consulted the feed (proves the cloud path is wired)
         # but only if there are packages to check
-        mock_get.assert_called_once_with(
-            "compromised-packages", default=set(), allow_network=False
-        )
+        mock_get.assert_called_once_with("compromised-packages", default=set(), allow_network=False)
 
     def test_no_op_for_non_bash(self):
         ctx = _ctx("npm install evil", tool_name="Write")

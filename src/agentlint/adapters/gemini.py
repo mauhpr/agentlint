@@ -5,6 +5,7 @@ Configuration is done via JSON in .gemini/settings.json.
 
 Reference: https://geminicli.com/docs/hooks/
 """
+
 from __future__ import annotations
 
 import json
@@ -20,8 +21,7 @@ from agentlint.adapters._utils import (
 )
 from agentlint.adapters.base import AgentAdapter
 from agentlint.formats.gemini_hooks import GeminiHookFormatter
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext, to_hook_event
-
+from agentlint.models import AgentEvent, NormalizedTool, RuleContext, to_hook_event
 
 # Mapping from Gemini native event names to generic AgentEvent
 _GEMINI_EVENT_MAP: dict[str, AgentEvent] = {
@@ -176,8 +176,8 @@ class GeminiAdapter(AgentAdapter):
     def translate_event(self, native_event: str) -> AgentEvent:
         try:
             return _GEMINI_EVENT_MAP[native_event]
-        except KeyError:
-            raise ValueError(f"Unknown Gemini event: {native_event}")
+        except KeyError as exc:
+            raise ValueError(f"Unknown Gemini event: {native_event}") from exc
 
     def normalize_tool_name(self, native_tool: str) -> str:
         return _GEMINI_TOOL_MAP.get(native_tool, NormalizedTool.UNKNOWN).value
@@ -198,7 +198,8 @@ class GeminiAdapter(AgentAdapter):
             config={},
             session_state=session_state,
             prompt=raw_payload.get("prompt"),
-            subagent_output=raw_payload.get("last_assistant_message") or raw_payload.get("subagent_output"),
+            subagent_output=raw_payload.get("last_assistant_message")
+            or raw_payload.get("subagent_output"),
             notification_type=raw_payload.get("notification_type"),
             compact_source=raw_payload.get("compact_source"),
             agent_transcript_path=raw_payload.get("agent_transcript_path"),
@@ -233,6 +234,7 @@ class GeminiAdapter(AgentAdapter):
 
         if dry_run:
             import click
+
             click.echo(f"\nDry run — would write to {path}:")
             click.echo(json.dumps(settings, indent=2))
             return

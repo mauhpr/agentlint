@@ -43,8 +43,9 @@ cached data even when the network is briefly down.
 
 from __future__ import annotations
 
-from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
+import contextlib
 
+from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 # Severity escalation thresholds. ``status`` from the feed takes precedence;
 # these are local fallback heuristics if the feed only sends percent_used.
@@ -123,9 +124,7 @@ class TokenBurnAgainstTeamBudget(Rule):
         except (TypeError, ValueError):
             return None
 
-    def _build_violation(
-        self, budget: dict, *, severity: Severity, over: bool
-    ) -> Violation:
+    def _build_violation(self, budget: dict, *, severity: Severity, over: bool) -> Violation:
         spend = budget.get("monthly_spend_usd")
         cap = budget.get("monthly_budget_usd")
         pct = budget.get("percent_used")
@@ -137,10 +136,8 @@ class TokenBurnAgainstTeamBudget(Rule):
         if spend is not None and cap is not None:
             bits.append(f"${spend:.0f} of ${cap:.0f}")
         if pct is not None:
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 bits.append(f"{float(pct):.1f}% used")
-            except (TypeError, ValueError):
-                pass
         if days_left is not None:
             bits.append(f"{days_left} days left in period")
         breadcrumb = " · ".join(bits) if bits else "team budget data unavailable"
@@ -157,10 +154,7 @@ class TokenBurnAgainstTeamBudget(Rule):
                 "app.agentchute.com/dashboard/billing."
             )
         else:
-            message = (
-                f"Team is approaching its monthly AI-spend budget "
-                f"({breadcrumb})."
-            )
+            message = f"Team is approaching its monthly AI-spend budget ({breadcrumb})."
             suggestion = (
                 "Consider deferring non-critical agent tasks. View detailed "
                 "spend at app.agentchute.com/dashboard."

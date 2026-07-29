@@ -1,4 +1,5 @@
 """Rule: warn on direct push to main/master branches."""
+
 from __future__ import annotations
 
 import re

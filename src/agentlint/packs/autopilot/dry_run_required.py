@@ -1,4 +1,5 @@
 """Rule: require --dry-run/--check/plan flags for infrastructure apply commands."""
+
 from __future__ import annotations
 
 import re
@@ -70,8 +71,8 @@ class DryRunRequired(Rule):
                         message=f"Infrastructure apply without preview: {label}",
                         severity=self.severity,
                         suggestion=(
-                            f"Run the preview form first (e.g. terraform plan, "
-                            f"kubectl apply --dry-run=client). Add to dry-run-required.bypass_tools in agentlint.yml to allow."
+                            "Run the preview form first (e.g. terraform plan, "
+                            "kubectl apply --dry-run=client). Add to dry-run-required.bypass_tools in agentlint.yml to allow."
                         ),
                     )
                 )

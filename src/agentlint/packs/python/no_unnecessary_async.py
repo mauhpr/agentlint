@@ -1,4 +1,5 @@
 """Rule: detect async def without await in the body."""
+
 from __future__ import annotations
 
 import re
@@ -9,7 +10,17 @@ _WRITE_TOOLS = {"Write", "Edit"}
 
 _ASYNC_DEF_RE = re.compile(r"^(\s*)async\s+def\s+(\w+)\s*\(", re.MULTILINE)
 _AWAIT_RE = re.compile(r"\bawait\b")
-_FASTAPI_ROUTE_METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "trace", "websocket"}
+_FASTAPI_ROUTE_METHODS = {
+    "get",
+    "post",
+    "put",
+    "patch",
+    "delete",
+    "options",
+    "head",
+    "trace",
+    "websocket",
+}
 _SKIP_DECORATORS = {"property", "override", "abstractmethod"}
 _SKIP_BODIES = {"pass", "...", "raise NotImplementedError"}
 
@@ -17,7 +28,11 @@ _SKIP_BODIES = {"pass", "...", "raise NotImplementedError"}
 def _is_test_file(file_path: str) -> bool:
     parts = file_path.lower().split("/")
     basename = parts[-1] if parts else ""
-    return basename.startswith("test_") or basename.startswith("conftest") or "/test" in file_path.lower()
+    return (
+        basename.startswith("test_")
+        or basename.startswith("conftest")
+        or "/test" in file_path.lower()
+    )
 
 
 class NoUnnecessaryAsync(Rule):
@@ -54,7 +69,7 @@ class NoUnnecessaryAsync(Rule):
         for match in _ASYNC_DEF_RE.finditer(content):
             func_indent = len(match.group(1))
             func_name = match.group(2)
-            func_line = content[:match.start()].count("\n")
+            func_line = content[: match.start()].count("\n")
 
             # Check decorators above
             decorator_line = func_line - 1

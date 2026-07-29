@@ -1,4 +1,5 @@
 """Rule: record all tool operations to a session audit log."""
+
 from __future__ import annotations
 
 import time

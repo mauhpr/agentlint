@@ -1,4 +1,5 @@
 """Rule: detect unsafe shell execution in Python code."""
+
 from __future__ import annotations
 
 import re
@@ -61,7 +62,7 @@ class NoUnsafeShell(Rule):
         # Check for subprocess with shell=True across the full content
         if not allow_shell_true:
             for match in _SUBPROCESS_SHELL_RE.finditer(content):
-                line_num = content[:match.start()].count("\n") + 1
+                line_num = content[: match.start()].count("\n") + 1
                 violations.append(
                     Violation(
                         rule_id=self.id,

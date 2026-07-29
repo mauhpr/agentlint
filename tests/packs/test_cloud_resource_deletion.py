@@ -1,11 +1,14 @@
 """Tests for cloud-resource-deletion rule."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
 from agentlint.packs.autopilot.cloud_resource_deletion import CloudResourceDeletion
 
 
-def _ctx(command: str, session_state: dict | None = None, config: dict | None = None) -> RuleContext:
+def _ctx(
+    command: str, session_state: dict | None = None, config: dict | None = None
+) -> RuleContext:
     return RuleContext(
         event=HookEvent.PRE_TOOL_USE,
         tool_name="Bash",
@@ -177,7 +180,10 @@ class TestCloudResourceDeletion:
         ctx = RuleContext(
             event=HookEvent.PRE_TOOL_USE,
             tool_name="Write",
-            tool_input={"file_path": "script.sh", "content": "aws ec2 terminate-instances --instance-ids i-abc"},
+            tool_input={
+                "file_path": "script.sh",
+                "content": "aws ec2 terminate-instances --instance-ids i-abc",
+            },
             project_dir="/tmp",
         )
         assert self.rule.evaluate(ctx) == []

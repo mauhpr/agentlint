@@ -1,13 +1,13 @@
 """Tests for the Gemini CLI adapter."""
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
 from agentlint.adapters.gemini import GeminiAdapter, _build_hooks, _settings_path
-from agentlint.models import AgentEvent, HookEvent, NormalizedTool, RuleContext
+from agentlint.models import AgentEvent, HookEvent, NormalizedTool
 
 
 class TestEventTranslation:
@@ -83,6 +83,7 @@ class TestBuildRuleContext:
 
     def test_formatter_property(self) -> None:
         from agentlint.formats.gemini_hooks import GeminiHookFormatter
+
         adapter = GeminiAdapter()
         assert isinstance(adapter.formatter, GeminiHookFormatter)
 
@@ -114,8 +115,12 @@ class TestSettingsPath:
 
 class TestBuildHooks:
     EXPECTED_EVENTS = {
-        "BeforeTool", "AfterTool", "BeforeAgent", "AfterAgent",
-        "SessionStart", "PreCompress",
+        "BeforeTool",
+        "AfterTool",
+        "BeforeAgent",
+        "AfterAgent",
+        "SessionStart",
+        "PreCompress",
     }
 
     def test_builds_all_events(self) -> None:
@@ -155,7 +160,10 @@ class TestInstallHooks:
         existing = {
             "hooks": {
                 "BeforeTool": [
-                    {"matcher": "write_file", "hooks": [{"name": "my-hook", "type": "command", "command": "echo hello"}]}
+                    {
+                        "matcher": "write_file",
+                        "hooks": [{"name": "my-hook", "type": "command", "command": "echo hello"}],
+                    }
                 ]
             }
         }
@@ -193,8 +201,20 @@ class TestUninstallHooks:
         existing = {
             "hooks": {
                 "BeforeTool": [
-                    {"matcher": "write_file", "hooks": [{"name": "my-hook", "type": "command", "command": "echo hello"}]},
-                    {"matcher": "write_file", "hooks": [{"name": "agentlint-pre", "type": "command", "command": "agentlint check --event BeforeTool --adapter gemini"}]},
+                    {
+                        "matcher": "write_file",
+                        "hooks": [{"name": "my-hook", "type": "command", "command": "echo hello"}],
+                    },
+                    {
+                        "matcher": "write_file",
+                        "hooks": [
+                            {
+                                "name": "agentlint-pre",
+                                "type": "command",
+                                "command": "agentlint check --event BeforeTool --adapter gemini",
+                            }
+                        ],
+                    },
                 ]
             }
         }
@@ -220,11 +240,13 @@ class TestUninstallHooks:
 
 class TestFormatter:
     def test_blocking_format(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.gemini_hooks import GeminiHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = GeminiHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         output = formatter.format(violations, AgentEvent.PRE_TOOL_USE)
         assert output is not None
         data = json.loads(output)
@@ -232,11 +254,13 @@ class TestFormatter:
         assert "reason" in data
 
     def test_advisory_format(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.gemini_hooks import GeminiHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = GeminiHookFormatter()
-        violations = [Violation(rule_id="max-file-size", message="File too large", severity=Severity.WARNING)]
+        violations = [
+            Violation(rule_id="max-file-size", message="File too large", severity=Severity.WARNING)
+        ]
         output = formatter.format(violations, AgentEvent.POST_TOOL_USE)
         assert output is not None
         data = json.loads(output)
@@ -244,11 +268,13 @@ class TestFormatter:
         assert "additionalContext" in data["hookSpecificOutput"]
 
     def test_exit_code_blocked(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.gemini_hooks import GeminiHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = GeminiHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         assert formatter.exit_code(violations, AgentEvent.PRE_TOOL_USE) == 2
 
     def test_exit_code_allowed(self) -> None:
@@ -261,15 +287,18 @@ class TestFormatter:
 class TestFormatterEdgeCases:
     def test_format_returns_none_when_no_violations(self) -> None:
         from agentlint.formats.gemini_hooks import GeminiHookFormatter
+
         formatter = GeminiHookFormatter()
         assert formatter.format([], AgentEvent.PRE_TOOL_USE) is None
 
     def test_format_fallback_for_other_events(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.gemini_hooks import GeminiHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = GeminiHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         output = formatter.format(violations, AgentEvent.STOP)
         assert output is not None
         data = json.loads(output)
@@ -277,11 +306,13 @@ class TestFormatterEdgeCases:
         assert "additionalContext" in data["hookSpecificOutput"]
 
     def test_format_subagent_start(self) -> None:
-        from agentlint.models import Severity, Violation
         from agentlint.formats.gemini_hooks import GeminiHookFormatter
+        from agentlint.models import Severity, Violation
 
         formatter = GeminiHookFormatter()
-        violations = [Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)]
+        violations = [
+            Violation(rule_id="no-secrets", message="Secret found", severity=Severity.ERROR)
+        ]
         output = formatter.format_subagent_start(violations)
         assert output is not None
         data = json.loads(output)

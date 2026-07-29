@@ -1,4 +1,5 @@
 """Rule: warn when a file exceeds a configurable line-count limit."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
@@ -32,7 +33,9 @@ class MaxFileSize(Rule):
             # Don't fire on pre-existing large files — only when crossing the threshold
             before = context.file_content_before
             if before is not None:
-                before_count = before.count("\n") + (1 if before and not before.endswith("\n") else 0)
+                before_count = before.count("\n") + (
+                    1 if before and not before.endswith("\n") else 0
+                )
                 if before_count > limit:
                     return []  # file was already over the limit before this edit
 

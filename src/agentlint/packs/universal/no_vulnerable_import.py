@@ -37,7 +37,6 @@ from typing import Any
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
-
 _FILE_TOOLS = {"Edit", "Write"}
 
 
@@ -61,17 +60,70 @@ _PY_IMPORT_PATTERNS = [
 # Python stdlib short-list (so we don't query GHSA for `os` or `json`).
 # Partial allowlist — anything not on it falls through to the feed
 # lookup, which itself returns nothing for non-PyPI packages.
-_PYTHON_STDLIB = frozenset({
-    "os", "sys", "re", "json", "math", "time", "datetime", "logging",
-    "pathlib", "subprocess", "shutil", "tempfile", "threading", "asyncio",
-    "typing", "functools", "itertools", "collections", "enum", "dataclasses",
-    "abc", "io", "uuid", "hashlib", "hmac", "secrets", "base64", "urllib",
-    "http", "ssl", "socket", "selectors", "platform", "warnings",
-    "csv", "configparser", "argparse", "unittest", "ast", "inspect", "copy",
-    "contextlib", "weakref", "gc", "operator", "string", "textwrap",
-    "tomllib", "zipfile", "tarfile", "glob", "fnmatch", "errno", "signal",
-    "atexit", "traceback", "decimal", "fractions", "statistics", "random",
-})
+_PYTHON_STDLIB = frozenset(
+    {
+        "os",
+        "sys",
+        "re",
+        "json",
+        "math",
+        "time",
+        "datetime",
+        "logging",
+        "pathlib",
+        "subprocess",
+        "shutil",
+        "tempfile",
+        "threading",
+        "asyncio",
+        "typing",
+        "functools",
+        "itertools",
+        "collections",
+        "enum",
+        "dataclasses",
+        "abc",
+        "io",
+        "uuid",
+        "hashlib",
+        "hmac",
+        "secrets",
+        "base64",
+        "urllib",
+        "http",
+        "ssl",
+        "socket",
+        "selectors",
+        "platform",
+        "warnings",
+        "csv",
+        "configparser",
+        "argparse",
+        "unittest",
+        "ast",
+        "inspect",
+        "copy",
+        "contextlib",
+        "weakref",
+        "gc",
+        "operator",
+        "string",
+        "textwrap",
+        "tomllib",
+        "zipfile",
+        "tarfile",
+        "glob",
+        "fnmatch",
+        "errno",
+        "signal",
+        "atexit",
+        "traceback",
+        "decimal",
+        "fractions",
+        "statistics",
+        "random",
+    }
+)
 
 
 def _strip_js_pkg(spec: str) -> str | None:
@@ -159,11 +211,7 @@ class NoVulnerableImport(Rule):
 
         # Edit tools deliver new content under different keys depending
         # on the agent's call form. Match the env_credential_reference pattern.
-        content = (
-            context.tool_input.get("new_string")
-            or context.tool_input.get("content")
-            or ""
-        )
+        content = context.tool_input.get("new_string") or context.tool_input.get("content") or ""
         if not content:
             return []
 
@@ -203,8 +251,13 @@ class NoVulnerableImport(Rule):
                 continue
             # At most ONE warning per (file, package); pick the most-severe.
             rank = {
-                "CRITICAL": 4, "HIGH": 3, "MODERATE": 2,
-                "MEDIUM": 2, "LOW": 1, "UNKNOWN": 0, None: 0,
+                "CRITICAL": 4,
+                "HIGH": 3,
+                "MODERATE": 2,
+                "MEDIUM": 2,
+                "LOW": 1,
+                "UNKNOWN": 0,
+                None: 0,
             }
             best = max(matches, key=lambda r: rank.get(r.get("severity"), 0))
             ghsa = best.get("ghsa_id", "GHSA-?")

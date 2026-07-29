@@ -1,4 +1,5 @@
 """Tests for subagent-transcript-audit rule."""
+
 from __future__ import annotations
 
 import json
@@ -7,8 +8,8 @@ import os
 from agentlint.models import HookEvent, RuleContext, Severity
 from agentlint.packs.autopilot.subagent_transcript_audit import (
     SubagentTranscriptAudit,
-    _extract_bash_commands,
     _check_command,
+    _extract_bash_commands,
 )
 
 
@@ -41,34 +42,58 @@ def _write_transcript(tmp_path, entries: list[dict]) -> str:
 
 class TestExtractBashCommands:
     def test_top_level_tool_name(self, tmp_path):
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": "ls -la"}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Bash", "tool_input": {"command": "ls -la"}},
+            ],
+        )
         commands = _extract_bash_commands(path)
         assert commands == ["ls -la"]
 
     def test_content_block_tool_use(self, tmp_path):
-        path = _write_transcript(tmp_path, [
-            {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "echo hello"}}]},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "echo hello"}}
+                    ]
+                },
+            ],
+        )
         commands = _extract_bash_commands(path)
         assert commands == ["echo hello"]
 
     def test_ignores_non_bash_tools(self, tmp_path):
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Write", "tool_input": {"file_path": "test.py", "content": "x=1"}},
-            {"content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "test.py"}}]},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Write", "tool_input": {"file_path": "test.py", "content": "x=1"}},
+                {
+                    "content": [
+                        {"type": "tool_use", "name": "Read", "input": {"file_path": "test.py"}}
+                    ]
+                },
+            ],
+        )
         commands = _extract_bash_commands(path)
         assert commands == []
 
     def test_multiple_entries(self, tmp_path):
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": "ls"}},
-            {"tool_name": "Bash", "tool_input": {"command": "pwd"}},
-            {"tool_name": "Write", "tool_input": {}},
-            {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "echo test"}}]},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Bash", "tool_input": {"command": "ls"}},
+                {"tool_name": "Bash", "tool_input": {"command": "pwd"}},
+                {"tool_name": "Write", "tool_input": {}},
+                {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "echo test"}}
+                    ]
+                },
+            ],
+        )
         commands = _extract_bash_commands(path)
         assert commands == ["ls", "pwd", "echo test"]
 
@@ -91,10 +116,13 @@ class TestExtractBashCommands:
         assert commands == []
 
     def test_empty_command_skipped(self, tmp_path):
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": ""}},
-            {"tool_name": "Bash", "tool_input": {}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Bash", "tool_input": {"command": ""}},
+                {"tool_name": "Bash", "tool_input": {}},
+            ],
+        )
         commands = _extract_bash_commands(path)
         assert commands == []
 
@@ -111,9 +139,18 @@ class TestExtractBashCommands:
 
     def test_non_dict_content_blocks_skipped(self, tmp_path):
         """Content blocks that are not dicts (e.g. strings) should be skipped."""
-        path = _write_transcript(tmp_path, [
-            {"content": ["plain string", 42, {"type": "tool_use", "name": "Bash", "input": {"command": "pwd"}}]},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {
+                    "content": [
+                        "plain string",
+                        42,
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "pwd"}},
+                    ]
+                },
+            ],
+        )
         commands = _extract_bash_commands(path)
         assert commands == ["pwd"]
 
@@ -174,18 +211,24 @@ class TestSubagentTranscriptAudit:
         assert violations == []
 
     def test_clean_transcript_no_violations(self, tmp_path):
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": "ls -la"}},
-            {"tool_name": "Bash", "tool_input": {"command": "cat README.md"}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Bash", "tool_input": {"command": "ls -la"}},
+                {"tool_name": "Bash", "tool_input": {"command": "cat README.md"}},
+            ],
+        )
         ctx = _ctx(transcript_path=path)
         violations = self.rule.evaluate(ctx)
         assert violations == []
 
     def test_dangerous_command_returns_warning(self, tmp_path):
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": "terraform destroy -auto-approve"}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Bash", "tool_input": {"command": "terraform destroy -auto-approve"}},
+            ],
+        )
         ctx = _ctx(transcript_path=path)
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
@@ -193,20 +236,31 @@ class TestSubagentTranscriptAudit:
         assert "terraform destroy" in violations[0].message
 
     def test_multiple_dangerous_commands(self, tmp_path):
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": "terraform destroy"}},
-            {"tool_name": "Bash", "tool_input": {"command": "ls -la"}},
-            {"tool_name": "Bash", "tool_input": {"command": "aws rds delete-db-instance --db-instance-identifier prod"}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Bash", "tool_input": {"command": "terraform destroy"}},
+                {"tool_name": "Bash", "tool_input": {"command": "ls -la"}},
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {
+                        "command": "aws rds delete-db-instance --db-instance-identifier prod"
+                    },
+                },
+            ],
+        )
         ctx = _ctx(transcript_path=path)
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 2  # terraform + aws delete
 
     def test_records_audit_in_session_state(self, tmp_path):
         session_state: dict = {}
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": "terraform destroy"}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Bash", "tool_input": {"command": "terraform destroy"}},
+            ],
+        )
         ctx = _ctx(transcript_path=path, session_state=session_state)
         self.rule.evaluate(ctx)
 
@@ -218,9 +272,12 @@ class TestSubagentTranscriptAudit:
 
     def test_clean_audit_recorded_in_session_state(self, tmp_path):
         session_state: dict = {}
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": "ls"}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Bash", "tool_input": {"command": "ls"}},
+            ],
+        )
         ctx = _ctx(transcript_path=path, session_state=session_state)
         self.rule.evaluate(ctx)
 
@@ -235,7 +292,12 @@ class TestSubagentTranscriptAudit:
         with open(path, "w") as f:
             # Each line is ~100 bytes, need ~11000 lines for >1MB
             for i in range(11000):
-                f.write(json.dumps({"tool_name": "Bash", "tool_input": {"command": f"echo {i} " + "x" * 80}}) + "\n")
+                f.write(
+                    json.dumps(
+                        {"tool_name": "Bash", "tool_input": {"command": f"echo {i} " + "x" * 80}}
+                    )
+                    + "\n"
+                )
 
         assert os.path.getsize(path) > 1_048_576
 
@@ -254,9 +316,12 @@ class TestSubagentTranscriptAudit:
 
     def test_truncates_long_commands_in_message(self, tmp_path):
         long_cmd = "terraform destroy " + "x" * 200
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": long_cmd}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Bash", "tool_input": {"command": long_cmd}},
+            ],
+        )
         ctx = _ctx(transcript_path=path)
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
@@ -281,20 +346,26 @@ class TestSubagentTranscriptAudit:
 
     def test_content_null_does_not_crash(self, tmp_path):
         """JSONL entry with "content": null must not raise TypeError."""
-        path = _write_transcript(tmp_path, [
-            {"content": None},
-            {"tool_name": "Bash", "tool_input": {"command": "ls"}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"content": None},
+                {"tool_name": "Bash", "tool_input": {"command": "ls"}},
+            ],
+        )
         commands = _extract_bash_commands(path)
         assert commands == ["ls"]
 
     def test_content_null_in_dangerous_transcript(self, tmp_path):
         """Null content entries are skipped; dangerous commands still detected."""
-        path = _write_transcript(tmp_path, [
-            {"content": None},
-            {"tool_name": "Bash", "tool_input": {"command": "terraform destroy"}},
-            {"content": None},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"content": None},
+                {"tool_name": "Bash", "tool_input": {"command": "terraform destroy"}},
+                {"content": None},
+            ],
+        )
         ctx = _ctx(transcript_path=path)
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
@@ -303,10 +374,13 @@ class TestSubagentTranscriptAudit:
     def test_oversized_line_skipped(self, tmp_path):
         """Individual JSONL lines over 100KB should be skipped."""
         huge_cmd = "echo " + "x" * 110_000
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": huge_cmd}},
-            {"tool_name": "Bash", "tool_input": {"command": "terraform destroy"}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {"tool_name": "Bash", "tool_input": {"command": huge_cmd}},
+                {"tool_name": "Bash", "tool_input": {"command": "terraform destroy"}},
+            ],
+        )
         ctx = _ctx(transcript_path=path)
         violations = self.rule.evaluate(ctx)
         # The oversized line is skipped, but terraform destroy is still caught
@@ -315,9 +389,15 @@ class TestSubagentTranscriptAudit:
 
     def test_heroku_destroy_detected(self, tmp_path):
         """Heroku apps:destroy should be caught by shared patterns."""
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": "heroku apps:destroy --app my-app --confirm my-app"}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "heroku apps:destroy --app my-app --confirm my-app"},
+                },
+            ],
+        )
         ctx = _ctx(transcript_path=path)
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
@@ -325,9 +405,15 @@ class TestSubagentTranscriptAudit:
 
     def test_azure_deletion_detected(self, tmp_path):
         """Azure delete commands should be caught by shared patterns."""
-        path = _write_transcript(tmp_path, [
-            {"tool_name": "Bash", "tool_input": {"command": "az group delete --name my-rg --yes"}},
-        ])
+        path = _write_transcript(
+            tmp_path,
+            [
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "az group delete --name my-rg --yes"},
+                },
+            ],
+        )
         ctx = _ctx(transcript_path=path)
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1

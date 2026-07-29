@@ -4,6 +4,7 @@ Resolves {placeholder} strings in command templates using values from
 RuleContext. All values are shell-escaped via shlex.quote() to prevent
 injection attacks from adversarial file names or environment variables.
 """
+
 from __future__ import annotations
 
 import logging

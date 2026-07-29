@@ -1,4 +1,5 @@
 """Test that the autopilot pack scaffolding loads correctly."""
+
 from agentlint.packs import PACK_MODULES, load_rules
 
 

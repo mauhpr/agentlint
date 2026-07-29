@@ -61,23 +61,32 @@ _ECOSYSTEM_MAP = {
 #   cargo:         ``foo --version 1.2.3`` or ``foo@1.2.3``
 _INSTALL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # npm / yarn / pnpm: ``npm install foo@1.2.3`` or ``yarn add @scope/foo@1.2.3``
-    (re.compile(
-        r"\b(?:npm|yarn|pnpm)\s+(?:install|i|add)\s+(?!-)"
-        r"(?P<name>@?[\w][\w@/\-\.]*)@(?P<version>[\w][\w\-\.]*)",
-        re.IGNORECASE,
-    ), "npm"),
+    (
+        re.compile(
+            r"\b(?:npm|yarn|pnpm)\s+(?:install|i|add)\s+(?!-)"
+            r"(?P<name>@?[\w][\w@/\-\.]*)@(?P<version>[\w][\w\-\.]*)",
+            re.IGNORECASE,
+        ),
+        "npm",
+    ),
     # pip / pip3: ``pip install foo==1.2.3``
-    (re.compile(
-        r"\bpip3?\s+install\s+(?!-)"
-        r"(?P<name>[\w][\w\-\.]*)==(?P<version>[\w][\w\-\.]*)",
-        re.IGNORECASE,
-    ), "pip"),
+    (
+        re.compile(
+            r"\bpip3?\s+install\s+(?!-)"
+            r"(?P<name>[\w][\w\-\.]*)==(?P<version>[\w][\w\-\.]*)",
+            re.IGNORECASE,
+        ),
+        "pip",
+    ),
     # cargo: ``cargo install foo --version 1.2.3``
-    (re.compile(
-        r"\bcargo\s+(?:add|install)\s+(?!-)"
-        r"(?P<name>[\w][\w\-\.]*)\s+--version\s+(?P<version>[\w][\w\-\.]*)",
-        re.IGNORECASE,
-    ), "cargo"),
+    (
+        re.compile(
+            r"\bcargo\s+(?:add|install)\s+(?!-)"
+            r"(?P<name>[\w][\w\-\.]*)\s+--version\s+(?P<version>[\w][\w\-\.]*)",
+            re.IGNORECASE,
+        ),
+        "cargo",
+    ),
 ]
 
 
@@ -154,11 +163,9 @@ def _version_in_range(version: tuple[int, ...], events: list[dict[str, Any]]) ->
         return False
     if fixed is not None and version >= fixed:
         return False
-    if last_affected is not None and version > last_affected:
-        return False
     # If neither fixed nor last_affected is set, the OSV record means
     # "everything from introduced onward is vulnerable" — be conservative.
-    return True
+    return last_affected is None or version <= last_affected
 
 
 def _matches_any_range(version: tuple[int, ...], ranges: Any) -> bool:

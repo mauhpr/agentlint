@@ -49,6 +49,7 @@ logger = logging.getLogger("agentlint.agentchute.client")
 _CONNECT_TIMEOUT_S = 1.0
 _READ_TIMEOUT_S = 2.0
 
+
 @dataclass
 class AgentChuteClient:
     """Configuration bundle for a single sync session. Independent
@@ -60,7 +61,7 @@ class AgentChuteClient:
     user_agent: str = "agentlint/agentchute"
 
     @classmethod
-    def from_env(cls) -> "AgentChuteClient | None":
+    def from_env(cls) -> AgentChuteClient | None:
         """Build a client from env vars or local AgentChute credentials."""
         license_key = get_license_key()
         if not license_key:
@@ -75,9 +76,7 @@ class AgentChuteClient:
         try:
             import requests  # lazy import — only paid when AgentChute is on
         except ImportError:
-            logger.warning(
-                "agentlint.agentchute: requests not installed; sync disabled"
-            )
+            logger.warning("agentlint.agentchute: requests not installed; sync disabled")
             return False
 
         try:
@@ -104,14 +103,11 @@ class AgentChuteClient:
         # 401/403 = bad license. Log loudly so the user sees it.
         if response.status_code in (401, 403):
             logger.warning(
-                "agentlint.agentchute: rejected by API (status %d). "
-                "Check AGENTCHUTE_LICENSE_KEY.",
+                "agentlint.agentchute: rejected by API (status %d). Check AGENTCHUTE_LICENSE_KEY.",
                 response.status_code,
             )
         else:
-            logger.debug(
-                "agentlint.agentchute: POST got status %d", response.status_code
-            )
+            logger.debug("agentlint.agentchute: POST got status %d", response.status_code)
         return False
 
     def post_events_batch(self, events: list[dict]) -> dict | None:
@@ -126,9 +122,7 @@ class AgentChuteClient:
         try:
             import requests  # lazy import — only paid when AgentChute is on
         except ImportError:
-            logger.warning(
-                "agentlint.agentchute: requests not installed; batch flush disabled"
-            )
+            logger.warning("agentlint.agentchute: requests not installed; batch flush disabled")
             return None
 
         try:
@@ -157,14 +151,11 @@ class AgentChuteClient:
 
         if response.status_code in (401, 403):
             logger.warning(
-                "agentlint.agentchute: rejected by API (status %d). "
-                "Check AGENTCHUTE_LICENSE_KEY.",
+                "agentlint.agentchute: rejected by API (status %d). Check AGENTCHUTE_LICENSE_KEY.",
                 response.status_code,
             )
         else:
-            logger.debug(
-                "agentlint.agentchute: batch POST got status %d", response.status_code
-            )
+            logger.debug("agentlint.agentchute: batch POST got status %d", response.status_code)
         return None
 
 

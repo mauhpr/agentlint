@@ -1,14 +1,19 @@
 """Rule: page files missing title/description metadata."""
-from __future__ import annotations
 
-import re
+from __future__ import annotations
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 from agentlint.packs.seo._helpers import _WRITE_TOOLS, is_page_file
 
 _DEFAULT_METADATA_MARKERS = {
-    "<Head", "<Helmet", "<title", "generateMetadata", "metadata",
-    "useHead", "useSeoMeta", "<svelte:head",
+    "<Head",
+    "<Helmet",
+    "<title",
+    "generateMetadata",
+    "metadata",
+    "useHead",
+    "useSeoMeta",
+    "<svelte:head",
 }
 
 

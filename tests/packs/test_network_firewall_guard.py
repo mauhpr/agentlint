@@ -1,4 +1,5 @@
 """Tests for network-firewall-guard rule."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext, Severity
@@ -117,7 +118,9 @@ class TestNetworkFirewallGuard:
             tool_name="Bash",
             tool_input={"command": "iptables -F"},
             project_dir="/tmp",
-            config={"network-firewall-guard": {"allowed_ops": ["iptables flush (removes all rules)"]}},
+            config={
+                "network-firewall-guard": {"allowed_ops": ["iptables flush (removes all rules)"]}
+            },
         )
         assert self.rule.evaluate(ctx) == []
 
@@ -127,7 +130,9 @@ class TestNetworkFirewallGuard:
             tool_name="Bash",
             tool_input={"command": "ufw disable"},
             project_dir="/tmp",
-            config={"network-firewall-guard": {"allowed_ops": ["iptables flush (removes all rules)"]}},
+            config={
+                "network-firewall-guard": {"allowed_ops": ["iptables flush (removes all rules)"]}
+            },
         )
         assert len(self.rule.evaluate(ctx)) == 1
 

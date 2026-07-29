@@ -1,4 +1,5 @@
 """Tests for AgentLint evaluation engine."""
+
 from __future__ import annotations
 
 import pytest
@@ -7,10 +8,10 @@ from agentlint.config import AgentLintConfig
 from agentlint.engine import Engine, EvaluationResult
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
-
 # ---------------------------------------------------------------------------
 # Test helper rules
 # ---------------------------------------------------------------------------
+
 
 class PassRule(Rule):
     id = "pass-rule"
@@ -49,6 +50,7 @@ class WarnRule(Rule):
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def pre_tool_context() -> RuleContext:
     return RuleContext(
@@ -77,6 +79,7 @@ def test_config() -> AgentLintConfig:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestEvaluationResult:
     def test_result_has_blocking_flag_for_errors(self) -> None:
@@ -128,9 +131,7 @@ class TestEngine:
         assert result.violations == []
         assert result.rules_evaluated == 0
 
-    def test_skips_disabled_rules(
-        self, pre_tool_context: RuleContext
-    ) -> None:
+    def test_skips_disabled_rules(self, pre_tool_context: RuleContext) -> None:
         config = AgentLintConfig(
             packs=["test"],
             rules={"fail-rule": {"enabled": False}},
@@ -141,9 +142,7 @@ class TestEngine:
         assert result.violations == []
         assert result.rules_evaluated == 0
 
-    def test_skips_rules_from_inactive_packs(
-        self, pre_tool_context: RuleContext
-    ) -> None:
+    def test_skips_rules_from_inactive_packs(self, pre_tool_context: RuleContext) -> None:
         config = AgentLintConfig(packs=["universal"])  # "test" pack not active
         engine = Engine(config=config, rules=[FailRule()])
         result = engine.evaluate(pre_tool_context)
@@ -164,9 +163,7 @@ class TestEngine:
         assert result.rules_evaluated == 2  # PassRule + FailRule
         assert len(result.violations) == 1  # only FailRule produces a violation
 
-    def test_severity_override_strict(
-        self, post_tool_context: RuleContext
-    ) -> None:
+    def test_severity_override_strict(self, post_tool_context: RuleContext) -> None:
         config = AgentLintConfig(severity="strict", packs=["test"])
         engine = Engine(config=config, rules=[WarnRule()])
         result = engine.evaluate(post_tool_context)
@@ -322,7 +319,6 @@ class TestEngineSuppression:
         assert len(r2.violations) == 0
         assert "warn-rule" in session_state["suppressed_rules"]
 
-
     def test_manual_suppress_prevents_auto_suppress_counting(self) -> None:
         """Already-suppressed rules should not accumulate auto-suppress counts."""
         config = AgentLintConfig(packs=["test"])
@@ -370,6 +366,7 @@ class TestEngineCircuitBreaker:
 # Helper rules for ignore/allow path tests
 # ---------------------------------------------------------------------------
 
+
 class AlwaysWarnRule(Rule):
     id = "always-warn"
     description = "Always warns"
@@ -378,7 +375,14 @@ class AlwaysWarnRule(Rule):
     pack = "universal"
 
     def evaluate(self, context: RuleContext) -> list[Violation]:
-        return [Violation(rule_id=self.id, message="always", severity=self.severity, file_path=context.file_path)]
+        return [
+            Violation(
+                rule_id=self.id,
+                message="always",
+                severity=self.severity,
+                file_path=context.file_path,
+            )
+        ]
 
 
 class AlwaysErrorRule(Rule):
@@ -389,17 +393,30 @@ class AlwaysErrorRule(Rule):
     pack = "universal"
 
     def evaluate(self, context: RuleContext) -> list[Violation]:
-        return [Violation(rule_id=self.id, message="always", severity=self.severity, file_path=context.file_path)]
+        return [
+            Violation(
+                rule_id=self.id,
+                message="always",
+                severity=self.severity,
+                file_path=context.file_path,
+            )
+        ]
 
 
 # ---------------------------------------------------------------------------
 # TestGlobalIgnorePaths
 # ---------------------------------------------------------------------------
 
+
 class TestGlobalIgnorePaths:
     """Tests for the global ignore_paths feature in Engine."""
 
-    def _make_context(self, file_path: str | None, ignore_paths: list | str | None = None, config: dict | None = None) -> RuleContext:
+    def _make_context(
+        self,
+        file_path: str | None,
+        ignore_paths: list | str | None = None,
+        config: dict | None = None,
+    ) -> RuleContext:
         if config is None:
             config = {}
         if ignore_paths is not None:
@@ -438,13 +455,17 @@ class TestGlobalIgnorePaths:
         assert len(result.violations) == 0
 
     def test_glob_basename_matches(self) -> None:
-        ctx = self._make_context("/project/src/package-lock.json", ignore_paths=["package-lock.json"])
+        ctx = self._make_context(
+            "/project/src/package-lock.json", ignore_paths=["package-lock.json"]
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         assert len(result.violations) == 0
 
     def test_multiple_patterns_first_match(self) -> None:
-        ctx = self._make_context("/project/vendor/lib.py", ignore_paths=["**/vendor/**", "**/legacy/**"])
+        ctx = self._make_context(
+            "/project/vendor/lib.py", ignore_paths=["**/vendor/**", "**/legacy/**"]
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         assert len(result.violations) == 0
@@ -565,6 +586,7 @@ class TestGlobalIgnorePaths:
 # TestPerRuleAllowPaths
 # ---------------------------------------------------------------------------
 
+
 class TestPerRuleAllowPaths:
     """Tests for per-rule allow_paths feature in Engine."""
 
@@ -585,80 +607,107 @@ class TestPerRuleAllowPaths:
         return Engine(config=config, rules=rules)
 
     def test_allow_paths_skips_specific_rule(self) -> None:
-        ctx = self._make_context("/project/generated/out.py", config={
-            "always-warn": {"allow_paths": ["**/generated/**"]},
-        })
+        ctx = self._make_context(
+            "/project/generated/out.py",
+            config={
+                "always-warn": {"allow_paths": ["**/generated/**"]},
+            },
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         assert len(result.violations) == 0
 
     def test_rule_ignore_paths_alias_skips_specific_rule(self) -> None:
-        ctx = self._make_context("/project/app/api/users_routes.py", config={
-            "always-warn": {
-                "ignore_paths": ["**/api/*_routes.py"],
-                "reason": "FastAPI route consistency",
+        ctx = self._make_context(
+            "/project/app/api/users_routes.py",
+            config={
+                "always-warn": {
+                    "ignore_paths": ["**/api/*_routes.py"],
+                    "reason": "FastAPI route consistency",
+                },
             },
-        })
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         assert len(result.violations) == 0
 
     def test_other_rules_still_fire(self) -> None:
         """Rule A has allow_paths, rule B does not — B should still fire."""
-        ctx = self._make_context("/project/generated/out.py", config={
-            "always-warn": {"allow_paths": ["**/generated/**"]},
-        })
+        ctx = self._make_context(
+            "/project/generated/out.py",
+            config={
+                "always-warn": {"allow_paths": ["**/generated/**"]},
+            },
+        )
         engine = self._make_engine(rules=[AlwaysWarnRule(), AlwaysErrorRule()])
         result = engine.evaluate(ctx)
         assert len(result.violations) == 1
         assert result.violations[0].rule_id == "always-error"
 
     def test_glob_pattern_matching(self) -> None:
-        ctx = self._make_context("/project/dist/bundle.js", config={
-            "always-warn": {"allow_paths": ["**/dist/**"]},
-        })
+        ctx = self._make_context(
+            "/project/dist/bundle.js",
+            config={
+                "always-warn": {"allow_paths": ["**/dist/**"]},
+            },
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         assert len(result.violations) == 0
 
     def test_basename_matching(self) -> None:
-        ctx = self._make_context("/project/src/Makefile", config={
-            "always-warn": {"allow_paths": ["Makefile"]},
-        })
+        ctx = self._make_context(
+            "/project/src/Makefile",
+            config={
+                "always-warn": {"allow_paths": ["Makefile"]},
+            },
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         assert len(result.violations) == 0
 
     def test_multiple_patterns(self) -> None:
-        ctx = self._make_context("/project/vendor/lib.py", config={
-            "always-warn": {"allow_paths": ["**/vendor/**", "**/dist/**"]},
-        })
+        ctx = self._make_context(
+            "/project/vendor/lib.py",
+            config={
+                "always-warn": {"allow_paths": ["**/vendor/**", "**/dist/**"]},
+            },
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         assert len(result.violations) == 0
 
     def test_empty_allow_paths_no_effect(self) -> None:
-        ctx = self._make_context("/project/src/app.py", config={
-            "always-warn": {"allow_paths": []},
-        })
+        ctx = self._make_context(
+            "/project/src/app.py",
+            config={
+                "always-warn": {"allow_paths": []},
+            },
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         assert len(result.violations) == 1
 
     def test_allow_paths_error_rule(self) -> None:
-        ctx = self._make_context("/project/generated/out.py", config={
-            "always-error": {"allow_paths": ["**/generated/**"]},
-        })
+        ctx = self._make_context(
+            "/project/generated/out.py",
+            config={
+                "always-error": {"allow_paths": ["**/generated/**"]},
+            },
+        )
         engine = self._make_engine(rules=[AlwaysErrorRule()])
         result = engine.evaluate(ctx)
         assert len(result.violations) == 0
 
     def test_allow_paths_does_not_cascade_from_ignore_paths(self) -> None:
         """Per-rule allow_paths should be independent from global ignore_paths."""
-        ctx = self._make_context("/project/src/app.py", config={
-            "ignore_paths": ["**/legacy/**"],
-            "always-warn": {"allow_paths": ["**/generated/**"]},
-        })
+        ctx = self._make_context(
+            "/project/src/app.py",
+            config={
+                "ignore_paths": ["**/legacy/**"],
+                "always-warn": {"allow_paths": ["**/generated/**"]},
+            },
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         # File matches neither ignore_paths nor allow_paths → rule fires
@@ -666,28 +715,37 @@ class TestPerRuleAllowPaths:
 
     def test_both_ignore_and_allow_paths(self) -> None:
         """Global ignore skips first; allow_paths is not reached."""
-        ctx = self._make_context("/project/legacy/generated/out.py", config={
-            "ignore_paths": ["**/legacy/**"],
-            "always-warn": {"allow_paths": ["**/generated/**"]},
-        })
+        ctx = self._make_context(
+            "/project/legacy/generated/out.py",
+            config={
+                "ignore_paths": ["**/legacy/**"],
+                "always-warn": {"allow_paths": ["**/generated/**"]},
+            },
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         # Global ignore_paths matches first — rule is skipped
         assert len(result.violations) == 0
 
     def test_non_matching_file_fires(self) -> None:
-        ctx = self._make_context("/project/src/app.py", config={
-            "always-warn": {"allow_paths": ["**/generated/**"]},
-        })
+        ctx = self._make_context(
+            "/project/src/app.py",
+            config={
+                "always-warn": {"allow_paths": ["**/generated/**"]},
+            },
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         assert len(result.violations) == 1
 
     def test_allow_paths_as_string_not_list(self) -> None:
         """If allow_paths is a string instead of list, engine should not crash."""
-        ctx = self._make_context("/project/generated/out.py", config={
-            "always-warn": {"allow_paths": "**/generated/**"},
-        })
+        ctx = self._make_context(
+            "/project/generated/out.py",
+            config={
+                "always-warn": {"allow_paths": "**/generated/**"},
+            },
+        )
         engine = self._make_engine()
         # String is not a list, so allow_paths check is bypassed — rule fires
         result = engine.evaluate(ctx)
@@ -702,19 +760,25 @@ class TestPerRuleAllowPaths:
 
     def test_allow_paths_no_file_path(self) -> None:
         """No file_path in context — allow_paths check is skipped, rule fires."""
-        ctx = self._make_context(None, config={
-            "always-warn": {"allow_paths": ["**/generated/**"]},
-        })
+        ctx = self._make_context(
+            None,
+            config={
+                "always-warn": {"allow_paths": ["**/generated/**"]},
+            },
+        )
         engine = self._make_engine()
         result = engine.evaluate(ctx)
         assert len(result.violations) == 1
 
     def test_concurrent_rules_different_allow_paths(self) -> None:
         """Two rules with different allow_paths — each is checked independently."""
-        ctx = self._make_context("/project/generated/out.py", config={
-            "always-warn": {"allow_paths": ["**/generated/**"]},
-            "always-error": {"allow_paths": ["**/vendor/**"]},
-        })
+        ctx = self._make_context(
+            "/project/generated/out.py",
+            config={
+                "always-warn": {"allow_paths": ["**/generated/**"]},
+                "always-error": {"allow_paths": ["**/vendor/**"]},
+            },
+        )
         engine = self._make_engine(rules=[AlwaysWarnRule(), AlwaysErrorRule()])
         result = engine.evaluate(ctx)
         # always-warn skipped (matches generated), always-error fires (doesn't match vendor)
@@ -727,9 +791,12 @@ class TestPerRuleAllowPaths:
             packs=["universal"],
             rules={"always-warn": {"enabled": False}},
         )
-        ctx = self._make_context("/project/src/app.py", config={
-            "always-warn": {"allow_paths": ["**/generated/**"]},
-        })
+        ctx = self._make_context(
+            "/project/src/app.py",
+            config={
+                "always-warn": {"allow_paths": ["**/generated/**"]},
+            },
+        )
         engine = Engine(config=config, rules=[AlwaysWarnRule()])
         result = engine.evaluate(ctx)
         assert len(result.violations) == 0
@@ -741,7 +808,8 @@ class TestIgnorePathsAdversarial:
 
     def test_unicode_path(self) -> None:
         ctx = RuleContext(
-            event=HookEvent.POST_TOOL_USE, tool_name="Write",
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
             tool_input={"file_path": "/project/données/café.py"},
             project_dir="/project",
             config={"ignore_paths": ["**/données/**"]},
@@ -754,7 +822,8 @@ class TestIgnorePathsAdversarial:
 
     def test_path_with_spaces(self) -> None:
         ctx = RuleContext(
-            event=HookEvent.POST_TOOL_USE, tool_name="Write",
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
             tool_input={"file_path": "/project/my dir/app.py"},
             project_dir="/project",
             config={"ignore_paths": ["**/my dir/**"]},
@@ -767,7 +836,8 @@ class TestIgnorePathsAdversarial:
 
     def test_double_star_at_start(self) -> None:
         ctx = RuleContext(
-            event=HookEvent.POST_TOOL_USE, tool_name="Write",
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
             tool_input={"file_path": "/deep/a/b/c/d/e/f/app.py"},
             project_dir="/deep",
             config={"ignore_paths": ["**/f/*.py"]},
@@ -780,7 +850,8 @@ class TestIgnorePathsAdversarial:
 
     def test_question_mark_wildcard_paths(self) -> None:
         ctx = RuleContext(
-            event=HookEvent.POST_TOOL_USE, tool_name="Write",
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
             tool_input={"file_path": "/project/test_a.py"},
             project_dir="/project",
             config={"ignore_paths": ["test_?.py"]},
@@ -796,7 +867,8 @@ class TestIgnorePathsAdversarial:
         patterns = [f"**/fake_dir_{i}/**" for i in range(100)]
         patterns.append("**/real/**")
         ctx = RuleContext(
-            event=HookEvent.POST_TOOL_USE, tool_name="Write",
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
             tool_input={"file_path": "/project/real/app.py"},
             project_dir="/project",
             config={"ignore_paths": patterns},
@@ -810,7 +882,8 @@ class TestIgnorePathsAdversarial:
     def test_empty_file_path_with_ignore_paths(self) -> None:
         """Empty string file_path should not crash with ignore_paths."""
         ctx = RuleContext(
-            event=HookEvent.POST_TOOL_USE, tool_name="Write",
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
             tool_input={},
             project_dir="/project",
             config={"ignore_paths": ["**/*.py"]},
@@ -825,7 +898,8 @@ class TestIgnorePathsAdversarial:
     def test_ignore_paths_none_in_list(self) -> None:
         """Non-string items in ignore_paths should not crash."""
         ctx = RuleContext(
-            event=HookEvent.POST_TOOL_USE, tool_name="Write",
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
             tool_input={"file_path": "/project/app.py"},
             project_dir="/project",
             config={"ignore_paths": ["**/app.py"]},
@@ -839,7 +913,8 @@ class TestIgnorePathsAdversarial:
     def test_allow_paths_and_ignore_paths_both_match(self) -> None:
         """Both global ignore_paths and per-rule allow_paths match → both work."""
         ctx = RuleContext(
-            event=HookEvent.POST_TOOL_USE, tool_name="Write",
+            event=HookEvent.POST_TOOL_USE,
+            tool_name="Write",
             tool_input={"file_path": "/project/legacy/old.py"},
             project_dir="/project",
             config={

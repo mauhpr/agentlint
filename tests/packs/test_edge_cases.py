@@ -1,10 +1,11 @@
 """Edge case tests for rules: empty content, long lines, BOM, whitespace-only."""
+
 from __future__ import annotations
 
 from agentlint.models import HookEvent, RuleContext
 from agentlint.packs.universal.max_file_size import MaxFileSize
-from agentlint.packs.universal.no_secrets import NoSecrets
 from agentlint.packs.universal.no_debug_artifacts import NoDebugArtifacts
+from agentlint.packs.universal.no_secrets import NoSecrets
 from agentlint.packs.universal.no_todo_left import NoTodoLeft
 
 

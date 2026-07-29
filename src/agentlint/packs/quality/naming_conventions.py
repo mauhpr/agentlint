@@ -5,6 +5,7 @@ Validates that file names follow expected patterns per language:
 - JS/TS: camelCase or PascalCase for components
 - Test files: test_ prefix or .test. / .spec. suffix
 """
+
 from __future__ import annotations
 
 import re
@@ -43,8 +44,17 @@ _CONVENTION_RE = {
 
 # Files that are conventionally allowed to break naming rules
 _EXEMPT_NAMES = {
-    "__init__", "__main__", "conftest", "setup", "index",
-    "Makefile", "Dockerfile", "Procfile", "Gemfile", "Rakefile", "Vagrantfile",
+    "__init__",
+    "__main__",
+    "conftest",
+    "setup",
+    "index",
+    "Makefile",
+    "Dockerfile",
+    "Procfile",
+    "Gemfile",
+    "Rakefile",
+    "Vagrantfile",
 }
 
 # Path markers for migration files (Alembic, Django, etc.)
@@ -116,13 +126,15 @@ class NamingConventions(Rule):
             if alt_pattern and alt_pattern.match(stem):
                 return []
 
-        return [Violation(
-            rule_id=self.id,
-            message=f"File '{p.name}' doesn't follow {convention_name} convention",
-            severity=self.severity,
-            file_path=file_path,
-            suggestion=f"Rename to {convention_name} format (e.g., {self._suggest_name(stem, convention_name, ext)})",
-        )]
+        return [
+            Violation(
+                rule_id=self.id,
+                message=f"File '{p.name}' doesn't follow {convention_name} convention",
+                severity=self.severity,
+                file_path=file_path,
+                suggestion=f"Rename to {convention_name} format (e.g., {self._suggest_name(stem, convention_name, ext)})",
+            )
+        ]
 
     def _suggest_name(self, stem: str, convention: str, ext: str) -> str:
         """Generate a suggested filename in the target convention."""

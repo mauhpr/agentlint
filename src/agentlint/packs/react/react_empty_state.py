@@ -1,4 +1,5 @@
 """Rule: array .map() without empty state handling."""
+
 from __future__ import annotations
 
 import re
@@ -45,7 +46,7 @@ class ReactEmptyState(Rule):
 
         violations: list[Violation] = []
         for match in _MAP_RE.finditer(content):
-            line_num = content[:match.start()].count("\n") + 1
+            line_num = content[: match.start()].count("\n") + 1
             # Check surrounding context for length check
             start = max(0, match.start() - 200)
             end = min(len(content), match.end() + 200)

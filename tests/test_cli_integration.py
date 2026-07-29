@@ -1,4 +1,5 @@
 """Tests for the cli-integration rule — generic CLI subprocess execution."""
+
 from __future__ import annotations
 
 import subprocess
@@ -44,24 +45,41 @@ class TestCliIntegrationNoConfig:
 class TestCliIntegrationSubprocess:
     def test_command_zero_exit_no_violation(self, monkeypatch):
         monkeypatch.setattr(
-            subprocess, "run",
+            subprocess,
+            "run",
             lambda *a, **kw: subprocess.CompletedProcess(a[0], 0, stdout="ok", stderr=""),
         )
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "echo", "command": "echo ok", "on": ["Write"], "glob": "**/*.py"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"name": "echo", "command": "echo ok", "on": ["Write"], "glob": "**/*.py"},
+                ]
+            )
+        )
         assert rule.evaluate(ctx) == []
 
     def test_command_nonzero_exit_creates_violation(self, monkeypatch):
         monkeypatch.setattr(
-            subprocess, "run",
-            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="error on line 5", stderr=""),
+            subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                a[0], 1, stdout="error on line 5", stderr=""
+            ),
         )
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "ruff", "command": "ruff check {file.path}", "on": ["Write"], "glob": "**/*.py"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "ruff",
+                        "command": "ruff check {file.path}",
+                        "on": ["Write"],
+                        "glob": "**/*.py",
+                    },
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert len(violations) == 1
         assert violations[0].rule_id == "cli-integration/ruff"
@@ -69,13 +87,18 @@ class TestCliIntegrationSubprocess:
 
     def test_command_uses_stderr_when_stdout_empty(self, monkeypatch):
         monkeypatch.setattr(
-            subprocess, "run",
+            subprocess,
+            "run",
             lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="", stderr="fatal error"),
         )
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "cmd", "command": "cmd", "on": ["Write"], "glob": "**/*.py"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"name": "cmd", "command": "cmd", "on": ["Write"], "glob": "**/*.py"},
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert len(violations) == 1
         assert "fatal error" in violations[0].message
@@ -83,47 +106,80 @@ class TestCliIntegrationSubprocess:
     def test_command_timeout_skips_gracefully(self, monkeypatch):
         def _timeout(*a, **kw):
             raise subprocess.TimeoutExpired(cmd="slow", timeout=10)
+
         monkeypatch.setattr(subprocess, "run", _timeout)
 
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "slow", "command": "sleep 999", "on": ["Write"], "glob": "**/*", "timeout": 1},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "slow",
+                        "command": "sleep 999",
+                        "on": ["Write"],
+                        "glob": "**/*",
+                        "timeout": 1,
+                    },
+                ]
+            )
+        )
         assert rule.evaluate(ctx) == []
 
     def test_command_not_found_skips(self, monkeypatch):
         def _not_found(*a, **kw):
             raise FileNotFoundError("No such file")
+
         monkeypatch.setattr(subprocess, "run", _not_found)
 
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "missing", "command": "nonexistent_tool", "on": ["Write"], "glob": "**/*"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "missing",
+                        "command": "nonexistent_tool",
+                        "on": ["Write"],
+                        "glob": "**/*",
+                    },
+                ]
+            )
+        )
         assert rule.evaluate(ctx) == []
 
     def test_exit_zero_with_stderr_still_passes(self, monkeypatch):
         """Some tools write warnings to stderr even on success."""
         monkeypatch.setattr(
-            subprocess, "run",
-            lambda *a, **kw: subprocess.CompletedProcess(a[0], 0, stdout="", stderr="warning: something"),
+            subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                a[0], 0, stdout="", stderr="warning: something"
+            ),
         )
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "tool", "command": "tool", "on": ["Write"], "glob": "**/*"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"name": "tool", "command": "tool", "on": ["Write"], "glob": "**/*"},
+                ]
+            )
+        )
         assert rule.evaluate(ctx) == []
 
     def test_command_output_truncated(self, monkeypatch):
         long_output = "x" * 1000
         monkeypatch.setattr(
-            subprocess, "run",
+            subprocess,
+            "run",
             lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout=long_output, stderr=""),
         )
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "verbose", "command": "verbose", "on": ["Write"], "glob": "**/*"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"name": "verbose", "command": "verbose", "on": ["Write"], "glob": "**/*"},
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert len(violations) == 1
         assert len(violations[0].message) < 600
@@ -133,7 +189,8 @@ class TestCliIntegrationSubprocess:
 class TestCliIntegrationFilters:
     def _pass_subprocess(self, monkeypatch):
         monkeypatch.setattr(
-            subprocess, "run",
+            subprocess,
+            "run",
             lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="fail", stderr=""),
         )
 
@@ -142,9 +199,11 @@ class TestCliIntegrationFilters:
         rule = CliIntegration()
         ctx = _make_context(
             file_path="/project/src/app.py",
-            config=_config_with_commands([
-                {"name": "ruff", "command": "ruff", "on": ["Write"], "glob": "**/*.py"},
-            ]),
+            config=_config_with_commands(
+                [
+                    {"name": "ruff", "command": "ruff", "on": ["Write"], "glob": "**/*.py"},
+                ]
+            ),
         )
         assert len(rule.evaluate(ctx)) == 1
 
@@ -153,9 +212,11 @@ class TestCliIntegrationFilters:
         rule = CliIntegration()
         ctx = _make_context(
             file_path="/project/src/app.py",
-            config=_config_with_commands([
-                {"name": "eslint", "command": "eslint", "on": ["Write"], "glob": "**/*.ts"},
-            ]),
+            config=_config_with_commands(
+                [
+                    {"name": "eslint", "command": "eslint", "on": ["Write"], "glob": "**/*.ts"},
+                ]
+            ),
         )
         assert rule.evaluate(ctx) == []
 
@@ -164,9 +225,11 @@ class TestCliIntegrationFilters:
         rule = CliIntegration()
         ctx = _make_context(
             tool_name="Edit",
-            config=_config_with_commands([
-                {"name": "ruff", "command": "ruff", "on": ["Write", "Edit"], "glob": "**/*.py"},
-            ]),
+            config=_config_with_commands(
+                [
+                    {"name": "ruff", "command": "ruff", "on": ["Write", "Edit"], "glob": "**/*.py"},
+                ]
+            ),
         )
         assert len(rule.evaluate(ctx)) == 1
 
@@ -175,9 +238,11 @@ class TestCliIntegrationFilters:
         rule = CliIntegration()
         ctx = _make_context(
             tool_name="Bash",
-            config=_config_with_commands([
-                {"name": "ruff", "command": "ruff", "on": ["Write", "Edit"], "glob": "**/*.py"},
-            ]),
+            config=_config_with_commands(
+                [
+                    {"name": "ruff", "command": "ruff", "on": ["Write", "Edit"], "glob": "**/*.py"},
+                ]
+            ),
         )
         assert rule.evaluate(ctx) == []
 
@@ -187,9 +252,11 @@ class TestCliIntegrationFilters:
         # No "on" key — should default to Write and Edit
         ctx = _make_context(
             tool_name="Write",
-            config=_config_with_commands([
-                {"name": "ruff", "command": "ruff", "glob": "**/*.py"},
-            ]),
+            config=_config_with_commands(
+                [
+                    {"name": "ruff", "command": "ruff", "glob": "**/*.py"},
+                ]
+            ),
         )
         assert len(rule.evaluate(ctx)) == 1
 
@@ -198,9 +265,16 @@ class TestCliIntegrationFilters:
         rule = CliIntegration()
         ctx = _make_context(
             file_path=None,
-            config=_config_with_commands([
-                {"name": "ruff", "command": "ruff check {file.path}", "on": ["Write"], "glob": "**/*"},
-            ]),
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "ruff",
+                        "command": "ruff check {file.path}",
+                        "on": ["Write"],
+                        "glob": "**/*",
+                    },
+                ]
+            ),
         )
         # file.path placeholder can't resolve → command skipped
         assert rule.evaluate(ctx) == []
@@ -211,9 +285,16 @@ class TestCliIntegrationFilters:
         ctx = _make_context(
             file_path="/etc/passwd",
             project_dir="/project",
-            config=_config_with_commands([
-                {"name": "ruff", "command": "ruff check {file.path}", "on": ["Write"], "glob": "**/*"},
-            ]),
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "ruff",
+                        "command": "ruff check {file.path}",
+                        "on": ["Write"],
+                        "glob": "**/*",
+                    },
+                ]
+            ),
         )
         # file outside project → template context has no file.* → skip
         assert rule.evaluate(ctx) == []
@@ -222,78 +303,127 @@ class TestCliIntegrationFilters:
 class TestCliIntegrationConfig:
     def _fail_subprocess(self, monkeypatch):
         monkeypatch.setattr(
-            subprocess, "run",
+            subprocess,
+            "run",
             lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="err", stderr=""),
         )
 
     def test_severity_config_error(self, monkeypatch):
         self._fail_subprocess(monkeypatch)
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "strict", "command": "strict", "on": ["Write"], "glob": "**/*", "severity": "error"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "strict",
+                        "command": "strict",
+                        "on": ["Write"],
+                        "glob": "**/*",
+                        "severity": "error",
+                    },
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert violations[0].severity == Severity.ERROR
 
     def test_severity_config_info(self, monkeypatch):
         self._fail_subprocess(monkeypatch)
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "advisory", "command": "advisory", "on": ["Write"], "glob": "**/*", "severity": "info"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "advisory",
+                        "command": "advisory",
+                        "on": ["Write"],
+                        "glob": "**/*",
+                        "severity": "info",
+                    },
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert violations[0].severity == Severity.INFO
 
     def test_default_severity_is_warning(self, monkeypatch):
         self._fail_subprocess(monkeypatch)
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "default", "command": "default", "on": ["Write"], "glob": "**/*"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"name": "default", "command": "default", "on": ["Write"], "glob": "**/*"},
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert violations[0].severity == Severity.WARNING
 
     def test_default_timeout_is_10(self, monkeypatch):
         captured_kwargs = {}
+
         def _capture(*a, **kw):
             captured_kwargs.update(kw)
             return subprocess.CompletedProcess(a[0], 0, stdout="", stderr="")
+
         monkeypatch.setattr(subprocess, "run", _capture)
 
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "tool", "command": "tool", "on": ["Write"], "glob": "**/*"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"name": "tool", "command": "tool", "on": ["Write"], "glob": "**/*"},
+                ]
+            )
+        )
         rule.evaluate(ctx)
         assert captured_kwargs.get("timeout") == 10
 
     def test_custom_timeout(self, monkeypatch):
         captured_kwargs = {}
+
         def _capture(*a, **kw):
             captured_kwargs.update(kw)
             return subprocess.CompletedProcess(a[0], 0, stdout="", stderr="")
+
         monkeypatch.setattr(subprocess, "run", _capture)
 
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "slow", "command": "slow", "on": ["Write"], "glob": "**/*", "timeout": 30},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "slow",
+                        "command": "slow",
+                        "on": ["Write"],
+                        "glob": "**/*",
+                        "timeout": 30,
+                    },
+                ]
+            )
+        )
         rule.evaluate(ctx)
         assert captured_kwargs.get("timeout") == 30
 
     def test_multiple_commands_all_run(self, monkeypatch):
         call_count = 0
+
         def _counting(*a, **kw):
             nonlocal call_count
             call_count += 1
             return subprocess.CompletedProcess(a[0], 1, stdout=f"fail {call_count}", stderr="")
+
         monkeypatch.setattr(subprocess, "run", _counting)
 
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "ruff", "command": "ruff", "on": ["Write"], "glob": "**/*.py"},
-            {"name": "mypy", "command": "mypy", "on": ["Write"], "glob": "**/*.py"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"name": "ruff", "command": "ruff", "on": ["Write"], "glob": "**/*.py"},
+                    {"name": "mypy", "command": "mypy", "on": ["Write"], "glob": "**/*.py"},
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert len(violations) == 2
         assert violations[0].rule_id == "cli-integration/ruff"
@@ -302,17 +432,30 @@ class TestCliIntegrationConfig:
     def test_command_without_name_skipped(self, monkeypatch):
         self._fail_subprocess(monkeypatch)
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"command": "ruff", "on": ["Write"], "glob": "**/*"},  # no name
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"command": "ruff", "on": ["Write"], "glob": "**/*"},  # no name
+                ]
+            )
+        )
         assert rule.evaluate(ctx) == []
 
     def test_violation_has_suggestion(self, monkeypatch):
         self._fail_subprocess(monkeypatch)
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "ruff", "command": "ruff check {file.path}", "on": ["Write"], "glob": "**/*.py"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "ruff",
+                        "command": "ruff check {file.path}",
+                        "on": ["Write"],
+                        "glob": "**/*.py",
+                    },
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert violations[0].suggestion is not None
         assert "ruff check {file.path}" in violations[0].suggestion
@@ -322,37 +465,52 @@ class TestCliIntegrationSecurity:
     def test_shell_injection_via_filename_prevented(self, monkeypatch):
         """File named with shell metacharacters should be safely quoted."""
         captured_commands = []
+
         def _capture(*a, **kw):
             captured_commands.append(a[0])
             return subprocess.CompletedProcess(a[0], 0, stdout="", stderr="")
+
         monkeypatch.setattr(subprocess, "run", _capture)
 
         rule = CliIntegration()
         ctx = _make_context(
             file_path="/project/src/foo;whoami;.py",
-            config=_config_with_commands([
-                {"name": "ruff", "command": "ruff check {file.path}", "on": ["Write"], "glob": "**/*"},
-            ]),
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "ruff",
+                        "command": "ruff check {file.path}",
+                        "on": ["Write"],
+                        "glob": "**/*",
+                    },
+                ]
+            ),
         )
         rule.evaluate(ctx)
         assert len(captured_commands) == 1
         # The semicolon must be quoted, not interpreted as shell separator
-        assert ";" not in captured_commands[0].replace("'", "").replace(";", "", 1) or \
-               "'" in captured_commands[0]
+        assert (
+            ";" not in captured_commands[0].replace("'", "").replace(";", "", 1)
+            or "'" in captured_commands[0]
+        )
 
     def test_subprocess_runs_in_project_dir(self, monkeypatch):
         captured_kwargs = {}
+
         def _capture(*a, **kw):
             captured_kwargs.update(kw)
             return subprocess.CompletedProcess(a[0], 0, stdout="", stderr="")
+
         monkeypatch.setattr(subprocess, "run", _capture)
 
         rule = CliIntegration()
         ctx = _make_context(
             project_dir="/my/project",
-            config=_config_with_commands([
-                {"name": "tool", "command": "tool", "on": ["Write"], "glob": "**/*"},
-            ]),
+            config=_config_with_commands(
+                [
+                    {"name": "tool", "command": "tool", "on": ["Write"], "glob": "**/*"},
+                ]
+            ),
         )
         rule.evaluate(ctx)
         assert captured_kwargs.get("cwd") == "/my/project"
@@ -361,46 +519,59 @@ class TestCliIntegrationSecurity:
 class TestCliIntegrationGlobalDefaults:
     def test_global_timeout_applied(self, monkeypatch):
         captured_kwargs = {}
+
         def _capture(*a, **kw):
             captured_kwargs.update(kw)
             return subprocess.CompletedProcess(a[0], 0, stdout="", stderr="")
+
         monkeypatch.setattr(subprocess, "run", _capture)
 
         rule = CliIntegration()
-        config = {"cli-integration": {
-            "timeout": 15,
-            "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
-        }}
+        config = {
+            "cli-integration": {
+                "timeout": 15,
+                "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
+            }
+        }
         ctx = _make_context(config=config)
         rule.evaluate(ctx)
         assert captured_kwargs.get("timeout") == 15
 
     def test_per_command_timeout_overrides_global(self, monkeypatch):
         captured_kwargs = {}
+
         def _capture(*a, **kw):
             captured_kwargs.update(kw)
             return subprocess.CompletedProcess(a[0], 0, stdout="", stderr="")
+
         monkeypatch.setattr(subprocess, "run", _capture)
 
         rule = CliIntegration()
-        config = {"cli-integration": {
-            "timeout": 15,
-            "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*", "timeout": 30}],
-        }}
+        config = {
+            "cli-integration": {
+                "timeout": 15,
+                "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*", "timeout": 30}],
+            }
+        }
         ctx = _make_context(config=config)
         rule.evaluate(ctx)
         assert captured_kwargs.get("timeout") == 30
 
     def test_global_diff_only_applied(self, monkeypatch):
         monkeypatch.setattr(
-            subprocess, "run",
-            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="app.py:5: E501", stderr=""),
+            subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                a[0], 1, stdout="app.py:5: E501", stderr=""
+            ),
         )
         rule = CliIntegration()
-        config = {"cli-integration": {
-            "diff_only": True,
-            "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
-        }}
+        config = {
+            "cli-integration": {
+                "diff_only": True,
+                "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
+            }
+        }
         # No before/after content → shows all (new file)
         ctx = _make_context(config=config)
         violations = rule.evaluate(ctx)
@@ -408,28 +579,34 @@ class TestCliIntegrationGlobalDefaults:
 
     def test_global_severity_applied(self, monkeypatch):
         monkeypatch.setattr(
-            subprocess, "run",
+            subprocess,
+            "run",
             lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="err", stderr=""),
         )
         rule = CliIntegration()
-        config = {"cli-integration": {
-            "severity": "error",
-            "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
-        }}
+        config = {
+            "cli-integration": {
+                "severity": "error",
+                "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
+            }
+        }
         ctx = _make_context(config=config)
         violations = rule.evaluate(ctx)
         assert violations[0].severity == Severity.ERROR
 
     def test_global_max_output_applied(self, monkeypatch):
         monkeypatch.setattr(
-            subprocess, "run",
+            subprocess,
+            "run",
             lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="x" * 200, stderr=""),
         )
         rule = CliIntegration()
-        config = {"cli-integration": {
-            "max_output": 50,
-            "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
-        }}
+        config = {
+            "cli-integration": {
+                "max_output": 50,
+                "commands": [{"name": "ruff", "command": "ruff", "glob": "**/*"}],
+            }
+        }
         ctx = _make_context(config=config)
         violations = rule.evaluate(ctx)
         assert len(violations[0].message) <= 54  # 50 + "..."
@@ -466,13 +643,20 @@ class TestFilterDiffViolations:
     def test_diff_only_false_shows_all(self, monkeypatch):
         """When diff_only is False, all output is shown."""
         monkeypatch.setattr(
-            subprocess, "run",
-            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="app.py:1: E501", stderr=""),
+            subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                a[0], 1, stdout="app.py:1: E501", stderr=""
+            ),
         )
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "ruff", "command": "ruff", "glob": "**/*", "diff_only": False},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"name": "ruff", "command": "ruff", "glob": "**/*", "diff_only": False},
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert len(violations) == 1
 
@@ -504,52 +688,95 @@ class TestCliIntegrationAutoFix:
     def test_auto_fix_success_no_violation(self, monkeypatch):
         """auto-fix mode with exit 0 produces no violation."""
         monkeypatch.setattr(
-            subprocess, "run",
-            lambda *a, **kw: subprocess.CompletedProcess(a[0], 0, stdout="1 file reformatted", stderr=""),
+            subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                a[0], 0, stdout="1 file reformatted", stderr=""
+            ),
         )
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "ruff-format", "command": "ruff format {file.path}", "glob": "**/*.py", "mode": "auto-fix"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "ruff-format",
+                        "command": "ruff format {file.path}",
+                        "glob": "**/*.py",
+                        "mode": "auto-fix",
+                    },
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert len(violations) == 0
 
     def test_auto_fix_failure_creates_violation(self, monkeypatch):
         """auto-fix mode with non-zero exit creates a violation."""
         monkeypatch.setattr(
-            subprocess, "run",
-            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="error: invalid syntax", stderr=""),
+            subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                a[0], 1, stdout="error: invalid syntax", stderr=""
+            ),
         )
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "ruff-format", "command": "ruff format {file.path}", "glob": "**/*.py", "mode": "auto-fix"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "ruff-format",
+                        "command": "ruff format {file.path}",
+                        "glob": "**/*.py",
+                        "mode": "auto-fix",
+                    },
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert len(violations) == 1
-        assert "Auto-fix failed" in violations[0].message or "invalid syntax" in violations[0].message
+        assert (
+            "Auto-fix failed" in violations[0].message or "invalid syntax" in violations[0].message
+        )
 
     def test_auto_fix_timeout_skips(self, monkeypatch):
         """auto-fix mode with timeout does not crash."""
+
         def _timeout(*a, **kw):
             raise subprocess.TimeoutExpired(cmd="slow", timeout=10)
+
         monkeypatch.setattr(subprocess, "run", _timeout)
 
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "formatter", "command": "slow-format", "glob": "**/*", "mode": "auto-fix", "timeout": 1},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {
+                        "name": "formatter",
+                        "command": "slow-format",
+                        "glob": "**/*",
+                        "mode": "auto-fix",
+                        "timeout": 1,
+                    },
+                ]
+            )
+        )
         assert rule.evaluate(ctx) == []
 
     def test_default_mode_is_check(self, monkeypatch):
         """Without mode specified, behavior is normal check (not auto-fix)."""
         monkeypatch.setattr(
-            subprocess, "run",
+            subprocess,
+            "run",
             lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="err", stderr=""),
         )
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "ruff", "command": "ruff check", "glob": "**/*"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"name": "ruff", "command": "ruff check", "glob": "**/*"},
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert len(violations) == 1
         assert "Auto-fix" not in violations[0].message
@@ -558,13 +785,18 @@ class TestCliIntegrationAutoFix:
         """auto-fix mode truncates long error output."""
         long_output = "x" * 1000
         monkeypatch.setattr(
-            subprocess, "run",
+            subprocess,
+            "run",
             lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout=long_output, stderr=""),
         )
         rule = CliIntegration()
-        ctx = _make_context(config=_config_with_commands([
-            {"name": "fmt", "command": "fmt", "glob": "**/*", "mode": "auto-fix"},
-        ]))
+        ctx = _make_context(
+            config=_config_with_commands(
+                [
+                    {"name": "fmt", "command": "fmt", "glob": "**/*", "mode": "auto-fix"},
+                ]
+            )
+        )
         violations = rule.evaluate(ctx)
         assert len(violations) == 1
         assert violations[0].message.endswith("...")
@@ -575,8 +807,11 @@ class TestCliIntegrationDiffOnlyFiltering:
     def test_diff_only_suppresses_preexisting_violations(self, monkeypatch):
         """diff_only=True with no changed lines suppresses all violations."""
         monkeypatch.setattr(
-            subprocess, "run",
-            lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, stdout="app.py:1: E501\napp.py:2: E502", stderr=""),
+            subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                a[0], 1, stdout="app.py:1: E501\napp.py:2: E502", stderr=""
+            ),
         )
         rule = CliIntegration()
         same_content = "line1\nline2\n"
@@ -585,10 +820,12 @@ class TestCliIntegrationDiffOnlyFiltering:
             tool_name="Write",
             tool_input={"file_path": "/project/src/app.py"},
             project_dir="/project",
-            config={"cli-integration": {
-                "diff_only": True,
-                "commands": [{"name": "ruff", "command": "ruff check", "glob": "**/*"}],
-            }},
+            config={
+                "cli-integration": {
+                    "diff_only": True,
+                    "commands": [{"name": "ruff", "command": "ruff check", "glob": "**/*"}],
+                }
+            },
             file_content=same_content,
             file_content_before=same_content,
         )

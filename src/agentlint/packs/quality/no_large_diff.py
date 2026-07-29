@@ -7,6 +7,7 @@ Test files and non-code files (.md, .yml, etc.) are exempt by default —
 tests are inherently verbose, and config/prompt files are often large
 single-write documents.
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -27,9 +28,24 @@ _DEFAULT_TEST_PATTERNS = [
 ]
 
 _DEFAULT_CODE_EXTENSIONS = {
-    ".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".rb",
-    ".java", ".kt", ".swift", ".c", ".cpp", ".h", ".cs", ".ex",
-    ".vue", ".svelte",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".rs",
+    ".go",
+    ".rb",
+    ".java",
+    ".kt",
+    ".swift",
+    ".c",
+    ".cpp",
+    ".h",
+    ".cs",
+    ".ex",
+    ".vue",
+    ".svelte",
 }
 
 # Default migration directory fragments. A migration is a single
@@ -91,9 +107,15 @@ class NoLargeDiff(Rule):
         # conceptual unit. The same ``migration_paths`` key is honoured
         # by ``no_dangerous_migration`` (top-level + per-rule overrides).
         if context.file_path:
-            migration_paths_global = context.config.get("migration_paths", []) if context.config else []
+            migration_paths_global = (
+                context.config.get("migration_paths", []) if context.config else []
+            )
             migration_paths_rule = rule_config.get("migration_paths", [])
-            migration_paths = list(_DEFAULT_MIGRATION_PATHS) + list(migration_paths_global) + list(migration_paths_rule)
+            migration_paths = (
+                list(_DEFAULT_MIGRATION_PATHS)
+                + list(migration_paths_global)
+                + list(migration_paths_rule)
+            )
             if _is_migration_file(context.file_path, migration_paths):
                 return []
 
@@ -109,21 +131,25 @@ class NoLargeDiff(Rule):
         violations: list[Violation] = []
 
         if added > max_added:
-            violations.append(Violation(
-                rule_id=self.id,
-                message=f"{added} lines added in a single edit (max {max_added})",
-                severity=self.severity,
-                file_path=context.file_path,
-                suggestion="Break into smaller, reviewable changes",
-            ))
+            violations.append(
+                Violation(
+                    rule_id=self.id,
+                    message=f"{added} lines added in a single edit (max {max_added})",
+                    severity=self.severity,
+                    file_path=context.file_path,
+                    suggestion="Break into smaller, reviewable changes",
+                )
+            )
 
         if removed > max_removed:
-            violations.append(Violation(
-                rule_id=self.id,
-                message=f"{removed} lines removed in a single edit (max {max_removed})",
-                severity=self.severity,
-                file_path=context.file_path,
-                suggestion="Review large deletions carefully before proceeding",
-            ))
+            violations.append(
+                Violation(
+                    rule_id=self.id,
+                    message=f"{removed} lines removed in a single edit (max {max_removed})",
+                    severity=self.severity,
+                    file_path=context.file_path,
+                    suggestion="Review large deletions carefully before proceeding",
+                )
+            )
 
         return violations
