@@ -1,5 +1,29 @@
 # Changelog
 
+## v2.5.5 (2026-07-29) — Community and Release Security
+
+This patch release hardens AgentLint's release process and makes its community
+reporting paths explicit. It does not intentionally change runtime behavior.
+
+### Changed
+
+- Disables the `setup-uv` cache while building production release artifacts.
+- Expands the documented release gate to require a checked lockfile, complete
+  Ruff formatting and linting, the full test suite, package builds, and an
+  isolated installed-wheel CLI smoke test.
+- Replaces the Code of Conduct contact placeholder with a private reporting
+  address and `[CONDUCT][AgentLint]` subject prefix, and links that guidance
+  from the contributing guide.
+- Standardizes private vulnerability reports on the
+  `[SECURITY][AgentLint]` subject prefix.
+
+### Compatibility
+
+- Existing rules, adapters, configurations, hook payloads, and CLI behavior
+  remain unchanged.
+
+---
+
 ## v2.5.4 (2026-07-29) — Quality and Release Hardening
 
 This patch release strengthens AgentLint's development and publishing controls
