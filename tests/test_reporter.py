@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 
-from agentlint.models import Severity, Violation
+import pytest
+
+from agentlint.models import AgentEvent, Severity, Violation
 from agentlint.reporter import Reporter
 
 
@@ -143,6 +145,25 @@ class TestPreToolUseDenyProtocol:
         assert parsed["decision"] == "block"
         assert "WARN01" in parsed["reason"]
         assert "WARN01" in parsed["hookSpecificOutput"]["additionalContext"]
+
+    @pytest.mark.parametrize(
+        ("event", "hook_event_name"),
+        [
+            (AgentEvent.POST_TOOL_USE, "PostToolUse"),
+            ("post_tool_use", "PostToolUse"),
+            (AgentEvent.POST_TOOL_FAILURE, "PostToolUseFailure"),
+        ],
+    )
+    def test_normalized_post_event_uses_native_hook_name(
+        self, event: AgentEvent | str, hook_event_name: str
+    ) -> None:
+        reporter = Reporter(violations=[_make_violation(severity=Severity.WARNING)])
+
+        output = reporter.format_hook_output(event=event)
+
+        assert output is not None
+        parsed = json.loads(output)
+        assert parsed["hookSpecificOutput"]["hookEventName"] == hook_event_name
 
     def test_posttooluse_info_uses_additional_context_only(self) -> None:
         """PostToolUse INFO uses additionalContext without decision block."""

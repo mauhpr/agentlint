@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.6.1 (2026-10-01) — Codex PostToolUse Hook Output
+
+### Fixed
+
+- Post-tool warnings and errors now use the native `PostToolUse` event name in
+  hook output. Codex no longer rejects AgentLint feedback because of the
+  normalized `post_tool_use` value.
+
+---
+
 ## v2.6.0 (2026-10-01) — Workspace Policy and Codex Patch Coverage
 
 ### Added

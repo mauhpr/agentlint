@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from agentlint.formats.base import OutputFormatter
-from agentlint.models import AgentEvent, Severity, Violation
+from agentlint.models import AgentEvent, Severity, Violation, to_hook_event
 
 
 class ClaudeHookFormatter(OutputFormatter):
@@ -84,7 +84,7 @@ class ClaudeHookFormatter(OutputFormatter):
         ):
             result: dict = {
                 "hookSpecificOutput": {
-                    "hookEventName": event_str,
+                    "hookEventName": to_hook_event(event).value,
                     "additionalContext": "\n".join(context_lines),
                 }
             }
