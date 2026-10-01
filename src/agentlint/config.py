@@ -35,12 +35,15 @@ class AgentLintConfig:
     recording: dict = field(default_factory=dict)
     agentchute: dict = field(default_factory=dict)
     projects: dict[str, dict] = field(default_factory=dict)
+    required_rules: list[str] = field(default_factory=list)
 
     @property
     def is_recording_enabled(self) -> bool:
         return self.recording.get("enabled", False)
 
     def is_rule_enabled(self, rule_id: str) -> bool:
+        if rule_id in self.required_rules:
+            return True
         rule_cfg = self.rules.get(rule_id, {})
         if not isinstance(rule_cfg, dict):
             # Treat bare boolean/scalar as enabled shorthand: `no-secrets: false`
@@ -93,6 +96,7 @@ class AgentLintConfig:
             recording=self.recording,
             agentchute=self.agentchute,
             projects=self.projects,
+            required_rules=self.required_rules,
         )
 
 
@@ -115,7 +119,7 @@ def get_rule_setting(rules_dict: dict, rule_id: str, key: str, default=None):
     return default
 
 
-def load_config(project_dir: str) -> AgentLintConfig:
+def _load_local_config(project_dir: str, *, strict: bool = False) -> AgentLintConfig:
     """Load config from agentlint.yml or auto-detect defaults."""
     root = Path(project_dir)
 
@@ -126,9 +130,14 @@ def load_config(project_dir: str) -> AgentLintConfig:
             try:
                 raw = yaml.safe_load(config_path.read_text()) or {}
             except yaml.YAMLError:
+                if strict:
+                    raise ValueError(f"Invalid workspace/project YAML: {config_path}") from None
                 logger.warning("Invalid YAML in %s, using defaults", config_path)
                 raw = {}
             break
+
+    if not isinstance(raw, dict):
+        raise ValueError("AgentLint configuration must be a mapping")
 
     # Validate severity
     severity = raw.get("severity", "standard")
@@ -161,3 +170,10 @@ def load_config(project_dir: str) -> AgentLintConfig:
         agentchute=raw.get("agentchute", {}),
         projects=raw.get("projects", {}),
     )
+
+
+def load_config(project_dir: str) -> AgentLintConfig:
+    """Load local policy, optionally composed with an explicitly selected workspace."""
+    from agentlint.workspace import load_workspace_config
+
+    return load_workspace_config(project_dir, _load_local_config)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 
 
 class Severity(Enum):
@@ -289,10 +290,26 @@ class RuleContext:
     agent_id: str | None = None  # SubagentStart/SubagentStop — unique ID
     # v2.0.0 — agent-agnostic platform identification
     agent_platform: str = "unknown"  # "claude", "cursor", "openai", "mcp", etc.
+    working_directory: str | None = None  # Native tool cwd; may be below project_dir.
 
     @property
     def file_path(self) -> str | None:
         return self.tool_input.get("file_path")
+
+    @property
+    def relative_file_path(self) -> str | None:
+        """Project-relative path for rule matching, without altering the I/O path."""
+        if self.file_path is None:
+            return None
+        path = Path(self.file_path)
+        try:
+            return (
+                path.relative_to(Path(self.project_dir)).as_posix()
+                if path.is_absolute()
+                else self.file_path
+            )
+        except ValueError:
+            return self.file_path
 
     @property
     def command(self) -> str | None:

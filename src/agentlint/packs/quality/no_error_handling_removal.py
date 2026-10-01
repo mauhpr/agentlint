@@ -57,7 +57,7 @@ class NoErrorHandlingRemoval(Rule):
             return []
 
         # Skip test files
-        if _TEST_PATTERNS.search(file_path):
+        if _TEST_PATTERNS.search(context.relative_file_path or file_path):
             return []
 
         new_content = context.file_content or context.tool_input.get("content", "")

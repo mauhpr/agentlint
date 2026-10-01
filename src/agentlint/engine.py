@@ -4,14 +4,40 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fnmatch import fnmatch
 
 from agentlint.circuit_breaker import apply_circuit_breaker
 from agentlint.config import AgentLintConfig, get_rule_setting
 from agentlint.models import Rule, RuleContext, Severity, Violation
+from agentlint.utils.shell import mutation_command
 
 logger = logging.getLogger("agentlint")
+
+# Only built-in operation guards use the display-argument projection. Credential,
+# file-write, custom and organization policies continue inspecting original input.
+_MUTATION_RULES = {
+    "no-force-push",
+    "no-push-to-main",
+    "no-skip-hooks",
+    "no-destructive-commands",
+    "package-publish-guard",
+    "production-guard",
+    "cloud-resource-deletion",
+    "cloud-infra-mutation",
+    "destructive-confirmation-gate",
+    "network-firewall-guard",
+    "docker-volume-guard",
+    "bash-rate-limiter",
+    "dry-run-required",
+    "cloud-paid-resource-creation",
+    "cross-account-guard",
+    "system-scheduler-guard",
+    "remote-boot-partition-guard",
+    "remote-chroot-guard",
+    "ssh-destructive-command-guard",
+    "package-manager-in-chroot",
+}
 
 
 @dataclass
@@ -36,9 +62,26 @@ class Engine:
     def evaluate(self, context: RuleContext) -> EvaluationResult:
         """Evaluate all applicable rules against the context."""
         result = EvaluationResult()
+        required = set(self.config.required_rules)
+        mutation_context = context
+        if context.tool_name == "Bash" and isinstance(context.command, str):
+            mutation_context = replace(
+                context,
+                tool_input={
+                    **context.tool_input,
+                    "command": mutation_command(context.command),
+                },
+            )
+        if required:
+            cb = {
+                **self.config.circuit_breaker,
+                **context.config.get("_circuit_breaker_global", {}),
+            }
+            cb["never_degrade"] = list(set(cb.get("never_degrade", [])) | required)
+            context = replace(context, config={**context.config, "_circuit_breaker_global": cb})
 
         for rule in self.rules:
-            if rule.pack not in self.config.packs:
+            if rule.pack not in self.config.packs and rule.id not in required:
                 continue
             if not getattr(rule, "locked", False) and not self.config.is_rule_enabled(rule.id):
                 continue
@@ -46,46 +89,90 @@ class Engine:
                 continue
 
             # Global ignore_paths — skip all rules for matching files
-            if context.file_path and context.config:
+            if context.file_path and context.config and rule.id not in required:
                 ignore_paths = context.config.get("ignore_paths", [])
                 if isinstance(ignore_paths, list) and ignore_paths:
                     basename = os.path.basename(context.file_path)
                     if any(
-                        fnmatch(context.file_path, p) or fnmatch(basename, p) for p in ignore_paths
+                        fnmatch(context.file_path, p)
+                        or fnmatch(context.relative_file_path or "", p)
+                        or fnmatch(basename, p)
+                        for p in ignore_paths
                     ):
                         continue
 
             # Per-rule allow_paths — skip this specific rule for matching files
             if context.file_path and context.config:
-                rule_allow = get_rule_setting(context.config, rule.id, "allow_paths", [])
+                rule_config = context.config.get(rule.id, {})
+                rule_allow = (
+                    rule_config.get("allow_paths", [])
+                    if rule.id in required
+                    else get_rule_setting(context.config, rule.id, "allow_paths", [])
+                )
                 if isinstance(rule_allow, list) and rule_allow:
                     basename = os.path.basename(context.file_path)
                     if any(
-                        fnmatch(context.file_path, p) or fnmatch(basename, p) for p in rule_allow
+                        fnmatch(context.file_path, p)
+                        or fnmatch(context.relative_file_path or "", p)
+                        or fnmatch(basename, p)
+                        for p in rule_allow
                     ):
                         continue
 
                 # Per-rule ignore_paths — accepted-pattern alias for allow_paths.
                 # Useful when teams want to document why a rule does not apply
                 # to a local convention without disabling the rule globally.
-                rule_ignore = get_rule_setting(context.config, rule.id, "ignore_paths", [])
+                rule_ignore = (
+                    rule_config.get("ignore_paths", [])
+                    if rule.id in required
+                    else get_rule_setting(context.config, rule.id, "ignore_paths", [])
+                )
                 if isinstance(rule_ignore, list) and rule_ignore:
                     basename = os.path.basename(context.file_path)
                     if any(
-                        fnmatch(context.file_path, p) or fnmatch(basename, p) for p in rule_ignore
+                        fnmatch(context.file_path, p)
+                        or fnmatch(context.relative_file_path or "", p)
+                        or fnmatch(basename, p)
+                        for p in rule_ignore
                     ):
                         continue
 
             result.rules_evaluated += 1
 
             try:
-                violations = rule.evaluate(context)
+                checked = (
+                    mutation_context
+                    if (
+                        rule.id in _MUTATION_RULES
+                        and type(rule).__module__.startswith("agentlint.packs.")
+                        and not getattr(rule, "locked", False)
+                    )
+                    else context
+                )
+                if rule.id in required:
+                    checked = replace(
+                        checked,
+                        config={
+                            key: value
+                            for key, value in checked.config.items()
+                            if key not in {"allow_paths", "allow_patterns", "ignore_paths"}
+                        },
+                    )
+                violations = rule.evaluate(checked)
             except Exception:
                 logger.exception("Rule %s raised an exception", rule.id)
+                if rule.id in required:
+                    result.violations.append(
+                        Violation(
+                            rule_id=rule.id,
+                            severity=Severity.ERROR,
+                            message="Required workspace rule could not complete its check",
+                        )
+                    )
                 continue
 
             for v in violations:
-                if not getattr(rule, "locked", False):
+                if not getattr(rule, "locked", False) and rule.id not in required:
                     v.severity = self.config.effective_severity(v.severity)
 
             result.violations.extend(violations)

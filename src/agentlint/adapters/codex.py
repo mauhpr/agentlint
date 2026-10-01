@@ -56,21 +56,21 @@ def _build_hooks(cmd: str) -> dict:
         "hooks": {
             "PreToolUse": [
                 {
-                    "matcher": "^Bash$",
+                    "matcher": "^(Bash|apply_patch)$",
                     "hooks": [
                         {
                             "type": "command",
                             "_agentlint": "v2",
                             "command": f"{cmd} check --event PreToolUse --adapter codex",
                             "timeout": 30,
-                            "statusMessage": "Checking Bash command",
+                            "statusMessage": "Checking command or file patch",
                         }
                     ],
                 }
             ],
             "PostToolUse": [
                 {
-                    "matcher": "^Bash$",
+                    "matcher": "^(Bash|apply_patch)$",
                     "hooks": [
                         {
                             "type": "command",
@@ -133,8 +133,8 @@ def _hooks_path(scope: str, project_dir: str | None = None) -> Path:
 class CodexAdapter(AgentAdapter):
     """AgentAdapter implementation for Codex CLI.
 
-    Note: Codex PreToolUse currently only reliably intercepts Bash tool calls.
-    apply_patch edits and MCP tool calls have intermittent hook coverage.
+    Native Bash and apply_patch payloads are supported. Arbitrary MCP calls need
+    their own argument semantics and are not treated as shell or file operations.
     """
 
     @property

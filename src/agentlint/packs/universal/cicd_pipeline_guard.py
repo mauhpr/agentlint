@@ -65,21 +65,22 @@ class CicdPipelineGuard(Rule):
         file_path: str = context.file_path or ""
         if not file_path:
             return []
+        relative_path = context.relative_file_path or file_path
 
         rule_config = context.config.get(self.id, {})
         allowed_files: list[str] = rule_config.get("allowed_files", [])
 
         # Permanent bypass via config.
-        if _matches_any(file_path, allowed_files):
+        if _matches_any(file_path, allowed_files) or _matches_any(relative_path, allowed_files):
             return []
 
         # Session-level approval gate.
         approved: list[str] = context.session_state.get("approved_cicd_files", [])
-        if any(fnmatch.fnmatch(file_path, a) for a in approved):
+        if any(fnmatch.fnmatch(p, a) for a in approved for p in (file_path, relative_path)):
             return []
 
         # ERROR: direct CI pipeline files.
-        if _matches_any(file_path, _CICD_ERROR_PATTERNS):
+        if _matches_any(relative_path, _CICD_ERROR_PATTERNS):
             return [
                 Violation(
                     rule_id=self.id,
@@ -96,7 +97,7 @@ class CicdPipelineGuard(Rule):
             ]
 
         # WARNING: build-time files.
-        if _matches_any(file_path, _CICD_WARNING_PATTERNS):
+        if _matches_any(relative_path, _CICD_WARNING_PATTERNS):
             return [
                 Violation(
                     rule_id=self.id,

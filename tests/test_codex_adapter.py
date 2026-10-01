@@ -98,9 +98,10 @@ class TestBuildHooks:
         hooks = _build_hooks("agentlint")
         assert set(hooks["hooks"].keys()) == self.EXPECTED_EVENTS
 
-    def test_bash_matcher(self) -> None:
+    def test_shell_and_patch_matcher(self) -> None:
         hooks = _build_hooks("agentlint")
-        assert hooks["hooks"]["PreToolUse"][0]["matcher"] == "^Bash$"
+        assert hooks["hooks"]["PreToolUse"][0]["matcher"] == "^(Bash|apply_patch)$"
+        assert hooks["hooks"]["PostToolUse"][0]["matcher"] == "^(Bash|apply_patch)$"
 
     def test_embeds_adapter_flag(self) -> None:
         hooks = _build_hooks("agentlint")

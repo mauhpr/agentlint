@@ -42,7 +42,9 @@ class TestProductionGuard:
         assert len(violations) == 1
 
     def test_blocks_gcloud_project_flag_prod(self):
-        ctx = _ctx("Bash", {"command": "gcloud compute instances list --project prod-env-123"})
+        ctx = _ctx(
+            "Bash", {"command": "gcloud compute instances stop example --project prod-env-123"}
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
 
@@ -124,7 +126,9 @@ class TestProductionGuard:
 
     def test_prod_test_env_project_warns(self):
         """Project with both 'prod' and 'test' should downgrade to WARNING."""
-        ctx = _ctx("Bash", {"command": "gcloud --project=prod-test-env compute instances list"})
+        ctx = _ctx(
+            "Bash", {"command": "gcloud --project=prod-test-env compute instances stop example"}
+        )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
         assert violations[0].severity == Severity.WARNING

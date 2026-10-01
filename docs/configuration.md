@@ -64,6 +64,66 @@ rules:
 
 ## Top-level options
 
+### Workspace policy (v2.6.0)
+
+Select a workspace explicitly in the hook environment:
+
+```sh
+export AGENTLINT_WORKSPACE_CONFIG=/path/to/workspace/agentlint.yml
+```
+
+The file must use a recognized AgentLint filename. It applies only to projects
+beneath its resolved parent directory; projects outside that directory retain
+their normal local configuration. There is no implicit search of home directories.
+
+```yaml
+packs: [universal, security, autopilot]
+severity: standard
+workspace:
+  required_rules:
+    - no-secrets
+    - no-env-commit
+    - no-force-push
+    - cloud-resource-deletion
+circuit_breaker:
+  enabled: false
+```
+
+AgentLint combines this file with the nearest repository configuration between
+the selected project directory and the workspace root. Packs are additive.
+Mappings merge recursively; explicit repository scalar/list values replace
+defaults. Local custom-rule directories remain relative to their owning policy.
+Existing configuration selection is unchanged without the environment variable.
+
+Required built-in rules remain enabled even when a repository disables them or
+uses a narrower per-file pack mapping. Global path exemptions, inline ignore
+comments, severity relaxation and circuit-breaker degradation cannot remove their
+blocking findings. A failure while evaluating a required rule is blocking.
+Explicit **per-rule** path/pattern exemptions remain in effect: review them as
+policy exceptions, not as a way to bypass a rejected operation. Workspace policy
+is local configuration, not a tamper-proof sandbox or a replacement for managed
+organization policy. Custom/organization rules retain their own policy source.
+
+Missing, invalid or shadowed workspace configuration fails the native pre-tool
+check rather than silently switching to weaker defaults. Do not set the workspace
+variable until the file exists and its required rule IDs have been validated.
+
+### Shell matching (v2.6.0)
+
+Built-in mutation guards recognize literal data passed to simple `echo`/`printf`
+commands. Credential and file-write checks still see the original input. Compound
+commands, redirections, pipelines, substitutions, SSH and interpreter bodies are
+kept intact for conservative inspection; quoted text in arbitrary Python or shell
+programs is not assumed safe. Custom and organization rules also retain original
+input.
+
+The production guard permits a narrow set of simple cloud read commands, including
+GCP Run/Scheduler/SQL/Compute list/describe and selected AWS describe/identity
+operations. Only known read flags are accepted. Unknown flags (including flags
+files), substitutions and mixed read/write command strings receive the original
+checks. Production-name matching still does not discover opaque cloud project IDs
+or infer approval from previous conversations or saved plan files.
+
 ### `stack`
 
 Controls how rule packs are activated.

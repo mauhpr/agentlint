@@ -52,7 +52,7 @@ class NoTestWeakening(Rule):
             return []
 
         file_path: str | None = context.file_path
-        if not file_path or not _TEST_FILE_RE.search(file_path):
+        if not file_path or not _TEST_FILE_RE.search(context.relative_file_path or file_path):
             return []
 
         content = context.tool_input.get("content", "")

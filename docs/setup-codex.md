@@ -10,8 +10,8 @@ agentlint setup codex
 
 This creates `.codex/hooks.json` in your project root with hooks for:
 
-- `PreToolUse` — blocks Bash commands (secrets, destructive commands, etc.)
-- `PostToolUse` — checks Bash command quality after execution
+- `PreToolUse` — checks Bash commands and every file in native `apply_patch` edits
+- `PostToolUse` — checks Bash commands and actual file contents after a patch
 - `UserPromptSubmit` — prompt-level rule evaluation
 - `SessionStart` — session initialization
 - `Stop` — session summary report
@@ -47,7 +47,34 @@ export AGENTCHUTE_ENABLED=true
 
 ## Important: Codex Hook Coverage
 
-Codex's PreToolUse hook currently only reliably intercepts **Bash tool calls**. Coverage for `apply_patch` edits and MCP tool calls is intermittent and depends on the Codex CLI version. This is a known upstream limitation.
+AgentLint 2.6.0 installs `^(Bash|apply_patch)$` tool matchers. Current Codex supports
+these native events, including calls made through code mode. Older Codex versions
+may have narrower coverage; verify hook discovery and trust in your installation.
+
+Patch input uses `tool_input.command`. AgentLint translates additions, updates,
+deletions and renames into per-file rule contexts. It checks both paths of a rename
+and aggregates findings across all files. Before execution it reads existing files
+and applies hunks in memory; it never writes the patch itself. Post-tool checks read
+the actual resulting files and compare them with cached pre-edit content.
+
+Inspection rejects out-of-project paths (including symlink escapes), missing or
+ambiguous hunks, unsupported envelopes, overwrites by Add/Move operations, patches
+over 2 MB, files over 5 MB and batches over 200 targets. Relative paths use the native
+tool working directory, bounded by `--project-dir`. These checks are deliberately
+conservative; a rejected patch can be split or made unambiguous, but must not be
+rerouted through a shell write to bypass the check.
+
+File checks such as secrets, CI pipeline edits and test weakening now receive the
+structured input they expect. Their configured severities and reviewed exemptions
+still apply. Arbitrary MCP actions need tool-specific semantics and are not covered
+by this adapter. Hooks are not a security sandbox.
+
+After updating an existing installation, rerun setup in its intended scope and
+review/trust changed hook definitions using Codex `/hooks`. Custom scoped wrappers
+must update their matchers and project/session routing deliberately. Do not write
+trust hashes or use hook-trust bypass flags as part of setup.
+
+Official hook behavior: https://learn.chatgpt.com/docs/hooks
 
 ## Hook Format
 
@@ -92,13 +119,14 @@ Removes only AgentLint hooks; preserves any other custom hooks you have configur
 | `CODEX_SESSION_ID` | Session ID for state tracking |
 | `AGENTLINT_PROJECT_DIR` | Generic project directory (takes precedence) |
 | `AGENTLINT_SESSION_ID` | Generic session ID (takes precedence) |
+| `AGENTLINT_WORKSPACE_CONFIG` | Explicit workspace defaults and required rules; see [configuration](configuration.md#workspace-policy-v260) |
 
 ## Troubleshooting
 
 **Hooks not firing for Write/Edit?**
-- This is a known Codex CLI limitation. PreToolUse hooks for `apply_patch` and MCP tools have intermittent coverage
-- Ensure your Codex CLI is up to date; hook support is evolving rapidly
-- Bash tool calls should always trigger PreToolUse hooks
+- Confirm AgentLint is at least 2.6.0 and the matcher includes `apply_patch`.
+- Review/trust the new definition in Codex `/hooks` and restart if needed.
+- Codex reports `apply_patch`, not Claude's `Write`/`Edit`, in native payloads.
 
 **No events in AgentChute?**
 - Ensure `hooks = true` is present under `[features]` in `~/.codex/config.toml`
@@ -107,6 +135,7 @@ Removes only AgentLint hooks; preserves any other custom hooks you have configur
 - Run `agentlint agentchute status` from the project root
 - If events are queued, run `agentlint agentchute flush` as a support/debug step
 
-**Need full file-write coverage?**
-- Consider using AgentLint's MCP server alongside hooks for pre-validation
-- Run `agentlint doctor` for alternative integration suggestions
+**Need coverage for other tools?**
+- Configure an integration that understands that tool's arguments and side effects.
+- Run repository CI checks too; a shell-pattern guard cannot inspect every script
+  body, remote operation or opaque MCP call.
