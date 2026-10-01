@@ -58,6 +58,7 @@ def filter_inline_ignores(
     file_content: str | None,
     file_path: str | None = None,
     session_state: dict | None = None,
+    required_rules: list[str] | None = None,
 ) -> list[Violation]:
     """Filter violations by inline ignore directives in file content.
 
@@ -73,6 +74,15 @@ def filter_inline_ignores(
     """
     if not file_content or not violations:
         return violations
+
+    protected = [v for v in violations if v.rule_id in (required_rules or [])]
+    if protected:
+        return protected + filter_inline_ignores(
+            [v for v in violations if v.rule_id not in (required_rules or [])],
+            file_content,
+            file_path,
+            session_state,
+        )
 
     log = session_state.setdefault("inline_ignores", []) if session_state is not None else None
 

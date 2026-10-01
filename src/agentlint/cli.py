@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+import yaml
 
 from agentlint import __version__
 from agentlint.adapters import get_adapter
@@ -41,10 +43,10 @@ from agentlint.agents_md import (
 from agentlint.cli_queue import register_queue_commands
 from agentlint.config import load_config
 from agentlint.detector import detect_stack
-from agentlint.engine import Engine
+from agentlint.engine import Engine, EvaluationResult
 from agentlint.formats.claude_hooks import ClaudeHookFormatter
 from agentlint.formats.cursor_hooks import CursorHookFormatter
-from agentlint.models import AgentEvent, HookEvent, RuleContext, Severity, to_hook_event
+from agentlint.models import AgentEvent, HookEvent, RuleContext, Severity, Violation, to_hook_event
 from agentlint.packs import (
     PACK_MODULES,
     load_custom_rules,
@@ -87,6 +89,23 @@ def _resolve_project_dir(project_dir: str | None = None) -> str:
         or os.environ.get("CLAUDE_PROJECT_DIR")
         or os.getcwd()
     )
+
+
+def _bind_codex_session(raw: dict) -> None:
+    """Share native hook state without overriding an explicit integration key."""
+    identity = raw.get("session_id")
+    if os.environ.get("AGENTLINT_SESSION_ID") or not isinstance(identity, str) or not identity:
+        return
+    previous = os.environ.get("AGENTLINT_SESSION_ID")
+    os.environ["AGENTLINT_SESSION_ID"] = "codex-" + hashlib.sha256(identity.encode()).hexdigest()
+
+    def restore() -> None:
+        if previous is None:
+            os.environ.pop("AGENTLINT_SESSION_ID", None)
+        else:
+            os.environ["AGENTLINT_SESSION_ID"] = previous
+
+    click.get_current_context().call_on_close(restore)
 
 
 def _agentchute_policy_metadata() -> dict:
@@ -487,6 +506,122 @@ def main():
     _configure_logging()
 
 
+def _evaluate_tool_context(context, config, rules):
+    """Evaluate one translated tool context, retaining file evidence and exceptions."""
+    session_state = context.session_state
+    project_dir = context.project_dir
+    hook_event = context.event
+    tool_input = context.tool_input
+    # Track files touched during the session for the Stop report
+    if context.file_path:
+        touched = session_state.setdefault("files_touched", [])
+        if context.file_path not in touched:
+            touched.append(context.file_path)
+
+    # For PreToolUse Write/Edit, cache current file content for diff-based rules
+    if hook_event == HookEvent.PRE_TOOL_USE and context.tool_name in ("Write", "Edit"):
+        file_path = context.file_path
+        file_content_before = None
+        if file_path:
+            try:
+                with open(file_path, encoding="utf-8", errors="replace") as f:
+                    file_content_before = f.read()
+            except OSError:
+                pass
+            if file_content_before is not None:
+                file_cache = session_state.setdefault("file_cache", {})
+                file_cache[file_path] = file_content_before
+
+        # For Write, the new content is in tool_input
+        content = tool_input.get("content", "")
+        if content:
+            context = RuleContext(
+                event=context.event,
+                tool_name=context.tool_name,
+                tool_input=context.tool_input,
+                project_dir=context.project_dir,
+                file_content=content,
+                file_content_before=file_content_before,
+                config=context.config,
+                session_state=session_state,
+                prompt=context.prompt,
+                subagent_output=context.subagent_output,
+                notification_type=context.notification_type,
+                compact_source=context.compact_source,
+                agent_transcript_path=context.agent_transcript_path,
+                agent_type=context.agent_type,
+                agent_id=context.agent_id,
+                agent_platform=context.agent_platform,
+            )
+
+    # For PostToolUse on file operations, try to read file content
+    if hook_event == HookEvent.POST_TOOL_USE and context.file_path:
+        file_path = context.file_path
+        # Validate path is relative to project dir
+        try:
+            resolved = os.path.realpath(file_path)
+            project_real = os.path.realpath(project_dir)
+            if not resolved.startswith(project_real + os.sep) and resolved != project_real:
+                logger.warning("Path traversal blocked: %s", file_path)
+                file_content = None
+            else:
+                with open(file_path, encoding="utf-8", errors="replace") as f:
+                    file_content = f.read()
+        except OSError:
+            file_content = None
+
+        # Retrieve cached pre-edit content for diff-based rules
+        file_cache = session_state.get("file_cache", {})
+        file_content_before = context.file_content_before
+        if file_content_before is None:
+            file_content_before = file_cache.pop(file_path, None)
+
+        if file_content is not None:
+            context = RuleContext(
+                event=context.event,
+                tool_name=context.tool_name,
+                tool_input=context.tool_input,
+                project_dir=context.project_dir,
+                file_content=file_content,
+                file_content_before=file_content_before,
+                config=context.config,
+                session_state=session_state,
+                prompt=context.prompt,
+                subagent_output=context.subagent_output,
+                notification_type=context.notification_type,
+                compact_source=context.compact_source,
+                agent_transcript_path=context.agent_transcript_path,
+                agent_type=context.agent_type,
+                agent_id=context.agent_id,
+                agent_platform=context.agent_platform,
+            )
+
+    # Resolve project-specific packs for monorepo
+    effective_config = config
+    if context.file_path and config.projects:
+        effective_packs = config.resolve_packs_for_file(context.file_path, project_dir)
+        effective_config = config.with_packs(effective_packs)
+
+    engine = Engine(config=effective_config, rules=rules)
+    start_time = time.time()
+    result = engine.evaluate(context)
+    elapsed_ms = (time.time() - start_time) * 1000
+
+    # Apply inline ignore directives (# agentlint:ignore-file, etc.).
+    # Pass file_path + session_state so reasons surface in the summary.
+    from agentlint.filters import filter_inline_ignores
+
+    result.violations = filter_inline_ignores(
+        result.violations,
+        context.file_content,
+        file_path=context.file_path,
+        session_state=session_state,
+        required_rules=config.required_rules,
+    )
+
+    return result, elapsed_ms
+
+
 @main.command()
 @click.option(
     "--event",
@@ -506,6 +641,7 @@ def main():
 def check(event: str, project_dir: str | None, adapter: str | None, output_format: str | None):
     """Evaluate rules against a tool call from stdin."""
     adapter_obj = _resolve_adapter(adapter)
+    explicit_project_dir = project_dir
     project_dir = _resolve_project_dir(project_dir)
 
     # Translate event via adapter (supports both native and generic event names)
@@ -522,7 +658,28 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
     except (json.JSONDecodeError, EOFError):
         raw = {}
 
-    config = load_config(project_dir)
+    working_directory = None
+    if adapter_obj.platform_name == "codex":
+        if not isinstance(raw, dict) or not isinstance(raw.get("tool_input", {}), dict):
+            click.echo("AgentLint: malformed Codex hook input", err=True)
+            sys.exit(2)
+        session_cwd = raw.get("cwd") or project_dir
+        tool_cwd = raw.get("tool_input", {}).get("workdir") or raw.get("tool_input", {}).get("cwd")
+        if not isinstance(session_cwd, str) or (
+            tool_cwd is not None and not isinstance(tool_cwd, str)
+        ):
+            click.echo("AgentLint: malformed Codex working directory", err=True)
+            sys.exit(2)
+        working_directory = os.path.abspath(os.path.join(session_cwd, tool_cwd or "."))
+        if not explicit_project_dir and not os.environ.get("AGENTLINT_PROJECT_DIR"):
+            project_dir = os.environ.get("CODEX_PROJECT_DIR") or working_directory
+        _bind_codex_session(raw)
+
+    try:
+        config = load_config(project_dir)
+    except (ValueError, yaml.YAMLError) as exc:
+        click.echo(f"AgentLint configuration error: {exc}", err=True)
+        sys.exit(2)
     rules = load_project_rules(config, project_dir)
     try:
         from agentlint.agentchute.policy import missing_required_packs
@@ -564,116 +721,38 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
         agent_type=raw.get("agent_type"),
         agent_id=raw.get("agent_id"),
         agent_platform=adapter_obj.platform_name,
+        working_directory=working_directory,
     )
 
-    # Track files touched during the session for the Stop report
-    if context.file_path:
-        touched = session_state.setdefault("files_touched", [])
-        if context.file_path not in touched:
-            touched.append(context.file_path)
+    contexts = [context]
+    patch_error = None
+    if adapter_obj.platform_name == "codex" and context.tool_name == "apply_patch":
+        from agentlint.adapters.codex_patch import PatchError, patch_contexts
 
-    # For PreToolUse Write/Edit, cache current file content for diff-based rules
-    if hook_event == HookEvent.PRE_TOOL_USE and context.tool_name in ("Write", "Edit"):
-        file_path = context.file_path
-        file_content_before = None
-        if file_path:
-            try:
-                with open(file_path, encoding="utf-8", errors="replace") as f:
-                    file_content_before = f.read()
-            except OSError:
-                pass
-            if file_content_before is not None:
-                file_cache = session_state.setdefault("file_cache", {})
-                file_cache[file_path] = file_content_before
-
-        # For Write, the new content is in tool_input
-        content = tool_input.get("content", "")
-        if content:
-            context = RuleContext(
-                event=context.event,
-                tool_name=context.tool_name,
-                tool_input=context.tool_input,
-                project_dir=context.project_dir,
-                file_content=content,
-                file_content_before=file_content_before,
-                config=context.config,
-                session_state=session_state,
-                prompt=context.prompt,
-                subagent_output=context.subagent_output,
-                notification_type=context.notification_type,
-                compact_source=context.compact_source,
-                agent_transcript_path=context.agent_transcript_path,
-                agent_type=context.agent_type,
-                agent_id=context.agent_id,
-                agent_platform=adapter_obj.platform_name,
-            )
-
-    # For PostToolUse on file operations, try to read file content
-    if hook_event == HookEvent.POST_TOOL_USE and context.file_path:
-        file_path = context.file_path
-        # Validate path is relative to project dir
         try:
-            resolved = os.path.realpath(file_path)
-            project_real = os.path.realpath(project_dir)
-            if not resolved.startswith(project_real + os.sep) and resolved != project_real:
-                logger.warning("Path traversal blocked: %s", file_path)
-                file_content = None
-            else:
-                with open(file_path, encoding="utf-8", errors="replace") as f:
-                    file_content = f.read()
-        except OSError:
-            file_content = None
-
-        # Retrieve cached pre-edit content for diff-based rules
-        file_cache = session_state.get("file_cache", {})
-        file_content_before = file_cache.pop(file_path, None)
-
-        if file_content is not None:
-            context = RuleContext(
-                event=context.event,
-                tool_name=context.tool_name,
-                tool_input=context.tool_input,
-                project_dir=context.project_dir,
-                file_content=file_content,
-                file_content_before=file_content_before,
-                config=context.config,
-                session_state=session_state,
-                prompt=context.prompt,
-                subagent_output=context.subagent_output,
-                notification_type=context.notification_type,
-                compact_source=context.compact_source,
-                agent_transcript_path=context.agent_transcript_path,
-                agent_type=context.agent_type,
-                agent_id=context.agent_id,
-                agent_platform=adapter_obj.platform_name,
+            contexts = patch_contexts(context)
+        except PatchError as exc:
+            contexts = []
+            patch_error = str(exc)
+    result = EvaluationResult()
+    elapsed_ms = 0.0
+    if patch_error:
+        result.violations.append(
+            Violation(
+                rule_id="codex-patch-inspection",
+                message=patch_error,
+                severity=Severity.ERROR,
+                suggestion="Use a supported, unambiguous patch; no files were changed by AgentLint.",
             )
-
-    # Resolve project-specific packs for monorepo
-    effective_config = config
-    if context.file_path and config.projects:
-        effective_packs = config.resolve_packs_for_file(context.file_path, project_dir)
-        effective_config = config.with_packs(effective_packs)
-
-    engine = Engine(config=effective_config, rules=rules)
-    start_time = time.time()
-    result = engine.evaluate(context)
-    elapsed_ms = (time.time() - start_time) * 1000
-
-    # Track hook timing in session state
+        )
+    for file_context in contexts:
+        evaluated, elapsed = _evaluate_tool_context(file_context, config, rules)
+        result.violations.extend(evaluated.violations)
+        result.rules_evaluated += evaluated.rules_evaluated
+        elapsed_ms += elapsed
     timing = session_state.setdefault("_hook_timing", {"total_ms": 0.0, "count": 0})
     timing["total_ms"] += elapsed_ms
     timing["count"] += 1
-
-    # Apply inline ignore directives (# agentlint:ignore-file, etc.).
-    # Pass file_path + session_state so reasons surface in the summary.
-    from agentlint.filters import filter_inline_ignores
-
-    result.violations = filter_inline_ignores(
-        result.violations,
-        context.file_content,
-        file_path=context.file_path,
-        session_state=session_state,
-    )
 
     # Track cumulative violation counts for session summary
     vlog = session_state.setdefault(
@@ -998,13 +1077,22 @@ agentchute:
 )
 def report(project_dir: str | None, summary: bool, output_format: str, adapter: str | None):
     """Generate session summary report (for Stop event)."""
+    explicit_project_dir = project_dir
     project_dir = _resolve_project_dir(project_dir)
-    _resolve_adapter(adapter)
+    adapter_obj = _resolve_adapter(adapter)
 
     # Only consume stdin if not in --summary mode (Stop hook pipes JSON)
     if not summary:
+        raw = {}
         with contextlib.suppress(json.JSONDecodeError, EOFError):
-            json.load(sys.stdin)
+            raw = json.load(sys.stdin)
+        if adapter_obj.platform_name == "codex" and isinstance(raw, dict):
+            _bind_codex_session(raw)
+            if not explicit_project_dir and not os.environ.get("AGENTLINT_PROJECT_DIR"):
+                cwd = raw.get("cwd")
+                project_dir = os.environ.get("CODEX_PROJECT_DIR") or (
+                    cwd if isinstance(cwd, str) and cwd else project_dir
+                )
 
     # Load session and populate changed_files
     # Combine: files tracked during the session + git diff (for any we missed)

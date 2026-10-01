@@ -1,5 +1,39 @@
 # Changelog
 
+## v2.6.0 (2026-10-01) — Workspace Policy and Codex Patch Coverage
+
+### Added
+
+- Explicit, directory-scoped workspace defaults through `AGENTLINT_WORKSPACE_CONFIG`.
+  Packs compose with repository policies; explicit per-rule exemptions remain intact.
+- `workspace.required_rules` keeps selected built-in rules enabled through local
+  overrides, per-file pack mappings, global ignores, inline ignores and circuit-breaker
+  degradation. Required-rule evaluation failures block rather than silently passing.
+- Native Codex `apply_patch` inspection of additions, updates, deletions and both sides
+  of renames. Every file is checked before the tool runs; unsupported, ambiguous,
+  oversized and out-of-project patches are rejected. Post-tool checks read actual files.
+
+### Fixed
+
+- Codex absolute paths now reach workflow and test/error-handling checks correctly.
+- Mutation checks distinguish literal echo/printf data from executable syntax. Shell
+  substitutions, compound commands, redirects, SSH and interpreter bodies stay checked.
+- Production-name detection permits a narrow list of simple cloud inspection commands;
+  unknown flags, mutating operations and compound shell forms retain existing checks.
+- Native Codex hook input and workspace configuration failures return blocking errors.
+- Test runs isolate agent-detection environment variables from the invoking coding agent.
+
+### Migration
+
+- Workspace composition is opt-in; existing project-only installations retain their
+  configuration selection. Explicit per-rule exceptions remain policy decisions.
+- Rerun `agentlint setup codex` in the intended scope to add the patch matcher, then
+  review/trust changed definitions in Codex. Custom scoped wrappers must be updated
+  deliberately. Arbitrary MCP mutations are not covered by the patch adapter.
+- Organization policies remain separate and inspect the original command input.
+
+---
+
 ## v2.5.5 (2026-07-29) — Community and Release Security
 
 This patch release hardens AgentLint's release process and makes its community

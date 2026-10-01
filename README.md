@@ -26,7 +26,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 AgentLint ships with 77 rules across 8 packs and normalizes tool events across supported AI coding agents. The 24 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
 
-**v2.5.4 highlights:** Repository-wide Ruff enforcement, branch-aware coverage floors, immutable CI actions, verified release artifacts, stronger MCP tests, and the first extraction from the main CLI module. Previous: local-first AgentChute NVD enforcement, AgentChute onboarding with `agentlint onboard`, dashboard pairing through `agentlint login`, durable queue delivery, safer Codex hook enablement, multi-platform adapters, MCP server support, warning suppression, and auto-fix workflows.
+**v2.6.0 highlights:** Optional workspace policies with required rules that survive repository overrides and repeated attempts; native Codex multi-file patch inspection; fewer false positives for literal display commands and narrowly recognized cloud inspection operations. Existing standalone project configurations remain supported. See [configuration](docs/configuration.md) and [Codex setup](docs/setup-codex.md) for activation and limitations.
 
 | Rule | Severity | What it does |
 |------|----------|-------------|
