@@ -20,7 +20,7 @@ class TestSummarizeToolInput:
     def test_bash_truncates_command(self):
         long_cmd = "x" * 500
         result = summarize_tool_input("Bash", {"command": long_cmd})
-        assert result["command"] == "x" * 200
+        assert result["command"] == "[unrecognized command]"
         assert result["file_path"] is None
 
     def test_write_omits_content(self):
@@ -31,7 +31,7 @@ class TestSummarizeToolInput:
                 "content": "a" * 1000,
             },
         )
-        assert result["file_path"] == "/foo/bar.py"
+        assert result["file_path"] == "[path .py]"
         assert result["content_length"] == 1000
         assert "a" * 1000 not in str(result)
 
@@ -44,22 +44,22 @@ class TestSummarizeToolInput:
                 "new_string": "new content here",
             },
         )
-        assert result["file_path"] == "/f.py"
+        assert result["file_path"] == "[path .py]"
         assert result["content_length"] == len("new content here")
         assert result["old_content_length"] == len("old")
 
     def test_prompt_truncates(self):
         long_prompt = "p" * 300
         result = summarize_tool_input("UserPromptSubmit", {}, prompt=long_prompt)
-        assert result.get("prompt_preview") == "p" * 100
+        assert result.get("prompt_preview") == "[redacted: 300 characters]"
 
     def test_read_captures_file_path(self):
         result = summarize_tool_input("Read", {"file_path": "/a/b.py"})
-        assert result["file_path"] == "/a/b.py"
+        assert result["file_path"] == "[path .py]"
 
     def test_grep_captures_pattern(self):
         result = summarize_tool_input("Grep", {"pattern": "TODO"})
-        assert result["file_path"] == "TODO"
+        assert result["file_path"] == "[search pattern redacted]"
 
     def test_agent_captures_subagent_type_and_description(self):
         result = summarize_tool_input(
@@ -69,8 +69,8 @@ class TestSummarizeToolInput:
                 "description": "Find auth middleware",
             },
         )
-        assert result["subagent_type"] == "Explore"
-        assert result["description"] == "Find auth middleware"
+        assert result["subagent_type"] == "[subagent]"
+        assert result["description"] == "[redacted: 20 characters]"
 
     def test_agent_truncates_long_description(self):
         result = summarize_tool_input(
@@ -79,7 +79,7 @@ class TestSummarizeToolInput:
                 "description": "d" * 300,
             },
         )
-        assert result["description"] == "d" * 100
+        assert result["description"] == "[redacted: 300 characters]"
 
     def test_webfetch_captures_url(self):
         result = summarize_tool_input(
@@ -88,16 +88,16 @@ class TestSummarizeToolInput:
                 "url": "https://example.com/api/docs",
             },
         )
-        assert result["url"] == "https://example.com/api/docs"
+        assert result["url"] == "[URL redacted]"
 
     def test_webfetch_truncates_long_url(self):
         long_url = "https://example.com/" + "a" * 300
         result = summarize_tool_input("WebFetch", {"url": long_url})
-        assert len(result["url"]) == 200
+        assert result["url"] == "[URL redacted]"
 
     def test_websearch_captures_query(self):
         result = summarize_tool_input("WebSearch", {"query": "python asyncio tutorial"})
-        assert result["query"] == "python asyncio tutorial"
+        assert result["query"] == "[query redacted]"
 
     def test_notebook_edit_captures_cell(self):
         result = summarize_tool_input(
@@ -107,7 +107,7 @@ class TestSummarizeToolInput:
                 "cell_number": 3,
             },
         )
-        assert result["file_path"] == "/nb.ipynb"
+        assert result["file_path"] == "[path .ipynb]"
         assert result["cell_index"] == 3
 
     def test_unknown_tool_returns_empty_summary(self):

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -51,6 +52,81 @@ def is_recording_enabled(config) -> bool:
 
 _BASH_COMMAND_LIMIT = 200
 _PROMPT_LIMIT = 100
+_SAFE_EXECUTABLES = {
+    "aws",
+    "bash",
+    "cat",
+    "command",
+    "curl",
+    "docker",
+    "echo",
+    "env",
+    "find",
+    "gcloud",
+    "git",
+    "grep",
+    "jq",
+    "ls",
+    "mysql",
+    "npm",
+    "printf",
+    "psql",
+    "python",
+    "python3",
+    "rg",
+    "sed",
+    "terraform",
+    "uv",
+}
+
+
+def _path_kind(value: str | None) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    suffix = Path(value).suffix.lower()
+    safe_suffixes = {
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".md",
+        ".sql",
+        ".ipynb",
+        ".txt",
+        ".sh",
+    }
+    return f"[path {suffix}]" if suffix in safe_suffixes else "[path]"
+
+
+def safe_command_summary(command: str) -> str:
+    """Keep an executable name, never arguments that may carry credentials."""
+    from agentlint.utils.shell import simple_words, unwrap_simple_command
+
+    words = simple_words(command)
+    words = unwrap_simple_command(words) if words else None
+    if not words:
+        return "[complex command]"
+    executable = words[0].rsplit("/", 1)[-1]
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,63}", executable):
+        return "[unrecognized command]"
+    if executable not in _SAFE_EXECUTABLES:
+        return "[other command]"
+    operation = executable
+    verbs = {
+        "git": {"push", "reset", "clean", "checkout", "branch", "tag"},
+        "terraform": {"apply", "destroy", "plan"},
+        "psql": set(),
+        "docker": {"run", "rm", "volume", "system"},
+        "npm": {"publish", "install", "ci"},
+        "gcloud": {"run", "sql", "compute", "projects", "scheduler"},
+        "aws": {"ec2", "rds", "s3api", "sts"},
+    }
+    if len(words) > 1 and words[1] in verbs.get(executable, set()):
+        operation += f" {words[1]}"
+    return f"{operation} [arguments redacted]"
 
 
 def summarize_tool_input(
@@ -67,30 +143,32 @@ def summarize_tool_input(
 
     if tool_name == "Bash":
         cmd = tool_input.get("command", "")
-        summary["command"] = cmd[:_BASH_COMMAND_LIMIT]
+        summary["command"] = safe_command_summary(cmd) if isinstance(cmd, str) else None
     elif tool_name in ("Write", "Edit", "MultiEdit"):
-        summary["file_path"] = tool_input.get("file_path")
+        summary["file_path"] = _path_kind(tool_input.get("file_path"))
         content = tool_input.get("content") or tool_input.get("new_string") or ""
         summary["content_length"] = len(content) if content else 0
         old_content = tool_input.get("old_string") or ""
         if old_content:
             summary["old_content_length"] = len(old_content)
     elif tool_name in ("Read", "Glob", "Grep"):
-        summary["file_path"] = tool_input.get("file_path") or tool_input.get("pattern")
+        summary["file_path"] = _path_kind(tool_input.get("file_path"))
+        if tool_name == "Grep" and not tool_input.get("file_path"):
+            summary["file_path"] = "[search pattern redacted]"
     elif tool_name in ("Agent", "Task"):
-        summary["subagent_type"] = tool_input.get("subagent_type")
+        summary["subagent_type"] = "[subagent]" if tool_input.get("subagent_type") else None
         desc = tool_input.get("description", "")
-        summary["description"] = desc[:_PROMPT_LIMIT] if desc else None
+        summary["description"] = f"[redacted: {len(desc)} characters]" if desc else None
     elif tool_name == "WebFetch":
-        summary["url"] = tool_input.get("url", "")[:_BASH_COMMAND_LIMIT]
+        summary["url"] = "[URL redacted]" if tool_input.get("url") else None
     elif tool_name == "WebSearch":
-        summary["query"] = tool_input.get("query", "")[:_BASH_COMMAND_LIMIT]
+        summary["query"] = "[query redacted]" if tool_input.get("query") else None
     elif tool_name == "NotebookEdit":
-        summary["file_path"] = tool_input.get("file_path")
+        summary["file_path"] = _path_kind(tool_input.get("file_path"))
         summary["cell_index"] = tool_input.get("cell_number")
     elif tool_name == "UserPromptSubmit":
         if prompt:
-            summary["prompt_preview"] = prompt[:_PROMPT_LIMIT]
+            summary["prompt_preview"] = f"[redacted: {len(prompt)} characters]"
 
     return summary
 

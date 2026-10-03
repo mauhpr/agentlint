@@ -20,7 +20,7 @@ from agentlint.adapters._utils import (
     write_json_config,
 )
 from agentlint.adapters.base import AgentAdapter
-from agentlint.formats.claude_hooks import ClaudeHookFormatter
+from agentlint.formats.codex_hooks import CodexHookFormatter
 from agentlint.models import AgentEvent, NormalizedTool, RuleContext, to_hook_event
 
 # Mapping from Codex native event names to generic AgentEvent
@@ -142,8 +142,8 @@ class CodexAdapter(AgentAdapter):
         return "codex"
 
     @property
-    def formatter(self) -> ClaudeHookFormatter:
-        return ClaudeHookFormatter()
+    def formatter(self) -> CodexHookFormatter:
+        return CodexHookFormatter()
 
     def resolve_project_dir(self) -> str:
         return (

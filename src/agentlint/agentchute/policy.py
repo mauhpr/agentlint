@@ -20,6 +20,7 @@ from agentlint.agentchute.client import (
     get_license_key,
 )
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
+from agentlint.recorder import safe_command_summary
 
 logger = logging.getLogger("agentlint.agentchute.policy")
 
@@ -144,6 +145,50 @@ def policy_status() -> dict:
     }
 
 
+def policy_diagnostics(config=None, *, online: bool = False) -> dict:
+    """Describe local enforcement and optionally test connectivity without changing cache."""
+    from agentlint.agentchute.settings import get_enabled_value
+
+    status = policy_status()
+    cached_policy = load_cached_policy() or {}
+    active_ids = [
+        str(rule["id"])
+        for rule in cached_policy.get("rules", [])
+        if isinstance(rule, dict) and rule.get("enabled", True) is not False and rule.get("id")
+    ]
+    key = get_license_key()
+    status.update(
+        {
+            "configured_enabled": get_enabled_value(config),
+            "credential_present": bool(key),
+            "active_rule_ids": active_ids,
+            "cached_rules_enforced": bool(active_ids),
+            "connection": "not checked",
+            "restart_for_policy_cache": False,
+            "restart_for_environment_changes": True,
+        }
+    )
+    if not online:
+        return status
+    if not key:
+        status["connection"] = "unavailable: credential missing"
+        return status
+    try:
+        import requests
+
+        response = requests.get(
+            f"{get_api_url()}/policy",
+            headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+            timeout=(_CONNECT_TIMEOUT_S, _READ_TIMEOUT_S),
+        )
+        status["connection"] = (
+            "connected" if response.status_code in {200, 304} else f"HTTP {response.status_code}"
+        )
+    except Exception as exc:  # noqa: BLE001
+        status["connection"] = f"unavailable: {type(exc).__name__}"
+    return status
+
+
 def validate_policy(policy: Any) -> list[str]:
     errors: list[str] = []
     if not isinstance(policy, dict):
@@ -243,15 +288,32 @@ class DeclarativePolicyRule(Rule):
             return []
         if not _matches(context, self.raw.get("match") or {}):
             return []
+        match = self.raw.get("match") or {}
+        operation = (
+            safe_command_summary(context.command or "")
+            if context.tool_name == "Bash"
+            else context.tool_name
+        )
+        source = f"cached AgentChute policy v{load_cached_policy_version()} ({_policy_path()})"
+        condition = f"{match.get('field', 'input')} {match.get('operator', 'matches')}"
         return [
             Violation(
                 rule_id=self.id,
-                message=str(self.raw.get("message") or self.description),
+                message=(f"{self.raw.get('message') or self.description}. Matched {condition}"),
                 severity=self.severity,
                 file_path=context.file_path,
-                suggestion=self.raw.get("suggestion"),
+                suggestion=self.raw.get("suggestion")
+                or "Run 'agentlint policy explain' and ask the workspace policy owner for a scoped change.",
+                operation=operation,
+                policy_source=source,
             )
         ]
+
+
+def load_cached_policy_version() -> str:
+    """Identify the policy version used for a block explanation."""
+    version = (load_cached_policy() or {}).get("version")
+    return str(version) if version is not None else "unknown"
 
 
 def _matches(context: RuleContext, match: dict) -> bool:

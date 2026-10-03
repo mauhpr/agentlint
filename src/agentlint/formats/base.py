@@ -51,6 +51,10 @@ class OutputFormatter(ABC):
         lines: list[str] = []
         for v in violations:
             lines.append(f"[{v.rule_id}] {v.message}")
+            if v.operation:
+                lines.append(f"  Operation: {v.operation}")
+            if v.policy_source:
+                lines.append(f"  Policy: {v.policy_source}")
             if v.suggestion:
                 lines.append(f"  -> {v.suggestion}")
         return lines

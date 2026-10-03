@@ -9,7 +9,10 @@ from fnmatch import fnmatch
 
 from agentlint.circuit_breaker import apply_circuit_breaker
 from agentlint.config import AgentLintConfig, get_rule_setting
+from agentlint.exceptions import applies as exception_applies
+from agentlint.exceptions import audit_use
 from agentlint.models import Rule, RuleContext, Severity, Violation
+from agentlint.recorder import safe_command_summary
 from agentlint.utils.shell import mutation_command
 
 logger = logging.getLogger("agentlint")
@@ -46,6 +49,7 @@ class EvaluationResult:
 
     violations: list[Violation] = field(default_factory=list)
     rules_evaluated: int = 0
+    rule_ids_evaluated: list[str] = field(default_factory=list)
 
     @property
     def is_blocking(self) -> bool:
@@ -72,12 +76,13 @@ class Engine:
                     "command": mutation_command(context.command),
                 },
             )
-        if required:
+        protected = required | {rule.id for rule in self.rules if getattr(rule, "locked", False)}
+        if protected:
             cb = {
                 **self.config.circuit_breaker,
                 **context.config.get("_circuit_breaker_global", {}),
             }
-            cb["never_degrade"] = list(set(cb.get("never_degrade", [])) | required)
+            cb["never_degrade"] = list(set(cb.get("never_degrade", [])) | protected)
             context = replace(context, config={**context.config, "_circuit_breaker_global": cb})
 
         for rule in self.rules:
@@ -138,6 +143,7 @@ class Engine:
                         continue
 
             result.rules_evaluated += 1
+            result.rule_ids_evaluated.append(rule.id)
 
             try:
                 checked = (
@@ -174,8 +180,46 @@ class Engine:
             for v in violations:
                 if not getattr(rule, "locked", False) and rule.id not in required:
                     v.severity = self.config.effective_severity(v.severity)
+                if v.severity == Severity.ERROR:
+                    if not v.operation:
+                        v.operation = (
+                            safe_command_summary(context.command or "")
+                            if context.tool_name == "Bash"
+                            else context.tool_name
+                        )
+                    if not v.policy_source:
+                        config_files = ", ".join(self.config.source_paths)
+                        v.policy_source = (
+                            f"{rule.pack} pack; {config_files}"
+                            if config_files
+                            else f"{rule.pack} pack (built-in defaults)"
+                        )
+                    if not v.suggestion:
+                        v.suggestion = (
+                            "Run 'agentlint policy explain' or inspect the rule configuration."
+                        )
 
-            result.violations.extend(violations)
+            for v in violations:
+                exempted = False
+                if (
+                    context.tool_name == "Bash"
+                    and not getattr(rule, "locked", False)
+                    and not type(rule).__module__.startswith("agentlint.agentchute.")
+                    and rule.id not in required
+                ):
+                    for grant in self.config.exceptions:
+                        if exception_applies(
+                            grant,
+                            rule_id=v.rule_id,
+                            repository=context.project_dir,
+                            command=context.command or "",
+                        ) and audit_use(
+                            grant, repository=context.project_dir, command=context.command or ""
+                        ):
+                            exempted = True
+                            break
+                if not exempted:
+                    result.violations.append(v)
 
         # Apply circuit breaker degradation
         result.violations = apply_circuit_breaker(

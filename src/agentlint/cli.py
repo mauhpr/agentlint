@@ -638,7 +638,19 @@ def _evaluate_tool_context(context, config, rules):
     default=None,
     help="Output format override (claude_hooks, cursor_hooks)",
 )
-def check(event: str, project_dir: str | None, adapter: str | None, output_format: str | None):
+@click.option(
+    "--diagnostic-bundle",
+    type=click.Path(),
+    default=None,
+    help="Write a sanitized hook diagnostic JSON file",
+)
+def check(
+    event: str,
+    project_dir: str | None,
+    adapter: str | None,
+    output_format: str | None,
+    diagnostic_bundle: str | None,
+):
     """Evaluate rules against a tool call from stdin."""
     adapter_obj = _resolve_adapter(adapter)
     explicit_project_dir = project_dir
@@ -749,6 +761,7 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
         evaluated, elapsed = _evaluate_tool_context(file_context, config, rules)
         result.violations.extend(evaluated.violations)
         result.rules_evaluated += evaluated.rules_evaluated
+        result.rule_ids_evaluated.extend(evaluated.rule_ids_evaluated)
         elapsed_ms += elapsed
     timing = session_state.setdefault("_hook_timing", {"total_ms": 0.0, "count": 0})
     timing["total_ms"] += elapsed_ms
@@ -807,7 +820,7 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
                 ],
                 "rules_evaluated": result.rules_evaluated,
                 "is_blocking": result.is_blocking,
-                "project_dir": project_dir,
+                "project_dir_sha256": hashlib.sha256(project_dir.encode()).hexdigest(),
                 "agent_type": raw.get("agent_type"),
                 "agent_platform": adapter_obj.platform_name,
                 "agentlint_version": __version__,
@@ -845,10 +858,45 @@ def check(event: str, project_dir: str | None, adapter: str | None, output_forma
         output = reporter.format_subagent_start_output()
     else:
         output = reporter.format_hook_output(event=agent_event)
+    exit_code = reporter.exit_code(event=event)
+    if adapter_obj.platform_name == "codex" and output_format is None:
+        from agentlint.diagnostics import validate_codex_output
+
+        validation = validate_codex_output(
+            output,
+            event=to_hook_event(agent_event).value,
+            exit_code=exit_code,
+            blocked=result.is_blocking,
+        )
+        if not validation["valid"]:
+            click.echo(f"AgentLint: invalid Codex hook response: {validation['reason']}", err=True)
+            sys.exit(2)
+    else:
+        validation = {"valid": True, "reason": "adapter output not validated"}
+    if diagnostic_bundle:
+        from agentlint.diagnostics import write_bundle
+
+        try:
+            write_bundle(
+                diagnostic_bundle,
+                raw=raw,
+                event=to_hook_event(agent_event).value,
+                adapter=adapter_obj.platform_name,
+                version=__version__,
+                project_dir=project_dir,
+                rules_evaluated=result.rules_evaluated,
+                rule_ids_evaluated=result.rule_ids_evaluated,
+                violations=result.violations,
+                validation=validation,
+            )
+        except OSError as exc:
+            click.echo(
+                f"AgentLint: could not write diagnostic bundle: {type(exc).__name__}", err=True
+            )
     if output:
         click.echo(output)
 
-    sys.exit(reporter.exit_code(event=event))
+    sys.exit(exit_code)
 
 
 @main.command()
@@ -2506,11 +2554,12 @@ def policy_group():
 
 
 @policy_group.command("status")
-def policy_status_command():
+@click.option("--online", is_flag=True, help="Test AgentChute connectivity (no cache changes)")
+def policy_status_command(online: bool):
     """Show local policy cache status."""
-    from agentlint.agentchute.policy import policy_status
+    from agentlint.agentchute.policy import policy_diagnostics
 
-    status_data = policy_status()
+    status_data = policy_diagnostics(online=online)
     click.echo(f"Workspace policy: {'cached' if status_data['cached'] else 'not cached'}")
     if status_data.get("version") is not None:
         click.echo(f"Version: {status_data['version']}")
@@ -2518,6 +2567,15 @@ def policy_status_command():
         click.echo(f"Updated: {status_data['updated_at']}")
     if status_data.get("error"):
         click.echo(f"Error: {status_data['error']}")
+    click.echo(f"AgentChute enabled: {str(status_data['configured_enabled']).lower()}")
+    click.echo(f"Credential: {'set' if status_data['credential_present'] else 'missing'}")
+    click.echo(f"Connection: {status_data['connection']}")
+    click.echo(f"Cached rules enforced: {str(status_data['cached_rules_enforced']).lower()}")
+    if status_data["active_rule_ids"]:
+        click.echo(f"Active cached rules: {', '.join(status_data['active_rule_ids'])}")
+    click.echo(
+        "Restart: policy cache changes apply on the next hook; restart the agent after environment changes"
+    )
 
 
 @policy_group.command("refresh")
@@ -2539,12 +2597,12 @@ def policy_explain_command(output_format: str):
     from agentlint.agentchute.policy import (
         load_cached_policy,
         missing_required_packs,
-        policy_status,
+        policy_diagnostics,
         required_packs,
     )
 
     policy = load_cached_policy()
-    status_data = policy_status()
+    status_data = policy_diagnostics()
     if policy is None:
         click.echo("No AgentChute policy cache found.")
         if status_data.get("error"):
@@ -2577,6 +2635,11 @@ def policy_explain_command(output_format: str):
                     "cloud_feeds": cloud_feeds,
                     "missing_required_packs": missing,
                     "hook_behavior": "local-only, no network required",
+                    "connection": status_data["connection"],
+                    "cached_rules_enforced": status_data["cached_rules_enforced"],
+                    "credential_present": status_data["credential_present"],
+                    "restart_for_policy_cache": False,
+                    "restart_for_environment_changes": True,
                 },
                 indent=2,
                 sort_keys=True,
@@ -2598,6 +2661,12 @@ def policy_explain_command(output_format: str):
     if missing:
         click.echo(f"Missing custom packs: {', '.join(missing)}")
     click.echo("Hook behavior: local-only, no network required")
+    click.echo(
+        f"Connection: {status_data['connection']} (use 'agentlint policy status --online' to test)"
+    )
+    click.echo(
+        "Restart: policy cache changes apply on the next hook; restart after environment changes"
+    )
 
 
 if __name__ == "__main__":
