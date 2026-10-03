@@ -35,6 +35,8 @@ def validate_codex_output(output: str | None, *, event: str, exit_code: int, blo
         and (payload.get("decision") != "block" or not payload.get("reason"))
     ):
         return {"valid": False, "reason": "missing block decision or reason"}
+    if blocked and event == "SessionStart" and payload.get("continue") is not False:
+        return {"valid": False, "reason": "missing SessionStart stop decision"}
     return {"valid": True, "reason": "Codex JSON protocol"}
 
 

@@ -12,9 +12,11 @@ import pytest
 
 from agentlint.agentchute.policy import DeclarativePolicyRule, policy_diagnostics
 from agentlint.config import AgentLintConfig
+from agentlint.diagnostics import validate_codex_output, write_bundle
 from agentlint.engine import Engine
-from agentlint.exceptions import validate_exceptions
-from agentlint.models import HookEvent, RuleContext
+from agentlint.exceptions import applies, validate_exceptions
+from agentlint.formats.codex_hooks import CodexHookFormatter
+from agentlint.models import HookEvent, RuleContext, Severity, Violation
 from agentlint.packs import load_rules
 from agentlint.recorder import summarize_tool_input
 from agentlint.utils.shell import (
@@ -122,6 +124,92 @@ def test_codex_posttool_error_protocol_and_sanitized_bundle(tmp_path):
     assert isinstance(diagnostic["rule_ids_evaluated"], list)
     assert "TEST_SECRET_SENTINEL" not in bundle.read_text()
     assert "not a patch" not in bundle.read_text()
+
+
+@pytest.mark.parametrize(
+    ("output", "event", "exit_code", "blocked", "valid"),
+    [
+        (None, "PostToolUse", 0, False, True),
+        (None, "PostToolUse", 0, True, False),
+        ("not json", "PostToolUse", 0, True, False),
+        ("[]", "PostToolUse", 0, True, False),
+        ('{"decision":"block","reason":"why"}', "PostToolUse", 2, True, False),
+        (
+            '{"hookSpecificOutput":{"hookEventName":"post_tool_use"}}',
+            "PostToolUse",
+            0,
+            False,
+            False,
+        ),
+        ('{"hookSpecificOutput":{"hookEventName":"PreToolUse"}}', "PreToolUse", 0, True, False),
+        ('{"decision":"block"}', "PostToolUse", 0, True, False),
+        (
+            '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"}}',
+            "PreToolUse",
+            0,
+            True,
+            True,
+        ),
+        ('{"decision":"block","reason":"why"}', "PostToolUse", 0, True, True),
+        ('{"hookSpecificOutput":{"hookEventName":"SessionStart"}}', "SessionStart", 0, True, False),
+        (
+            '{"continue":false,"hookSpecificOutput":{"hookEventName":"SessionStart"}}',
+            "SessionStart",
+            0,
+            True,
+            True,
+        ),
+    ],
+)
+def test_codex_output_validation_paths(output, event, exit_code, blocked, valid):
+    assert (
+        validate_codex_output(output, event=event, exit_code=exit_code, blocked=blocked)["valid"]
+        is valid
+    )
+
+
+def test_codex_formatter_covers_prompt_and_session_paths():
+    formatter = CodexHookFormatter()
+    error = Violation("rule", "blocked", Severity.ERROR, suggestion="Use a safe command")
+    warning = Violation("warning", "review", Severity.WARNING)
+    assert formatter.exit_code([error], "UserPromptSubmit") == 0
+    assert formatter.format([], "UserPromptSubmit") is None
+    prompt = json.loads(formatter.format([error], "UserPromptSubmit"))
+    assert prompt["decision"] == "block"
+    assert prompt["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+    advisory = json.loads(formatter.format([warning], "UserPromptSubmit"))
+    assert "decision" not in advisory
+    session = json.loads(formatter.format([error], "SessionStart"))
+    assert session["continue"] is False
+    assert session["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "continue" not in json.loads(formatter.format([warning], "SessionStart"))
+
+
+def test_bundle_uses_only_minimized_fields(tmp_path):
+    destination = tmp_path / "bundle.json"
+    write_bundle(
+        str(destination),
+        raw={
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "curl -H 'Authorization: Bearer TEST_SECRET_SENTINEL' https://example.test",
+                "secret_name": "TEST_SECRET_SENTINEL",
+            },
+        },
+        event="PreToolUse",
+        adapter="codex",
+        version="2.7.0",
+        project_dir="/private/TEST_SECRET_SENTINEL",
+        rules_evaluated=1,
+        rule_ids_evaluated=["no-secrets"],
+        violations=[Violation("no-secrets", "secret TEST_SECRET_SENTINEL", Severity.ERROR)],
+        validation={"valid": True, "reason": "Codex JSON protocol"},
+    )
+    bundle = json.loads(destination.read_text())
+    assert bundle["command_summary"] == "curl [arguments redacted]"
+    assert bundle["other_input_keys"] == 1
+    assert bundle["rule_ids_evaluated"] == ["no-secrets"]
+    assert "TEST_SECRET_SENTINEL" not in destination.read_text()
 
 
 def test_cached_policy_block_explains_match_source_and_correction(tmp_path, monkeypatch):
@@ -244,3 +332,61 @@ def test_exact_short_lived_exception_is_audited_and_locked_rules_still_block(tmp
     too_long = {**grant, "expires_at": (now + timedelta(days=8)).isoformat()}
     with pytest.raises(ValueError):
         validate_exceptions([too_long])
+
+
+def test_exception_schema_rejects_broad_and_ambiguous_grants(tmp_path):
+    now = datetime.now(UTC)
+    base = {
+        "id": "ticket-1",
+        "rule_id": "no-force-push",
+        "repository": str(tmp_path),
+        "operation": "git push --force origin main",
+        "created_at": (now - timedelta(minutes=1)).isoformat(),
+        "expires_at": (now + timedelta(hours=1)).isoformat(),
+        "reason": "maintenance",
+    }
+    assert validate_exceptions(None) == []
+    cases = [
+        "not a list",
+        ["not a mapping"],
+        [{**base, "id": "bad id"}],
+        [base, base],
+        [{**base, "repository": "relative/repo"}],
+        [{**base, "operation": "git push; rm -rf /"}],
+        [{**base, "operation": "bash -c 'git push --force origin main'"}],
+        [{**base, "created_at": now.replace(tzinfo=None).isoformat()}],
+        [{**base, "expires_at": base["created_at"]}],
+        [{**base, "reason": ""}],
+    ]
+    for grants in cases:
+        with pytest.raises(ValueError):
+            validate_exceptions(grants)
+    assert applies(
+        base,
+        rule_id="no-force-push",
+        repository=str(tmp_path),
+        command="git push --force origin main",
+    )
+    assert not applies(
+        base, rule_id="another", repository=str(tmp_path), command="git push --force origin main"
+    )
+    assert not applies(
+        base,
+        rule_id="no-force-push",
+        repository=str(tmp_path / "other"),
+        command="git push --force origin main",
+    )
+
+
+def test_readonly_sql_rejects_unsafe_file_shapes(tmp_path):
+    command = "psql -h prod-db.internal -f inspect.sql"
+    assert not is_readonly_psql_command(command, str(tmp_path))
+    (tmp_path / "inspect.sql").write_text("BEGIN READ ONLY; SELECT 1; COMMIT; -- comment")
+    assert not is_readonly_psql_command(command, str(tmp_path))
+    (tmp_path / "inspect.sql").write_text("BEGIN READ ONLY; SELECT 1; COMMIT;" + " " * 65536)
+    assert not is_readonly_psql_command(command, str(tmp_path))
+    (tmp_path / "inspect.sql").write_text("BEGIN READ ONLY; SELECT 1; COMMIT;")
+    assert not is_readonly_psql_command("psql -h prod-db.internal -f ../inspect.sql", str(tmp_path))
+    assert not is_readonly_psql_command(
+        "psql -h prod-db.internal -c 'BEGIN READ ONLY; SELECT 1 INTO x; COMMIT;'", str(tmp_path)
+    )
