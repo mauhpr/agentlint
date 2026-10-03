@@ -301,6 +301,31 @@ rules:
     allow_paths: ["**/generated/**"]
 ```
 
+### Short-lived command exceptions
+
+An exception applies to one literal Bash command, one absolute repository path,
+and one rule ID. Both timestamps require a timezone; the interval may be no
+longer than seven days. Shell expansions, pipelines, and compound commands are
+not eligible. Required workspace rules and AgentChute organization rules cannot
+be excepted locally. AgentLint writes a private audit entry before using an
+exception; if that write fails, the rule still blocks.
+
+```yaml
+exceptions:
+  - id: ticket-123
+    rule_id: no-force-push
+    repository: /absolute/path/to/repository
+    operation: git push --force origin maintenance
+    created_at: 2026-10-03T10:00:00Z
+    expires_at: 2026-10-03T12:00:00Z
+    reason: Approved maintenance window
+```
+
+The audit file defaults to `~/.cache/agentlint/exception-audit.jsonl` and stores
+a SHA-256 digest of the command, not its arguments. Set
+`AGENTLINT_EXCEPTION_AUDIT_FILE` to choose another path. Remove expired grants
+from configuration after the work is done.
+
 ### Inline ignore directives
 
 Add comments directly in source files:

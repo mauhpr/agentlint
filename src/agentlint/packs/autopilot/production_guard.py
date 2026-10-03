@@ -6,7 +6,7 @@ import re
 
 from agentlint.config import get_rule_setting
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
-from agentlint.utils.shell import is_readonly_cloud_command
+from agentlint.utils.shell import is_readonly_cloud_command, is_readonly_psql_command
 
 _BASH_TOOLS = {"Bash"}
 
@@ -111,7 +111,9 @@ class ProductionGuard(Rule):
         command: str = context.command or ""
         if not command:
             return []
-        if is_readonly_cloud_command(command):
+        if is_readonly_cloud_command(command) or is_readonly_psql_command(
+            command, context.working_directory or context.project_dir
+        ):
             return []
 
         allowed_projects: list[str] = [

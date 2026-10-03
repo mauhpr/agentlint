@@ -91,9 +91,7 @@ class ClaudeHookFormatter(OutputFormatter):
             if warnings or errors:
                 reason_violations = errors + warnings
                 result["decision"] = "block"
-                result["reason"] = "\n".join(
-                    f"[{v.rule_id}] {v.message}" for v in reason_violations
-                )
+                result["reason"] = "\n".join(self._format_violation_lines(reason_violations))
             return json.dumps(result)
 
         # Other events (Stop, Notification, etc.) — systemMessage for user visibility

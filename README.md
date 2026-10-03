@@ -26,7 +26,7 @@ We don't have a mature answer to that yet. Nobody does. The **autopilot pack** i
 
 AgentLint ships with 77 rules across 8 packs and normalizes tool events across supported AI coding agents. The 24 **universal** rules and 7 **quality** rules work with any tech stack; 4 additional packs auto-activate based on your project files; the **security** pack is opt-in; and the **autopilot** pack is opt-in and experimental.
 
-**v2.6.0 highlights:** Optional workspace policies with required rules that survive repository overrides and repeated attempts; native Codex multi-file patch inspection; fewer false positives for literal display commands and narrowly recognized cloud inspection operations. Existing standalone project configurations remain supported. See [configuration](docs/configuration.md) and [Codex setup](docs/setup-codex.md) for activation and limitations.
+**v2.7.0 highlights:** Reliable Codex post-tool feedback, redacted recordings and diagnostic bundles, clearer cached policy status and blocks, bounded command exceptions, and fewer false positives for read-only cloud and SQL inspection. See [configuration](docs/configuration.md), [diagnostics](docs/diagnostics.md), and [Codex setup](docs/setup-codex.md).
 
 | Rule | Severity | What it does |
 |------|----------|-------------|

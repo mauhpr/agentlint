@@ -36,6 +36,8 @@ class AgentLintConfig:
     agentchute: dict = field(default_factory=dict)
     projects: dict[str, dict] = field(default_factory=dict)
     required_rules: list[str] = field(default_factory=list)
+    source_paths: list[str] = field(default_factory=list)
+    exceptions: list[dict] = field(default_factory=list)
 
     @property
     def is_recording_enabled(self) -> bool:
@@ -97,6 +99,8 @@ class AgentLintConfig:
             agentchute=self.agentchute,
             projects=self.projects,
             required_rules=self.required_rules,
+            source_paths=self.source_paths,
+            exceptions=self.exceptions,
         )
 
 
@@ -124,9 +128,11 @@ def _load_local_config(project_dir: str, *, strict: bool = False) -> AgentLintCo
     root = Path(project_dir)
 
     raw = {}
+    selected_path: Path | None = None
     for filename in CONFIG_FILENAMES:
         config_path = root / filename
         if config_path.exists():
+            selected_path = config_path
             try:
                 raw = yaml.safe_load(config_path.read_text()) or {}
             except yaml.YAMLError:
@@ -138,6 +144,9 @@ def _load_local_config(project_dir: str, *, strict: bool = False) -> AgentLintCo
 
     if not isinstance(raw, dict):
         raise ValueError("AgentLint configuration must be a mapping")
+    from agentlint.exceptions import validate_exceptions
+
+    exceptions = validate_exceptions(raw.get("exceptions", []))
 
     # Validate severity
     severity = raw.get("severity", "standard")
@@ -169,6 +178,8 @@ def _load_local_config(project_dir: str, *, strict: bool = False) -> AgentLintCo
         recording=raw.get("recording", {}),
         agentchute=raw.get("agentchute", {}),
         projects=raw.get("projects", {}),
+        source_paths=[str(selected_path)] if selected_path else [],
+        exceptions=exceptions,
     )
 
 

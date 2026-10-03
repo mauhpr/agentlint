@@ -86,4 +86,6 @@ def load_workspace_config(project_dir: str, loader: Callable) -> AgentLintConfig
         agentchute=_merge(base.agentchute, local.agentchute),
         projects=_merge(base.projects, local.projects),
         required_rules=list(dict.fromkeys(required)),
+        source_paths=list(dict.fromkeys([*base.source_paths, *local.source_paths])),
+        exceptions=[*base.exceptions, *local.exceptions] if local_dir != root else base.exceptions,
     )

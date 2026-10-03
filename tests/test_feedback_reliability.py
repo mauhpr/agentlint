@@ -1,0 +1,246 @@
+"""Regressions for protocol, privacy, read-only inspection and scoped grants."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from agentlint.agentchute.policy import DeclarativePolicyRule, policy_diagnostics
+from agentlint.config import AgentLintConfig
+from agentlint.engine import Engine
+from agentlint.exceptions import validate_exceptions
+from agentlint.models import HookEvent, RuleContext
+from agentlint.packs import load_rules
+from agentlint.recorder import summarize_tool_input
+from agentlint.utils.shell import (
+    is_readonly_cloud_command,
+    is_readonly_psql_command,
+    mutation_command,
+)
+
+
+def _result(command: str, project_dir: str):
+    config = AgentLintConfig(packs=["universal", "security", "autopilot"])
+    context = RuleContext(
+        event=HookEvent.PRE_TOOL_USE,
+        tool_name="Bash",
+        tool_input={"command": command},
+        project_dir=project_dir,
+    )
+    return Engine(config, load_rules(config.packs)).evaluate(context)
+
+
+def test_wrapped_reads_and_quoted_examples(tmp_path):
+    cloud = "env FOO=bar gcloud compute instances describe vm --project prod-main"
+    assert is_readonly_cloud_command(cloud)
+    assert not any(
+        v.rule_id == "production-guard" for v in _result(cloud, str(tmp_path)).violations
+    )
+    example = "env FOO=bar printf '%s' 'gcloud projects delete prod-main'"
+    assert mutation_command(example) == "printf"
+    assert not _result(example, str(tmp_path)).is_blocking
+    assert not is_readonly_cloud_command("env FOO=$(bad) gcloud projects list --project prod-main")
+    assert not is_readonly_cloud_command(
+        "gcloud projects list delete prod-main --project prod-main"
+    )
+
+
+def test_explicit_readonly_sql_and_file(tmp_path):
+    sql = "BEGIN READ ONLY; SELECT 1; COMMIT;"
+    inline = f"psql -h prod-db.internal -c '{sql}'"
+    assert is_readonly_psql_command(inline, str(tmp_path))
+    assert not any(
+        v.rule_id == "production-guard" for v in _result(inline, str(tmp_path)).violations
+    )
+    (tmp_path / "inspect.sql").write_text(sql)
+    file_command = "env FOO=bar psql -h prod-db.internal -f inspect.sql"
+    assert is_readonly_psql_command(file_command, str(tmp_path))
+    assert not any(
+        v.rule_id == "production-guard" for v in _result(file_command, str(tmp_path)).violations
+    )
+    (tmp_path / "inspect.sql").write_text("BEGIN READ ONLY; DELETE FROM users; COMMIT;")
+    assert not is_readonly_psql_command(file_command, str(tmp_path))
+    assert not is_readonly_psql_command("psql -h prod-db.internal -c 'SELECT 1'", str(tmp_path))
+
+
+def test_recording_never_retains_bearer_or_prompt():
+    command = "curl -H 'Authorization: Bearer TEST_SECRET_SENTINEL' https://example.test"
+    summary = summarize_tool_input("Bash", {"command": command})
+    assert summary["command"] == "curl [arguments redacted]"
+    assert "TEST_SECRET_SENTINEL" not in json.dumps(summary)
+    prompt = summarize_tool_input("UserPromptSubmit", {}, "TEST_SECRET_SENTINEL")
+    assert "TEST_SECRET_SENTINEL" not in json.dumps(prompt)
+
+
+def test_codex_posttool_error_protocol_and_sanitized_bundle(tmp_path):
+    bundle = tmp_path / "diagnostic.json"
+    payload = {
+        "tool_name": "apply_patch",
+        "tool_input": {"command": "not a patch", "secret_value": "TEST_SECRET_SENTINEL"},
+        "cwd": str(tmp_path),
+    }
+    env = {
+        **os.environ,
+        "AGENTLINT_SESSION_DIR": str(tmp_path / "sessions"),
+        "AGENTLINT_AGENTCHUTE_POLICY_DIR": str(tmp_path / "policy"),
+    }
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agentlint",
+            "check",
+            "--event",
+            "PostToolUse",
+            "--adapter",
+            "codex",
+            "--project-dir",
+            str(tmp_path),
+            "--diagnostic-bundle",
+            str(bundle),
+        ],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+    assert process.returncode == 0
+    assert not process.stderr
+    output = json.loads(process.stdout)
+    assert output["decision"] == "block"
+    assert output["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert "codex-patch-inspection" in output["reason"]
+    diagnostic = json.loads(bundle.read_text())
+    assert diagnostic["output_validation"]["valid"] is True
+    assert diagnostic["adapter"] == "codex"
+    assert isinstance(diagnostic["rule_ids_evaluated"], list)
+    assert "TEST_SECRET_SENTINEL" not in bundle.read_text()
+    assert "not a patch" not in bundle.read_text()
+
+
+def test_cached_policy_block_explains_match_source_and_correction(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path))
+    (tmp_path / "policy.json").write_text(
+        json.dumps(
+            {
+                "version": 4,
+                "rules": [
+                    {
+                        "id": "org-check",
+                        "severity": "error",
+                        "locked": True,
+                        "message": "Blocked by workspace policy",
+                        "match": {
+                            "field": "command",
+                            "operator": "contains",
+                            "value": "terraform destroy",
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    rule = DeclarativePolicyRule(json.loads((tmp_path / "policy.json").read_text())["rules"][0])
+    context = RuleContext(
+        event=HookEvent.PRE_TOOL_USE,
+        tool_name="Bash",
+        tool_input={"command": "terraform destroy"},
+        project_dir=str(tmp_path),
+    )
+    violation = Engine(AgentLintConfig(packs=["universal"]), [rule]).evaluate(context).violations[0]
+    assert violation.rule_id == "org-check"
+    assert "Matched command contains" in violation.message
+    assert "terraform destroy" in violation.operation
+    assert "policy.json" in violation.policy_source
+    assert "policy explain" in violation.suggestion
+    diagnostics = policy_diagnostics()
+    assert diagnostics["cached_rules_enforced"] is True
+    assert diagnostics["connection"] == "not checked"
+    assert diagnostics["restart_for_policy_cache"] is False
+
+
+def test_online_policy_probe_is_read_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENTLINT_AGENTCHUTE_POLICY_DIR", str(tmp_path))
+    monkeypatch.setenv("AGENTCHUTE_LICENSE_KEY", "TEST_SECRET_SENTINEL")
+    calls = []
+
+    class Response:
+        status_code = 200
+
+    def get(url, headers, timeout):
+        calls.append((url, headers, timeout))
+        return Response()
+
+    monkeypatch.setattr("requests.get", get)
+    diagnostic = policy_diagnostics(online=True)
+    assert diagnostic["connection"] == "connected"
+    assert len(calls) == 1
+    assert not (tmp_path / "policy.json").exists()
+    assert "TEST_SECRET_SENTINEL" not in json.dumps(diagnostic)
+
+
+def test_exact_short_lived_exception_is_audited_and_locked_rules_still_block(tmp_path, monkeypatch):
+    now = datetime.now(UTC)
+    command = "git push --force origin main"
+    grant = {
+        "id": "ticket-123",
+        "rule_id": "no-force-push",
+        "repository": str(tmp_path),
+        "operation": command,
+        "created_at": (now - timedelta(minutes=1)).isoformat(),
+        "expires_at": (now + timedelta(hours=1)).isoformat(),
+        "reason": "approved maintenance",
+    }
+    validate_exceptions([grant])
+    audit = tmp_path / "audit.jsonl"
+    monkeypatch.setenv("AGENTLINT_EXCEPTION_AUDIT_FILE", str(audit))
+    config = AgentLintConfig(packs=["universal"], exceptions=[grant])
+    context = RuleContext(
+        event=HookEvent.PRE_TOOL_USE,
+        tool_name="Bash",
+        tool_input={"command": command},
+        project_dir=str(tmp_path),
+    )
+    result = Engine(config, load_rules(config.packs)).evaluate(context)
+    assert not any(v.rule_id == "no-force-push" for v in result.violations)
+    assert json.loads(audit.read_text().splitlines()[0])["exception_id"] == "ticket-123"
+    assert command not in audit.read_text()
+    monkeypatch.setenv("AGENTLINT_EXCEPTION_AUDIT_FILE", str(tmp_path))
+    assert any(
+        v.rule_id == "no-force-push"
+        for v in Engine(config, load_rules(config.packs)).evaluate(context).violations
+    )
+    monkeypatch.setenv("AGENTLINT_EXCEPTION_AUDIT_FILE", str(audit))
+    changed = RuleContext(
+        event=HookEvent.PRE_TOOL_USE,
+        tool_name="Bash",
+        tool_input={"command": "git push --force origin other"},
+        project_dir=str(tmp_path),
+    )
+    assert any(
+        v.rule_id == "no-force-push"
+        for v in Engine(config, load_rules(config.packs)).evaluate(changed).violations
+    )
+    config.required_rules = ["no-force-push"]
+    assert any(
+        v.rule_id == "no-force-push"
+        for v in Engine(config, load_rules(config.packs)).evaluate(context).violations
+    )
+    expired = {**grant, "expires_at": (now - timedelta(seconds=1)).isoformat()}
+    assert any(
+        v.rule_id == "no-force-push"
+        for v in Engine(
+            AgentLintConfig(packs=["universal"], exceptions=[expired]), load_rules(["universal"])
+        )
+        .evaluate(context)
+        .violations
+    )
+    too_long = {**grant, "expires_at": (now + timedelta(days=8)).isoformat()}
+    with pytest.raises(ValueError):
+        validate_exceptions([too_long])

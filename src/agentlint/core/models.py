@@ -255,9 +255,11 @@ class Violation:
     file_path: str | None = None
     line: int | None = None
     suggestion: str | None = None
+    operation: str | None = None
+    policy_source: str | None = None
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "rule_id": self.rule_id,
             "message": self.message,
             "severity": self.severity.value,
@@ -265,6 +267,11 @@ class Violation:
             "line": self.line,
             "suggestion": self.suggestion,
         }
+        if self.operation is not None:
+            result["operation"] = self.operation
+        if self.policy_source is not None:
+            result["policy_source"] = self.policy_source
+        return result
 
 
 @dataclass

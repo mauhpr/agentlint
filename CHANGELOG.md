@@ -1,5 +1,32 @@
 # Changelog
 
+## v2.7.0 (2026-10-03) — Reliable Hook Feedback and Scoped Policy Diagnostics
+
+### Added
+
+- Codex hook output validation and optional sanitized bundles via
+  `agentlint check --diagnostic-bundle PATH`.
+- `agentlint policy status --online` for a read-only AgentChute connection probe;
+  local status now identifies active cached rules and restart guidance.
+- Exact-command, repository-bound, seven-day maximum exceptions with a private
+  usage audit. Required workspace and organization rules remain protected.
+- Block feedback names the operation and policy source and gives a correction
+  path, including for cached AgentChute rules.
+
+### Fixed
+
+- Codex post-tool errors return structured block JSON on exit 0, so feedback is
+  consumed rather than lost on the exit-2 stderr path.
+- Literal `env` wrappers around cloud inspection and quoted display examples
+  avoid production/mutation false positives. Explicitly read-only `psql -c`
+  transactions and repository-local `psql -f` scripts are recognized.
+- New recording and AgentChute summaries omit raw command arguments, prompts,
+  paths, URLs, search queries and task descriptions. Older recordings are not
+  rewritten; review or clear them before sharing.
+- Locked organization rules cannot be degraded by the circuit breaker.
+
+---
+
 ## v2.6.1 (2026-10-01) — Codex PostToolUse Hook Output
 
 ### Fixed

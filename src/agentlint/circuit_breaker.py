@@ -313,6 +313,8 @@ def apply_circuit_breaker(
                 file_path=v.file_path,
                 line=v.line,
                 suggestion=v.suggestion,
+                operation=v.operation,
+                policy_source=v.policy_source,
             )
         )
 
