@@ -1,5 +1,20 @@
 # Changelog
 
+## v2.7.1 (2026-10-06) — Read-only Python File Checks
+
+### Fixed
+
+- Simple, literal Python `-c` commands that construct pathlib paths or read
+  files no longer trigger `no-bash-file-write` merely for using `Path` or
+  `open`. Inspection parses syntax without executing the submitted code.
+- Visible Python writes, unknown open modes, opener aliases and dynamic
+  execution remain blocked. Unsupported flags and shell syntax retain
+  conservative text detection.
+- A redirect to a scratch or otherwise allowed shell path cannot exempt a
+  Python write to a different destination.
+
+---
+
 ## v2.7.0 (2026-10-03) — Reliable Hook Feedback and Scoped Policy Diagnostics
 
 ### Added

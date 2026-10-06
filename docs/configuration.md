@@ -891,6 +891,26 @@ tools instead. Detects: `cat >`, `echo >`, `tee`, `sed -i`, `cp`, `mv`,
 `perl -pi`, `awk >`, `dd of=`, `python -c ... open(...).write()`, and
 heredocs.
 
+For a simple, literal `python -c CODE` command, Python syntax is inspected
+without executing code or importing modules. `Path(...)` construction,
+`read_text()` / `read_bytes()`, and `open()` with its default mode or a literal
+`r`, `rb`, `rt`, `br`, or `tr` mode are allowed. This includes imported aliases
+for `builtins.open` and `io.open`, and pathlib's `open()` method. Write modes,
+unknown modes, unpacked arguments, opener references passed or assigned to
+other functions, known write methods, and dynamic execution remain blocked.
+This is a check for visible file operations, not proof that imported functions
+are pure or a general Python sandbox.
+
+Recognized invocations use `python`, `python2`, `python3`, or versioned names
+such as `python3.13`, optionally with a directory prefix, literal `env` /
+`command` wrappers, and separate `-B`, `-E`, `-I`, `-O`, `-OO`, `-q`, `-s`,
+`-S`, or `-u` flags before `-c`. Other flags, combined flags, attached `-c`
+arguments, shell expansions, compound commands, redirects, invalid Python,
+and source larger than 64 KiB retain conservative text detection. Python
+write destinations are not extracted: an unrelated shell redirect to an
+allowed or scratch path cannot exempt a Python write, and Python writes do
+not receive path exemptions.
+
 Writes targeting **ephemeral/scratch paths** (`/tmp/`, `/var/folders/`,
 `/private/tmp/`) are exempt by default since v1.10.0 — these are not
 project source files. Cloud CLI binaries (`bq`, `aws`, `kubectl`, ...)
