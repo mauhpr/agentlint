@@ -905,6 +905,8 @@ unknown modes, unpacked arguments, opener references passed or assigned to
 other functions, known write methods, and dynamic execution remain blocked.
 Reflective builtin access through `globals`, `locals`, `vars`, `__builtins__`,
 or `__dict__`, and calls to string-keyed openers also remain conservative.
+Known `os` / `shutil` file-changing APIs and process-spawning calls through
+`os.system`, `os.popen`, and `subprocess` are blocked, including imported aliases.
 This is a check for visible file operations, not proof that imported functions
 are pure or a general Python sandbox.
 

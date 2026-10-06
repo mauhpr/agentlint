@@ -34,10 +34,31 @@ _WRITE_METHODS = {
 }
 _OPAQUE_CALLS = {"eval", "exec", "compile", "getattr", "__import__", "globals", "locals", "vars"}
 _OPAQUE_ACCESS = {"__builtins__", "__dict__"}
+_QUALIFIED_UNSAFE_CALLS = {
+    "os.remove",
+    "os.makedirs",
+    "os.removedirs",
+    "os.symlink",
+    "os.link",
+    "shutil.copy",
+    "shutil.copy2",
+    "shutil.copyfile",
+    "shutil.copytree",
+    "shutil.move",
+    "shutil.rmtree",
+    "os.system",
+    "os.popen",
+    "subprocess.run",
+    "subprocess.call",
+    "subprocess.check_call",
+    "subprocess.check_output",
+    "subprocess.Popen",
+}
+_QUALIFIED_UNSAFE_LEAVES = {name.rsplit(".", 1)[-1] for name in _QUALIFIED_UNSAFE_CALLS}
 # Unknown interpreter flags and attached -c arguments do not gain read exemptions.
 _PYTHON_WRITE_TEXT = re.compile(
     r"\bpython(?:[23](?:\.\d+)?)?\s+(?:(?!-c)\S+\s+)*-c\s*.*"
-    r"(?:\b(?:open|Path|__builtins__|__dict__)\b|\b(?:"
+    r"(?:\b(?:open|Path|__builtins__|__dict__|os|shutil|subprocess)\b|\b(?:"
     + "|".join(sorted(_WRITE_METHODS | _OPAQUE_CALLS))
     + r")\s*\()",
     re.DOTALL,
@@ -99,6 +120,8 @@ def _python_file_write(command: str) -> bool:
                 else aliases.get(node.id, node.id).rsplit(".", 1)[-1]
             )
             if leaf in _OPAQUE_ACCESS:
+                return True
+            if leaf in _QUALIFIED_UNSAFE_LEAVES and name_of(node) in _QUALIFIED_UNSAFE_CALLS:
                 return True
             if id(node) not in called_functions and leaf in {"open", *_OPAQUE_CALLS}:
                 return True
