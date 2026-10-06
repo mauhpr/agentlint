@@ -16,7 +16,7 @@ from agentlint.diagnostics import validate_codex_output, write_bundle
 from agentlint.engine import Engine
 from agentlint.exceptions import applies, validate_exceptions
 from agentlint.formats.codex_hooks import CodexHookFormatter
-from agentlint.models import HookEvent, RuleContext, Severity, Violation
+from agentlint.models import AgentEvent, HookEvent, RuleContext, Severity, Violation
 from agentlint.packs import load_rules
 from agentlint.recorder import summarize_tool_input
 from agentlint.utils.shell import (
@@ -126,6 +126,79 @@ def test_codex_posttool_error_protocol_and_sanitized_bundle(tmp_path):
     assert "not a patch" not in bundle.read_text()
 
 
+@pytest.mark.parametrize(("mode", "blocked"), [("standard", False), ("strict", True)])
+def test_codex_token_budget_obeys_effective_severity_at_cli_boundary(tmp_path, mode, blocked):
+    (tmp_path / "agentlint.yml").write_text(f"severity: {mode}\npacks: [universal]\n")
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    (sessions / "warning-test.json").write_text(
+        json.dumps({"token_budget": {"tool_invocations": {"Bash": 159}}})
+    )
+    env = {
+        **os.environ,
+        "AGENTLINT_CACHE_DIR": str(sessions),
+        "AGENTLINT_SESSION_ID": "warning-test",
+    }
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agentlint",
+            "check",
+            "--event",
+            "PostToolUse",
+            "--adapter",
+            "codex",
+            "--project-dir",
+            str(tmp_path),
+        ],
+        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "git status"}}),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+    assert process.returncode == 0
+    assert not process.stderr
+    output = json.loads(process.stdout)
+    if blocked:
+        assert output["decision"] == "block"
+        assert "token-budget" in output["reason"]
+    else:
+        assert "decision" not in output
+        assert "reason" not in output
+    context = output["hookSpecificOutput"]
+    assert context["hookEventName"] == "PostToolUse"
+    assert "[token-budget] Session activity: 160/200" in context["additionalContext"]
+
+
+@pytest.mark.parametrize(
+    "event",
+    [AgentEvent.POST_TOOL_USE, AgentEvent.POST_TOOL_FAILURE, "PostToolUse", "PostToolUseFailure"],
+)
+@pytest.mark.parametrize("severity", [Severity.WARNING, Severity.INFO])
+def test_codex_posttool_advisories_never_block(event, severity):
+    formatter = CodexHookFormatter()
+    violations = [Violation("advisory", "Keep working", severity)]
+    output = json.loads(formatter.format(violations, event))
+    assert formatter.exit_code(violations, event) == 0
+    assert "decision" not in output
+    assert "reason" not in output
+    assert "Keep working" in output["hookSpecificOutput"]["additionalContext"]
+
+
+def test_codex_mixed_posttool_violations_block_only_for_errors():
+    violations = [
+        Violation("error", "Unsafe action", Severity.ERROR),
+        Violation("warning", "Budget advisory", Severity.WARNING),
+    ]
+    output = json.loads(CodexHookFormatter().format(violations, "PostToolUse"))
+    assert output["decision"] == "block"
+    assert "Unsafe action" in output["reason"]
+    assert "Budget advisory" not in output["reason"]
+    assert "Budget advisory" in output["hookSpecificOutput"]["additionalContext"]
+
+
 @pytest.mark.parametrize(
     ("output", "event", "exit_code", "blocked", "valid"),
     [
@@ -151,6 +224,15 @@ def test_codex_posttool_error_protocol_and_sanitized_bundle(tmp_path):
             True,
         ),
         ('{"decision":"block","reason":"why"}', "PostToolUse", 0, True, True),
+        ('{"decision":"block","reason":"why"}', "PostToolUse", 0, False, False),
+        ('{"continue":false}', "SessionStart", 0, False, False),
+        (
+            '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"}}',
+            "PreToolUse",
+            0,
+            False,
+            False,
+        ),
         ('{"hookSpecificOutput":{"hookEventName":"SessionStart"}}', "SessionStart", 0, True, False),
         (
             '{"continue":false,"hookSpecificOutput":{"hookEventName":"SessionStart"}}',

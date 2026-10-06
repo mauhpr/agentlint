@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from agentlint.formats.claude_hooks import ClaudeHookFormatter
-from agentlint.models import AgentEvent, Severity, Violation
+from agentlint.models import AgentEvent, Severity, Violation, to_hook_event
 
 
 class CodexHookFormatter(ClaudeHookFormatter):
@@ -18,9 +18,27 @@ class CodexHookFormatter(ClaudeHookFormatter):
         if not violations:
             return None
         name = event.value if isinstance(event, AgentEvent) else event
+        if name in {
+            AgentEvent.POST_TOOL_USE.value,
+            AgentEvent.POST_TOOL_FAILURE.value,
+            "PostToolUse",
+            "PostToolUseFailure",
+        }:
+            errors = [v for v in violations if v.severity == Severity.ERROR]
+            output: dict = {
+                "hookSpecificOutput": {
+                    "hookEventName": to_hook_event(event).value,
+                    "additionalContext": "\n".join(self._format_violation_lines(violations)),
+                }
+            }
+            if errors:
+                output.update(
+                    {"decision": "block", "reason": "\n".join(self._format_violation_lines(errors))}
+                )
+            return json.dumps(output)
         if name in {AgentEvent.USER_PROMPT.value, "UserPromptSubmit"}:
             lines = self._format_violation_lines(violations)
-            output: dict = {
+            output = {
                 "hookSpecificOutput": {
                     "hookEventName": "UserPromptSubmit",
                     "additionalContext": "\n".join(lines),

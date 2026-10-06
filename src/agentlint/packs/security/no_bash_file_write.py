@@ -2,13 +2,169 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from fnmatch import fnmatch
+from pathlib import PurePosixPath
 
 from agentlint.config import get_rule_setting
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _BASH_TOOLS = {"Bash"}
+
+# Parse only literal, simple Python invocations. Shell expansion/compound commands
+# retain the conservative text check; this never executes Python or imports modules.
+_PYTHON_BINARY = re.compile(r"python(?:[23](?:\.\d+)?)?$")
+_PYTHON_FLAGS = {"-B", "-E", "-I", "-O", "-OO", "-q", "-s", "-S", "-u"}
+_WRITE_METHODS = {
+    "write",
+    "write_text",
+    "write_bytes",
+    "writelines",
+    "truncate",
+    "touch",
+    "mkdir",
+    "unlink",
+    "rmdir",
+    "rename",
+    "replace",
+    "chmod",
+    "symlink_to",
+    "hardlink_to",
+}
+_OPAQUE_CALLS = {"eval", "exec", "compile", "getattr", "__import__", "globals", "locals", "vars"}
+_OPAQUE_ACCESS = {"__builtins__", "__dict__"}
+_QUALIFIED_UNSAFE_CALLS = {
+    "os.remove",
+    "os.makedirs",
+    "os.removedirs",
+    "os.symlink",
+    "os.link",
+    "shutil.copy",
+    "shutil.copy2",
+    "shutil.copyfile",
+    "shutil.copytree",
+    "shutil.move",
+    "shutil.rmtree",
+    "os.system",
+    "os.popen",
+    "subprocess.run",
+    "subprocess.call",
+    "subprocess.check_call",
+    "subprocess.check_output",
+    "subprocess.Popen",
+}
+_QUALIFIED_UNSAFE_LEAVES = {name.rsplit(".", 1)[-1] for name in _QUALIFIED_UNSAFE_CALLS}
+# Unknown interpreter flags and attached -c arguments do not gain read exemptions.
+_PYTHON_WRITE_TEXT = re.compile(
+    r"\bpython(?:[23](?:\.\d+)?)?\s+(?:(?!-c)\S+\s+)*-c\s*.*"
+    r"(?:\b(?:open|Path|__builtins__|__dict__|os|shutil|subprocess)\b|\b(?:"
+    + "|".join(sorted(_WRITE_METHODS | _OPAQUE_CALLS))
+    + r")\s*\()",
+    re.DOTALL,
+)
+
+
+def _python_file_write(command: str) -> bool:
+    """Detect visible writes without treating path construction/reads as writes.
+
+    This is a syntax check, not proof that arbitrary imported functions are pure.
+    Unknown open modes and dynamic execution remain conservative. Unsupported
+    shell syntax keeps the previous text-based detection.
+    """
+    from agentlint.utils.shell import simple_words, unwrap_simple_command
+
+    fallback = bool(_PYTHON_WRITE_TEXT.search(command))
+    parsed = simple_words(command)
+    words = unwrap_simple_command(parsed) if parsed else None
+    if not words or not _PYTHON_BINARY.fullmatch(PurePosixPath(words[0]).name):
+        return fallback
+    index = 1
+    while index < len(words) and words[index] in _PYTHON_FLAGS:
+        index += 1
+    if index + 1 >= len(words) or words[index] != "-c":
+        return fallback
+    source = words[index + 1]
+    if len(source) > 64 * 1024:
+        return fallback
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError, RecursionError):
+        return fallback
+
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for name in node.names:
+                aliases[name.asname or name.name] = name.name
+        elif isinstance(node, ast.ImportFrom):
+            for name in node.names:
+                aliases[name.asname or name.name] = f"{node.module}.{name.name}"
+
+    def name_of(node: ast.expr) -> str:
+        attributes: list[str] = []
+        while isinstance(node, ast.Attribute):
+            attributes.append(node.attr)
+            node = node.value
+        base = aliases.get(node.id, node.id) if isinstance(node, ast.Name) else ""
+        return ".".join([base, *reversed(attributes)])
+
+    called_functions = {id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
+    for node in ast.walk(tree):
+        # An opener or dynamic execution function passed/assigned elsewhere cannot
+        # have its eventual arguments checked (save = open; save(path, 'w')).
+        if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load):
+            leaf = (
+                node.attr
+                if isinstance(node, ast.Attribute)
+                else aliases.get(node.id, node.id).rsplit(".", 1)[-1]
+            )
+            if leaf in _OPAQUE_ACCESS:
+                return True
+            if leaf in _QUALIFIED_UNSAFE_LEAVES and name_of(node) in _QUALIFIED_UNSAFE_CALLS:
+                return True
+            if id(node) not in called_functions and leaf in {"open", *_OPAQUE_CALLS}:
+                return True
+        # Calling a string-keyed opener bypasses normal mode inspection. Ordinary
+        # data reads such as payload['open'] are not callable builtin lookups.
+        if (
+            isinstance(node, ast.Subscript)
+            and id(node) in called_functions
+            and isinstance(node.slice, ast.Constant)
+            and node.slice.value in ("open", *_OPAQUE_CALLS)
+        ):
+            return True
+        # Include method references: save = path.write_text; save(...) writes too.
+        if isinstance(node, ast.Attribute) and node.attr in _WRITE_METHODS:
+            return True
+        if not isinstance(node, ast.Call):
+            continue
+        name = name_of(node.func)
+        leaf = name.rsplit(".", 1)[-1]
+        if leaf in _WRITE_METHODS:
+            return True
+        if leaf in _OPAQUE_CALLS:
+            return True
+        if leaf != "open":
+            continue
+        # builtins/io open take (file, mode); pathlib/handle.open take (mode).
+        # os.open uses integer flags, so cannot qualify as a proven read here.
+        mode_index = 1 if name in {"open", "builtins.open", "io.open", "os.open"} else 0
+        if name == "os.open":
+            return True
+        if any(isinstance(arg, ast.Starred) for arg in node.args) or any(
+            keyword.arg is None for keyword in node.keywords
+        ):
+            return True
+        mode = next((kw.value for kw in node.keywords if kw.arg == "mode"), None)
+        if mode is None and len(node.args) > mode_index:
+            mode = node.args[mode_index]
+        if mode is not None and not (
+            isinstance(mode, ast.Constant) and mode.value in ("r", "rb", "rt", "br", "tr")
+        ):
+            return True
+    return False
+
 
 # Default safe patterns — narrow idioms that are not security-relevant.
 # Only echo >> (append) to config dotfiles. NOT > (overwrite), NOT cat/tee/sed.
@@ -36,8 +192,8 @@ _WRITE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bawk\b.*(?<!\d)>\s*(\S+)"), "awk >"),
     # dd of= (output file).
     (re.compile(r"\bdd\b.*\bof=(\S+)"), "dd of="),
-    # python -c with open(...).write(...) or pathlib write.
-    (re.compile(r"\bpython[23]?\s+-c\s+.*(?:open\s*\(|\.write\s*\(|Path\s*\()"), "python -c write"),
+    # Python is inspected separately so Path(...) and read-only open(...) are allowed.
+    (_PYTHON_WRITE_TEXT, "python -c write"),
     # Heredoc: cat << EOF > file or cat > file << EOF.
     (re.compile(r"\bcat\b.*<<\s*['\"\\]?\w+"), "heredoc"),
 ]
@@ -149,16 +305,22 @@ class NoBashFileWrite(Rule):
         violations: list[Violation] = []
 
         for pattern, label in _WRITE_PATTERNS:
-            # python -c needs the full command (quotes contain code, not data)
-            match_cmd = command if label == "python -c write" else stripped
-            if pattern.search(match_cmd):
+            # Python code lives in quoted arguments; inspect syntax, never execute it.
+            matched = (
+                _python_file_write(command)
+                if label == "python -c write"
+                else bool(pattern.search(stripped))
+            )
+            if matched:
                 # Heredocs inside $(cat <<'EOF' ...) are command substitution
                 # (e.g. git commit -m, gh pr create --body), not file writes.
                 if label == "heredoc" and _HEREDOC_CMD_SUB.search(command):
                     continue
 
                 # Check if all target paths are in allowed paths.
-                target_paths = _extract_target_paths(command)
+                # A shell redirect is not the destination of a Python file write.
+                # Python destinations are not extracted, so path exemptions cannot apply.
+                target_paths = [] if label == "python -c write" else _extract_target_paths(command)
 
                 # /dev/null is never a real file write.
                 target_paths = [p for p in target_paths if p != "/dev/null"]
