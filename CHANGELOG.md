@@ -1,9 +1,12 @@
 # Changelog
 
-## v2.7.1 (2026-10-06) — Read-only Python File Checks
+## v2.7.1 (2026-10-06) — Python Reads and Advisory Codex Feedback
 
 ### Fixed
 
+- Codex post-tool WARNING and INFO feedback stays advisory. Session-activity
+  warnings no longer emit a blocking decision; effective ERROR violations
+  still block, including warnings promoted by a strict policy.
 - Simple, literal Python `-c` commands that construct pathlib paths or read
   files no longer trigger `no-bash-file-write` merely for using `Path` or
   `open`. Inspection parses syntax without executing the submitted code.

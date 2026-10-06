@@ -32,11 +32,14 @@ _WRITE_METHODS = {
     "symlink_to",
     "hardlink_to",
 }
-_OPAQUE_CALLS = {"eval", "exec", "compile", "getattr", "__import__"}
+_OPAQUE_CALLS = {"eval", "exec", "compile", "getattr", "__import__", "globals", "locals", "vars"}
+_OPAQUE_ACCESS = {"__builtins__", "__dict__"}
 # Unknown interpreter flags and attached -c arguments do not gain read exemptions.
 _PYTHON_WRITE_TEXT = re.compile(
     r"\bpython(?:[23](?:\.\d+)?)?\s+(?:(?!-c)\S+\s+)*-c\s*.*"
-    r"(?:\b(?:open|Path)\b|\b(?:" + "|".join(sorted(_WRITE_METHODS | _OPAQUE_CALLS)) + r")\s*\()",
+    r"(?:\b(?:open|Path|__builtins__|__dict__)\b|\b(?:"
+    + "|".join(sorted(_WRITE_METHODS | _OPAQUE_CALLS))
+    + r")\s*\()",
     re.DOTALL,
 )
 
@@ -95,8 +98,19 @@ def _python_file_write(command: str) -> bool:
                 if isinstance(node, ast.Attribute)
                 else aliases.get(node.id, node.id).rsplit(".", 1)[-1]
             )
+            if leaf in _OPAQUE_ACCESS:
+                return True
             if id(node) not in called_functions and leaf in {"open", *_OPAQUE_CALLS}:
                 return True
+        # Calling a string-keyed opener bypasses normal mode inspection. Ordinary
+        # data reads such as payload['open'] are not callable builtin lookups.
+        if (
+            isinstance(node, ast.Subscript)
+            and id(node) in called_functions
+            and isinstance(node.slice, ast.Constant)
+            and node.slice.value in ("open", *_OPAQUE_CALLS)
+        ):
+            return True
         # Include method references: save = path.write_text; save(...) writes too.
         if isinstance(node, ast.Attribute) and node.attr in _WRITE_METHODS:
             return True

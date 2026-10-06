@@ -141,6 +141,11 @@ Global severity mode. Transforms all violation severities:
 | `standard` | No transformation (default) |
 | `relaxed` | WARNING becomes INFO |
 
+Codex treats WARNING and INFO violations as advisory context, including
+post-tool session-activity warnings such as `token-budget`. Only effective
+ERROR violations emit blocking decisions. A `strict` policy still blocks
+warnings it explicitly promotes to ERROR.
+
 ### `packs`
 
 Explicit list of rule packs to activate. Overrides auto-detection.
@@ -898,6 +903,8 @@ without executing code or importing modules. `Path(...)` construction,
 for `builtins.open` and `io.open`, and pathlib's `open()` method. Write modes,
 unknown modes, unpacked arguments, opener references passed or assigned to
 other functions, known write methods, and dynamic execution remain blocked.
+Reflective builtin access through `globals`, `locals`, `vars`, `__builtins__`,
+or `__dict__`, and calls to string-keyed openers also remain conservative.
 This is a check for visible file operations, not proof that imported functions
 are pure or a general Python sandbox.
 

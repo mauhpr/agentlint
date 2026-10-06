@@ -26,6 +26,12 @@ def validate_codex_output(output: str | None, *, event: str, exit_code: int, blo
         not isinstance(specific, dict) or specific.get("hookEventName") != event
     ):
         return {"valid": False, "reason": "hookEventName does not match event"}
+    if not blocked and (
+        payload.get("decision") == "block"
+        or payload.get("continue") is False
+        or (isinstance(specific, dict) and specific.get("permissionDecision") == "deny")
+    ):
+        return {"valid": False, "reason": "blocking output without an error violation"}
     if blocked and event == "PreToolUse":
         if not isinstance(specific, dict) or specific.get("permissionDecision") != "deny":
             return {"valid": False, "reason": "missing PreToolUse deny decision"}

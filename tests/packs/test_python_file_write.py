@@ -54,6 +54,9 @@ def violations(command: str):
         "print(open('report.json', 'tr').read())",
         "from builtins import open as read_file; print(read_file('report.json').read())",
         "print('no file access')",
+        "print(payload['open'])",
+        "print(payload[key])",
+        "lookup['read']()",
         "obj" + ".attr" * 1100,
     ],
 )
@@ -112,6 +115,13 @@ def test_reported_bundle_verification_is_allowed():
         "write_text('data')",
         "__import__('module')",
         "compile(source, '<string>', 'exec')",
+        "globals()['open']('file', 'w')",
+        "locals()['open']('file', 'w')",
+        "vars(builtins)['open']('file', 'w')",
+        "__builtins__['open']('file', 'w')",
+        "import builtins as b; b.__dict__['open']('file', 'w')",
+        "lookup['open']('file', 'w')",
+        "lookup['exec'](payload)",
         "obj" + ".attr" * 1100 + ".open('w')",
     ],
 )
@@ -146,6 +156,8 @@ def test_writes_and_unknown_modes_remain_blocked(code):
         "python -c \"open('file', 'w')\"\n",
         "python -c \"open('file', 'w')\x00\"",
         "env -i python -c \"open('file', 'w')\"",
+        "python -X dev -c \"globals()['open']('file', 'w')\"",
+        "python -X dev -c \"__builtins__['open']('file', 'w')\"",
     ],
 )
 def test_unsupported_commands_do_not_gain_a_read_exception(command):
