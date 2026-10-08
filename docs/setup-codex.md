@@ -101,7 +101,21 @@ Codex also supports a legacy `decision: "block"` format; AgentLint uses the mode
 agentlint setup codex --global
 ```
 
-Installs to `~/.codex/hooks.json` (affects all projects).
+Installs to `~/.codex/hooks.json` (affects all projects). Since 2.8.0,
+`agentlint status` and `doctor` recognize user-scope installations and
+delegating wrapper scripts, and `doctor --fix` will not add a second
+project-level integration on top of them.
+
+## Verify coverage
+
+```bash
+agentlint status            # configured -> enabled -> observed, per agent
+agentlint status --json     # same, plus effective policy layers
+```
+
+"observed" comes from a heartbeat written on every hook invocation. If it says
+"never observed" after a tool call, the hook is not reaching AgentLint: review
+and trust it in Codex `/hooks`, then reload the session.
 
 ## Uninstall
 
@@ -122,6 +136,12 @@ Removes only AgentLint hooks; preserves any other custom hooks you have configur
 | `AGENTLINT_WORKSPACE_CONFIG` | Explicit workspace defaults and required rules; see [configuration](configuration.md#workspace-policy-v260) |
 
 ## Troubleshooting
+
+**Patch denied as ambiguous or missing?**
+- The denial names the file, hunk, the first context line and the matching line
+  numbers. Add more unique context lines to that hunk; an `@@` anchor only skips
+  matches before the anchor line.
+- Preview a fix with `agentlint check-patch change.patch --project-dir .`.
 
 **Hooks not firing for Write/Edit?**
 - Confirm AgentLint is at least 2.6.0 and the matcher includes `apply_patch`.

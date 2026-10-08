@@ -375,22 +375,31 @@ def _agentlint_hooks_present(path: Path | None) -> bool:
         return False
 
 
+def _coverage(platform: str, project_dir: str):
+    from agentlint.coverage import platform_coverage
+
+    return platform_coverage(
+        platform,
+        project_dir,
+        resolved_command=resolve_command(),
+        codex_enabled=_codex_hooks_enabled() if platform == "codex" else None,
+    )
+
+
 def _hook_status(platform: str, project_dir: str) -> tuple[str, str]:
-    path = _platform_hook_file(platform, project_dir)
-    if path is None:
+    """Return (state, path) across project and user scope; project scope wins.
+
+    States: installed, wrapper (delegating script), stale, custom, unreadable,
+    missing, unsupported. A user-scope installation is never reported missing.
+    """
+    if _platform_hook_file(platform, project_dir) is None:
         return "unsupported", ""
-    if not path.exists():
-        return "missing", str(path)
-    try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return "unreadable", str(path)
-    if "agentlint" not in text.lower():
-        return "custom", str(path)
-    resolved = resolve_command()
-    if resolved not in text and re.search(r"/[^\s\"']*agentlint(?:\s|$)", text):
-        return "stale", str(path)
-    return "installed", str(path)
+    coverage = _coverage(platform, project_dir)
+    active = coverage.configured
+    if active:
+        return active.state, active.path
+    project = next((i for i in coverage.installs if i.scope == "project"), None)
+    return coverage.state, project.path if project else ""
 
 
 def _detected_agent_platforms(project_dir: str) -> list[str]:
@@ -398,7 +407,11 @@ def _detected_agent_platforms(project_dir: str) -> list[str]:
     detected: list[str] = []
     for platform in _HOOK_PLATFORMS:
         path = _platform_hook_file(platform, project_dir)
-        if path and path.exists():
+        if (path and path.exists()) or _hook_status(platform, project_dir)[0] in {
+            "installed",
+            "wrapper",
+            "stale",
+        }:
             detected.append(platform)
 
     env_markers = {
@@ -622,6 +635,46 @@ def _evaluate_tool_context(context, config, rules):
     return result, elapsed_ms
 
 
+def _patch_violation(exc) -> Violation:
+    """Turn a patch inspection failure into an actionable, located denial."""
+    return Violation(
+        rule_id="codex-patch-inspection",
+        message=exc.describe(),
+        severity=Severity.ERROR,
+        file_path=exc.path,
+        line=exc.line,
+        operation=f"apply_patch hunk {exc.hunk}" if exc.hunk else "apply_patch",
+        policy_source="Codex patch inspection (built-in, always on)",
+        suggestion=exc.correction() + " No files were changed by AgentLint.",
+    )
+
+
+def _evaluate_tool_call(context, config, rules, *, patch: bool):
+    """Evaluate a tool call, expanding apply_patch into per-file contexts when enabled.
+
+    Shared by the live hook (`check`) and the read-only preview (`check-patch`)
+    so both apply the exact same patch validator and rules.
+    """
+    contexts = [context]
+    result = EvaluationResult()
+    elapsed_ms = 0.0
+    if patch and context.tool_name == "apply_patch":
+        from agentlint.adapters.codex_patch import PatchError, patch_contexts
+
+        try:
+            contexts = patch_contexts(context)
+        except PatchError as exc:
+            contexts = []
+            result.violations.append(_patch_violation(exc))
+    for file_context in contexts:
+        evaluated, elapsed = _evaluate_tool_context(file_context, config, rules)
+        result.violations.extend(evaluated.violations)
+        result.rules_evaluated += evaluated.rules_evaluated
+        result.rule_ids_evaluated.extend(evaluated.rule_ids_evaluated)
+        elapsed_ms += elapsed
+    return result, elapsed_ms
+
+
 @main.command()
 @click.option(
     "--event",
@@ -687,6 +740,20 @@ def check(
             project_dir = os.environ.get("CODEX_PROJECT_DIR") or working_directory
         _bind_codex_session(raw)
 
+    # Prove coverage: record that this agent's hook really reached AgentLint.
+    try:
+        from agentlint.coverage import record_heartbeat
+
+        record_heartbeat(
+            adapter_obj.platform_name,
+            event=hook_event.value,
+            tool=str(raw.get("tool_name", "") if isinstance(raw, dict) else ""),
+            project_dir=project_dir,
+            version=__version__,
+        )
+    except Exception:
+        logger.debug("Failed to record hook heartbeat", exc_info=True)
+
     try:
         config = load_config(project_dir)
     except (ValueError, yaml.YAMLError) as exc:
@@ -736,33 +803,9 @@ def check(
         working_directory=working_directory,
     )
 
-    contexts = [context]
-    patch_error = None
-    if adapter_obj.platform_name == "codex" and context.tool_name == "apply_patch":
-        from agentlint.adapters.codex_patch import PatchError, patch_contexts
-
-        try:
-            contexts = patch_contexts(context)
-        except PatchError as exc:
-            contexts = []
-            patch_error = str(exc)
-    result = EvaluationResult()
-    elapsed_ms = 0.0
-    if patch_error:
-        result.violations.append(
-            Violation(
-                rule_id="codex-patch-inspection",
-                message=patch_error,
-                severity=Severity.ERROR,
-                suggestion="Use a supported, unambiguous patch; no files were changed by AgentLint.",
-            )
-        )
-    for file_context in contexts:
-        evaluated, elapsed = _evaluate_tool_context(file_context, config, rules)
-        result.violations.extend(evaluated.violations)
-        result.rules_evaluated += evaluated.rules_evaluated
-        result.rule_ids_evaluated.extend(evaluated.rule_ids_evaluated)
-        elapsed_ms += elapsed
+    result, elapsed_ms = _evaluate_tool_call(
+        context, config, rules, patch=adapter_obj.platform_name == "codex"
+    )
     timing = session_state.setdefault("_hook_timing", {"total_ms": 0.0, "count": 0})
     timing["total_ms"] += elapsed_ms
     timing["count"] += 1
@@ -897,6 +940,64 @@ def check(
         click.echo(output)
 
     sys.exit(exit_code)
+
+
+@main.command("check-patch")
+@click.argument("patch_file", type=click.File("r"), default="-")
+@click.option(
+    "--project-dir", default=None, help="Project directory (patch paths must stay inside)"
+)
+@click.option("--cwd", "cwd", default=None, help="Working directory patch paths are relative to")
+@click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON")
+def check_patch(patch_file, project_dir: str | None, cwd: str | None, as_json: bool):
+    """Preview an apply_patch payload against the same validator and rules as the hook.
+
+    Read-only: no files are written and no session, recording, heartbeat or
+    AgentChute queue state is touched. Exits 1 when the patch would be denied.
+    """
+    project_dir = _resolve_project_dir(project_dir)
+    try:
+        config = load_config(project_dir)
+    except (ValueError, yaml.YAMLError) as exc:
+        click.echo(f"AgentLint configuration error: {exc}", err=True)
+        sys.exit(2)
+    rules = load_project_rules(config, project_dir)
+    rules_config = config.rules
+    if config.circuit_breaker:
+        rules_config = {**rules_config, "_circuit_breaker_global": config.circuit_breaker}
+    context = RuleContext(
+        event=HookEvent.PRE_TOOL_USE,
+        tool_name="apply_patch",
+        tool_input={"command": patch_file.read()},
+        project_dir=project_dir,
+        config=rules_config,
+        session_state={},
+        agent_platform="codex",
+        working_directory=os.path.abspath(cwd) if cwd else None,
+    )
+    result, _ = _evaluate_tool_call(context, config, rules, patch=True)
+    blocked = result.is_blocking
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "decision": "deny" if blocked else "allow",
+                    "rules_evaluated": result.rules_evaluated,
+                    "violations": [v.to_dict() for v in result.violations],
+                },
+                indent=2,
+            )
+        )
+    else:
+        from agentlint.formats.plain_json import PlainJsonFormatter
+
+        if not result.violations:
+            click.echo(f"Patch allowed ({result.rules_evaluated} rule checks, no findings).")
+        else:
+            click.echo("Patch would be DENIED." if blocked else "Patch allowed with findings.")
+            for line in PlainJsonFormatter()._format_violation_lines(result.violations):
+                click.echo(f"  {line}")
+    sys.exit(1 if blocked else 0)
 
 
 @main.command()
@@ -1881,20 +1982,105 @@ def list_rules(pack: str | None, project_dir: str | None):
     click.echo(f"\n{len(rules)} rules total.")
 
 
+def _format_seconds(seconds: float | None) -> str:
+    from agentlint.coverage import format_age
+
+    return format_age(seconds).removesuffix(" ago") if seconds is not None else "n/a"
+
+
+def _cloud_health(config) -> dict:
+    """Read-only AgentChute delivery and policy health (no network, no cache writes)."""
+    from agentlint.agentchute.policy import policy_diagnostics
+    from agentlint.agentchute.queue import queue_status
+    from agentlint.agentchute.settings import get_enabled_value
+
+    queue = queue_status()
+    policy = policy_diagnostics(config)
+    enabled = bool(get_enabled_value(config))
+    if not enabled:
+        notes = []
+        if queue["pending"]:
+            age = queue.get("oldest_pending_age_s")
+            notes.append(
+                f"{queue['pending']} undelivered event(s) remain from when AgentChute was enabled"
+                + (f" (oldest {_format_seconds(age)})" if age is not None else "")
+                + "; they are not being sent. Remove them with "
+                "'agentlint queue discard-pending' if no longer needed."
+            )
+        return {
+            "enabled": False,
+            "credential_present": policy.get("credential_present"),
+            "queue": queue,
+            "policy": policy,
+            "state": "off",
+            "problems": [],
+            "notes": notes,
+        }
+    degraded = []
+    if queue["pending"] and queue.get("last_outcome") not in (None, "ok"):
+        degraded.append(
+            f"delivery failing ({queue['last_outcome']}"
+            + (f", HTTP {queue['last_http_status']}" if queue.get("last_http_status") else "")
+            + ")"
+        )
+    if queue.get("oldest_pending_age_s") and queue["oldest_pending_age_s"] > 3600:
+        degraded.append(
+            f"oldest undelivered event is {_format_seconds(queue['oldest_pending_age_s'])} old"
+        )
+    degraded.extend(queue.get("warnings", []))
+    if enabled and not policy.get("cached"):
+        degraded.append("no cached organization policy")
+    if policy.get("error"):
+        degraded.append(f"last policy refresh failed: {policy['error']}")
+    return {
+        "enabled": enabled,
+        "credential_present": policy.get("credential_present"),
+        "queue": queue,
+        "policy": policy,
+        "state": "degraded" if degraded else "healthy",
+        "problems": degraded,
+        "notes": [],
+    }
+
+
+def _local_protections(config, rules, policy: dict) -> list[str]:
+    """What keeps running locally, regardless of cloud connectivity."""
+    local = [r for r in rules if not type(r).__module__.startswith("agentlint.agentchute.")]
+    lines = [f"{len(local)} rules from packs: {', '.join(config.packs)}"]
+    if config.required_rules:
+        lines.append(f"required workspace rules: {', '.join(config.required_rules)}")
+    if policy.get("cached_rules_enforced"):
+        lines.append(
+            f"cached organization policy v{policy.get('version')} "
+            f"({len(policy.get('active_rule_ids', []))} rules, updated {policy.get('updated_at') or 'unknown'})"
+        )
+    else:
+        lines.append("organization policy: none cached — no organization rules are enforced")
+    return lines
+
+
+def _effective_policy(config, project_dir: str) -> dict:
+    return {
+        "workspace_config": os.environ.get("AGENTLINT_WORKSPACE_CONFIG"),
+        "layers": config.layers,
+        "packs": config.packs,
+        "packs_source": "explicit" if config.packs_explicit else "detected",
+        "severity": config.severity,
+        "required_rules": config.required_rules,
+        "exceptions": len(config.exceptions),
+        "rule_origins": config.rule_origins,
+    }
+
+
 @main.command()
 @click.option("--project-dir", default=None, help="Project directory")
-def status(project_dir: str | None):
-    """Show AgentLint health for the current project."""
+@click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON")
+def status(project_dir: str | None, as_json: bool):
+    """Show AgentLint coverage, effective policy and cloud health. Read-only."""
     from importlib.metadata import version as get_version
 
-    from agentlint.agentchute.policy import policy_status
-    from agentlint.agentchute.queue import queue_status
-    from agentlint.agentchute.settings import (
-        get_api_url,
-        get_enabled_value,
-        get_license_key,
-        local_credentials_path,
-    )
+    from agentlint.agentchute.settings import get_api_url, local_credentials_path
+    from agentlint.coverage import describe
 
     project_dir = _resolve_project_dir(project_dir)
     try:
@@ -1902,71 +2088,147 @@ def status(project_dir: str | None):
     except Exception:
         ver = "dev"
     install_kind, update_cmd = _detect_update_command()
-    config_path = Path(project_dir) / "agentlint.yml"
-    config_ok = config_path.exists()
     config = load_config(project_dir)
+    config_ok = bool(config.layers)
+    detected = _detected_agent_platforms(project_dir)
+    coverage = {p: _coverage(p, project_dir) for p in _HOOK_PLATFORMS}
+    rules = load_project_rules(config, project_dir)
+    cloud = _cloud_health(config)
+    policy = _effective_policy(config, project_dir)
+    local = _local_protections(config, rules, cloud["policy"])
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "version": ver,
+                    "project_dir": project_dir,
+                    "agents": {
+                        p: {**c.to_dict(), "detected": p in detected} for p, c in coverage.items()
+                    },
+                    "policy": {**policy, "active_rules": len(rules)},
+                    "cloud": cloud,
+                    "local_protections": local,
+                },
+                indent=2,
+                default=str,
+            )
+        )
+        return
 
     click.echo(f"AgentLint v{ver}")
     click.echo(f"Install: {install_kind} ({' '.join(update_cmd)})")
     click.echo(f"Project config: {'ok' if config_ok else 'missing'}")
 
-    detected = _detected_agent_platforms(project_dir)
-    click.echo("Coding agents:")
-    for platform in _HOOK_PLATFORMS:
-        state, path = _hook_status(platform, project_dir)
-        marker = "✓" if state == "installed" else "!" if state == "stale" else "○"
-        suffix = f" ({path})" if state in {"installed", "stale", "custom"} else ""
-        detected_note = " detected" if platform in detected else ""
-        click.echo(f"  {marker} {platform:<8} {state}{detected_note}{suffix}")
+    click.echo("Coding agents (configured -> enabled -> observed):")
+    for platform, cov in coverage.items():
+        state = cov.state
+        marker = (
+            "✓"
+            if state in {"installed", "wrapper"} and cov.observed_age() is not None
+            else "!"
+            if state == "stale" or (state in {"installed", "wrapper"} and cov.enabled is False)
+            else "○"
+        )
+        detected_note = " (detected)" if platform in detected else ""
+        click.echo(f"  {marker} {platform:<8}{detected_note} {describe(cov, project_dir)}")
+    if coverage["codex"].state in {"installed", "wrapper"}:
+        click.echo("    Codex hook trust is confirmed in Codex's /hooks review, not by AgentLint.")
 
-    env_enabled = get_enabled_value(config)
-    key = get_license_key()
-    api_url = get_api_url()
-    queue = queue_status()
-    policy = policy_status()
-
-    click.echo("AgentChute:")
-    click.echo(f"  Enabled: {str(env_enabled).lower()}")
-    click.echo(f"  API: {api_url}")
-    click.echo(f"  Key: {'set' if key else 'missing'}")
-    click.echo(f"  Credential file: {local_credentials_path()}")
-    click.echo(f"  Events queued: {queue['pending']} pending / {queue['queued']} total")
-    if queue.get("next_attempt_at"):
-        click.echo(f"  Retry scheduled: {queue['next_attempt_at']}")
-    policy_line = "none"
-    if policy.get("cached"):
-        policy_line = f"v{policy.get('version')} updated {policy.get('updated_at') or 'unknown'}"
-    if policy.get("error"):
-        policy_line += f" (error: {policy['error']})"
-    click.echo(f"  Cloud policy: {policy_line}")
-
-    rules = load_project_rules(config, project_dir)
+    click.echo("Effective policy:")
+    if policy["workspace_config"]:
+        click.echo(f"  Workspace: AGENTLINT_WORKSPACE_CONFIG={policy['workspace_config']}")
+    if config.layers:
+        for layer in config.layers:
+            click.echo(f"  {layer['kind'].capitalize()} layer: {layer['path']}")
+    else:
+        click.echo("  No policy file; built-in defaults apply")
     click.echo(
-        f"Rules: {len(rules)} active | Severity: {config.severity} | Packs: {', '.join(config.packs)}"
+        f"  Rules: {len(rules)} active | Severity: {config.severity} | "
+        f"Packs: {', '.join(config.packs)} ({policy['packs_source']})"
     )
+    if config.required_rules:
+        click.echo(f"  Required: {', '.join(config.required_rules)}")
+    if config.exceptions:
+        click.echo(f"  Exceptions: {len(config.exceptions)} active (exact-command, expiring)")
     if config.projects:
-        click.echo("Projects:")
+        click.echo("  Projects:")
         for prefix, proj in sorted(config.projects.items()):
             proj_packs = ", ".join(proj.get("packs", []))
-            click.echo(f"  {prefix} → {proj_packs}")
+            click.echo(f"    {prefix} → {proj_packs}")
+
+    queue = cloud["queue"]
+    click.echo(f"AgentChute: {cloud['state']}")
+    click.echo(f"  Enabled: {str(cloud['enabled']).lower()} | API: {get_api_url()}")
+    click.echo(
+        f"  Key: {'set' if cloud['credential_present'] else 'missing'} "
+        f"| Credential file: {local_credentials_path()}"
+    )
+    click.echo(
+        f"  Events queued: {queue['pending']} pending / {queue['queued']} total"
+        + (
+            f", oldest {_format_seconds(queue['oldest_pending_age_s'])} old"
+            if queue.get("oldest_pending_age_s") is not None
+            else ""
+        )
+    )
+    if queue.get("failures") and cloud["enabled"]:
+        retry = (
+            f"next attempt in {_format_seconds(queue['next_attempt_in_s'])}"
+            if queue.get("next_attempt_in_s")
+            else "retry due now"
+        )
+        click.echo(f"  Delivery: {queue['failures']} consecutive failure(s), {retry}")
+    pol = cloud["policy"]
+    policy_line = "none"
+    if pol.get("cached"):
+        policy_line = f"v{pol.get('version')} updated {pol.get('updated_at') or 'unknown'}"
+    if pol.get("error"):
+        policy_line += f" (error: {pol['error']})"
+    click.echo(f"  Cloud policy: {policy_line}")
+    for problem in cloud["problems"]:
+        click.echo(f"  ! {problem}")
+    for note in cloud["notes"]:
+        click.echo(f"  - {note}")
+    click.echo("Still enforced locally:")
+    for line in local:
+        click.echo(f"  - {line}")
 
     click.echo("")
-    click.echo(
-        "Next: agentlint doctor --fix"
-        if not config_ok
-        or any(_hook_status(p, project_dir)[0] in {"missing", "stale"} for p in detected)
-        else "All primary checks look healthy."
-    )
+    needs_fix = not config_ok or any(coverage[p].state in {"missing", "stale"} for p in detected)
+    unobserved = [
+        p
+        for p in detected
+        if coverage[p].state in {"installed", "wrapper"} and coverage[p].observed_age() is None
+    ]
+    if needs_fix:
+        click.echo("Next: agentlint doctor --fix")
+    elif unobserved:
+        click.echo(
+            f"Next: hooks for {', '.join(unobserved)} are configured but not yet observed; "
+            "make one tool call in that agent, then re-run status."
+        )
+    elif cloud["state"] == "degraded":
+        click.echo("Next: AgentChute delivery is degraded; local protections above still apply.")
+    else:
+        click.echo("All primary checks look healthy.")
 
 
 @main.command()
 @click.option("--project-dir", default=None, help="Project directory")
 @click.option("--fix", is_flag=True, help="Repair common issues automatically")
-def doctor(project_dir: str | None, fix: bool):
-    """Diagnose common AgentLint misconfigurations."""
+@click.option(
+    "--online", is_flag=True, help="Also refresh the cloud policy (network call, writes cache)"
+)
+def doctor(project_dir: str | None, fix: bool, online: bool):
+    """Diagnose common AgentLint misconfigurations.
+
+    Read-only unless --fix (repairs) or --online (policy refresh) is given.
+    """
     project_dir = _resolve_project_dir(project_dir)
     issues: list[str] = []
     checks_ok: list[str] = []
+    notes: list[str] = []  # unverified, not failures (e.g. hooks not yet observed)
 
     # Check agentlint.yml exists
     config_path = os.path.join(project_dir, "agentlint.yml")
@@ -2005,15 +2267,35 @@ def doctor(project_dir: str | None, fix: bool):
                     project_dir, scope="project", cmd=resolve_command()
                 )
                 checks_ok.append(f"Fix: installed {platform} hooks")
+        elif hook_state == "wrapper":
+            checks_ok.append(
+                f"Hooks: {platform} delegates to an AgentLint wrapper ({hook_path}); "
+                "not reinstalling"
+            )
         elif hook_state == "custom":
             checks_ok.append(f"Hooks: {platform} config exists without AgentLint")
+        cov = _coverage(platform, project_dir)
+        if hook_state in {"installed", "wrapper"}:
+            if cov.enabled is False:
+                issues.append(f"Hooks: {platform} hooks feature is disabled in its config")
+            age = cov.observed_age()
+            if age is None:
+                notes.append(
+                    f"Hooks: {platform} configured but never observed calling AgentLint "
+                    "(check hook trust/reload; run one tool call, then re-run status)"
+                )
+            else:
+                from agentlint.coverage import STALE_HEARTBEAT_SECONDS, format_age
+
+                note = f"Hooks: {platform} last observed {format_age(age)}"
+                (issues if age > STALE_HEARTBEAT_SECONDS else checks_ok).append(note)
     installed_detected = [
         p for p in detected_platforms if _hook_status(p, project_dir)[0] == "installed"
     ]
     if "claude" in installed_detected and "cursor" in installed_detected:
         checks_ok.append("Hooks: installed for both Claude and Cursor")
 
-    if fix and "codex" in detected_platforms:
+    if fix and "codex" in detected_platforms and not _codex_hooks_enabled():
         _enable_codex_hooks()
         checks_ok.append("Fix: Codex hooks feature enabled under [features]")
 
@@ -2057,14 +2339,38 @@ def doctor(project_dir: str | None, fix: bool):
     agentchute_configured = bool(
         license_key or (isinstance(agentchute_cfg, dict) and agentchute_cfg.get("enabled"))
     )
-    if license_key:
+    if license_key and (online or fix):
         policy_result = refresh_policy()
         if policy_result.ok:
             checks_ok.append(f"Cloud policy: refreshed v{policy_result.version}")
         else:
             issues.append(f"Cloud policy: {policy_result.error}")
-    elif agentchute_configured:
+    elif agentchute_configured and not license_key:
         issues.append("AgentChute env: AGENTCHUTE_LICENSE_KEY not set")
+
+    try:
+        cloud = _cloud_health(config)
+    except Exception:  # noqa: BLE001
+        logger.debug("Could not read AgentChute health", exc_info=True)
+        cloud = None
+        issues.append("AgentChute: could not read queue/policy health")
+    for note in (cloud or {}).get("notes", []):
+        notes.append(f"AgentChute: {note}")
+    if cloud and cloud["enabled"]:
+        queue = cloud["queue"]
+        summary = f"{queue['pending']} pending"
+        if queue.get("oldest_pending_age_s") is not None:
+            summary += f", oldest {_format_seconds(queue['oldest_pending_age_s'])}"
+        if queue.get("failures"):
+            summary += f", {queue['failures']} consecutive failure(s)"
+            if queue.get("next_attempt_in_s"):
+                summary += f", next retry in {_format_seconds(queue['next_attempt_in_s'])}"
+        (issues if cloud["problems"] else checks_ok).append(
+            f"AgentChute: {cloud['state']} ({summary})"
+            + (f": {'; '.join(cloud['problems'])}" if cloud["problems"] else "")
+        )
+        local = _local_protections(config, load_project_rules(config, project_dir), cloud["policy"])
+        checks_ok.append("Still enforced locally: " + "; ".join(local))
 
     # Check custom rules
     if config.custom_rules_dir:
@@ -2153,6 +2459,8 @@ def doctor(project_dir: str | None, fix: bool):
 
     for item in checks_ok:
         click.echo(f"  OK  {item}")
+    for item in notes:
+        click.echo(f"  ..  {item}")
     for item in issues:
         click.echo(f"  !!  {item}")
 

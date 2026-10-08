@@ -100,8 +100,7 @@ class ClaudeHookFormatter(OutputFormatter):
             lines.append("  BLOCKED:")
             for v in errors:
                 lines.append(f"    [{v.rule_id}] {v.message}")
-                if v.suggestion:
-                    lines.append(f"      -> {v.suggestion}")
+                lines.extend(self._detail_lines(v, indent="      "))
         if warnings:
             lines.append("  WARNINGS:")
             for v in warnings:

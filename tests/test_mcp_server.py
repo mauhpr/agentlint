@@ -285,3 +285,22 @@ class TestViolationSchemaContract:
         for v in violations:
             missing = self.REQUIRED_FIELDS - set(v.keys())
             assert not missing, f"Violation missing fields {missing}: {v}"
+
+
+class TestCheckPatch:
+    async def test_ambiguous_patch_is_located(self, client, tmp_path):
+        (tmp_path / "mod.py").write_text("x = 1\ny = 2\nx = 1\n")
+        patch = "*** Begin Patch\n*** Update File: mod.py\n@@\n-x = 1\n+x = 3\n*** End Patch"
+        result = await client.call_tool("check_patch", {"patch": patch})
+        data = json.loads(result.data)
+        assert data["decision"] == "deny"
+        [v] = data["violations"]
+        assert (v["file_path"], v["line"]) == ("mod.py", 1)
+        assert "lines 1, 3" in v["message"]
+        assert (tmp_path / "mod.py").read_text() == "x = 1\ny = 2\nx = 1\n"
+
+    async def test_clean_patch_allowed(self, client, tmp_path):
+        (tmp_path / "mod.py").write_text("x = 1\n")
+        patch = "*** Begin Patch\n*** Update File: mod.py\n@@\n-x = 1\n+x = 2\n*** End Patch"
+        data = json.loads((await client.call_tool("check_patch", {"patch": patch})).data)
+        assert data == {"decision": "allow", "violations": []}

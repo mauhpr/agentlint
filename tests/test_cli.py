@@ -1704,8 +1704,10 @@ class TestMagicalUxCommands:
         result = CliRunner().invoke(main, ["status", "--project-dir", str(tmp_path)])
 
         assert result.exit_code == 0
-        assert "Retry scheduled: 123.0" in result.output
+        assert "Delivery: 1 consecutive failure(s), retry due now" in result.output
         assert "Cloud policy: v12 updated unknown (error: stale cache)" in result.output
+        assert "AgentChute: degraded" in result.output
+        assert "last policy refresh failed: stale cache" in result.output
 
     def test_policy_refresh_reports_failure(self, monkeypatch) -> None:
         from agentlint.agentchute.policy import PolicyRefreshResult

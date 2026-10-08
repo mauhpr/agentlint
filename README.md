@@ -387,11 +387,15 @@ agentlint list-rules --pack fintech
 # List rules for a different project
 agentlint list-rules --project-dir /path/to/project
 
-# Show current status (version, packs, rule count, session activity)
+# Show coverage per agent (configured -> enabled -> observed), effective
+# policy layers and cloud health; add --json for machines
 agentlint status
 
-# Diagnose common misconfigurations (including custom rules validation)
+# Diagnose common misconfigurations (read-only; --fix repairs, --online refreshes policy)
 agentlint doctor
+
+# Preview a Codex apply_patch with the hook's exact validator and rules
+agentlint check-patch change.patch
 
 # Scan changed files for CI pipelines
 agentlint ci --diff origin/main...HEAD

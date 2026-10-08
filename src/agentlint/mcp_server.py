@@ -40,6 +40,43 @@ def check_content(
 
 
 @mcp.tool
+def check_patch(patch: str, cwd: str | None = None) -> str:
+    """Preview a Codex apply_patch payload with the same validator and rules as the hook.
+
+    Returns JSON {decision, violations}. Read-only: nothing is written and the
+    session is not touched. Ambiguous or missing hunks name the file, hunk,
+    repeated context and candidate line numbers.
+    """
+    import os
+
+    from agentlint.cli import _evaluate_tool_call
+    from agentlint.config import load_config
+    from agentlint.models import HookEvent, RuleContext
+    from agentlint.packs import load_project_rules
+
+    project_dir = _adapter.resolve_project_dir()
+    config = load_config(project_dir)
+    rules = load_project_rules(config, project_dir)
+    context = RuleContext(
+        event=HookEvent.PRE_TOOL_USE,
+        tool_name="apply_patch",
+        tool_input={"command": patch},
+        project_dir=project_dir,
+        config=config.rules,
+        session_state={},
+        agent_platform="codex",
+        working_directory=os.path.abspath(os.path.join(project_dir, cwd)) if cwd else None,
+    )
+    result, _ = _evaluate_tool_call(context, config, rules, patch=True)
+    return json.dumps(
+        {
+            "decision": "deny" if result.is_blocking else "allow",
+            "violations": [v.to_dict() for v in result.violations],
+        }
+    )
+
+
+@mcp.tool
 def check_event(
     event: str,
     tool_name: str,

@@ -67,8 +67,9 @@ class DestructiveConfirmationGate(Rule):
                         message=f"Catastrophic operation requires explicit confirmation: {label}",
                         severity=self.severity,
                         suggestion=(
-                            f"Set session_state['confirmed_destructive_ops'] = ['{key}'] "
-                            f"before running this command, or add it to destructive-confirmation-gate.bypass_ops in agentlint.yml."
+                            "Stop and ask the user to confirm this exact operation. A human can "
+                            "run it directly, or add a repository-bound, expiring exact-command "
+                            "entry under `exceptions:` in agentlint.yml (see docs/configuration.md)."
                         ),
                     )
                 ]

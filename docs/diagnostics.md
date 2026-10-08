@@ -32,3 +32,56 @@ inspection through `psql -c` or a repository-local `psql -f` file is exempted
 from production targeting only when the script explicitly starts with
 `BEGIN READ ONLY`, contains only SELECT/SHOW/EXPLAIN SELECT statements, and
 ends with COMMIT or ROLLBACK. Unknown syntax remains checked.
+
+## Coverage: configured, enabled, observed
+
+`agentlint status` reports each coding agent at three levels:
+
+- **configured** — an AgentLint hook exists at project scope (`.codex/hooks.json`)
+  or user scope (`~/.codex/hooks.json`). Project scope wins. Hook files are parsed
+  to list the wired events. A hook that calls a script which delegates to
+  AgentLint (for example a workspace routing wrapper) is reported as `wrapper`,
+  not `missing`.
+- **enabled** — where it can be read locally, e.g. Codex `[features].hooks` in
+  `~/.codex/config.toml`. Codex hook *trust* is confirmed in Codex's `/hooks`
+  review; AgentLint cannot read it.
+- **observed** — every `agentlint check` invocation records a heartbeat in
+  `~/.cache/agentlint/heartbeat/<platform>.json` (event, tool type, a project
+  fingerprint, version, timestamp; no commands, paths or content). Override the
+  directory with `AGENTLINT_HEARTBEAT_DIR`. "never observed" after a tool call
+  means the hook is not reaching AgentLint (untrusted, not reloaded, or a
+  matcher mismatch).
+
+`doctor --fix` never installs project hooks when a user-scope installation or
+wrapper already covers the platform. `status --json` emits the same data,
+including the effective policy layers (workspace, repository), the file that
+configured each rule, required rules and exception count.
+
+## Degraded cloud operation
+
+`status` and `doctor` show the AgentChute delivery state as `healthy`, `off` or
+`degraded`, with pending count, the age of the oldest undelivered event,
+consecutive failures, the next retry time, and the last HTTP status. HTTP 429
+and 503 responses honour `Retry-After` (seconds or HTTP date, at most one hour).
+More than 10,000 undelivered events or a 50 MB queue file produce a warning;
+events are never discarded automatically (`agentlint queue discard-pending`
+remains an explicit action).
+
+Both commands list what is **still enforced locally**: pack rules, required
+workspace rules and the cached organization policy (or an explicit statement
+that no organization rules are cached). `doctor` is read-only by default; it
+refreshes the cloud policy only with `--online` or `--fix`.
+
+## Patch previews
+
+Codex `apply_patch` denials name the file, hunk number, the first context line
+(credential-like values masked) and, for ambiguous hunks, every matching line
+number. Preview a patch with the identical validator and rules, without writing
+files or touching session, heartbeat, recording or queue state:
+
+```sh
+agentlint check-patch change.patch --project-dir . [--cwd subdir] [--json]
+```
+
+It exits 1 when the patch would be denied. The MCP server exposes the same
+check as `check_patch`.
