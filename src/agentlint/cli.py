@@ -613,7 +613,7 @@ def _evaluate_tool_context(context, config, rules):
 
 
 def _record_test_evidence(context) -> None:
-    """Write a test-run receipt when a recognized test command finished (ADR 0003)."""
+    """Write a test-run receipt when a recognized test command finished."""
     if context.tool_name != "Bash" or context.event not in (
         HookEvent.POST_TOOL_USE,
         HookEvent.POST_TOOL_USE_FAILURE,
@@ -1065,7 +1065,7 @@ def _is_interactive() -> bool:
 
 @main.group()
 def approve():
-    """Typed, expiring approvals issued by a human (see docs/rfcs/0002)."""
+    """Typed, expiring approvals issued by a human (docs/approvals-and-evidence.md)."""
 
 
 @approve.command("grant")

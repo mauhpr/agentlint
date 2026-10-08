@@ -1,4 +1,4 @@
-"""Typed, expiring approvals (ADR 0002)."""
+"""Typed, expiring approvals."""
 
 from __future__ import annotations
 

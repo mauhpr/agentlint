@@ -1,4 +1,4 @@
-"""Evidence receipts (ADR 0003): what has actually been verified, by whom, when.
+"""Evidence receipts (docs/approvals-and-evidence.md): what has actually been verified, by whom, when.
 
 Receipts are small JSON files. AgentLint writes `test-run` receipts for
 recognized test commands; other tools may write `test-run`, `review` or

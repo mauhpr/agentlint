@@ -1,4 +1,4 @@
-"""Typed, expiring, human-issued approvals (ADR 0002).
+"""Typed, expiring, human-issued approvals (docs/approvals-and-evidence.md).
 
 An approval names one action class. It only relaxes rules that declare that
 class, only for one repository (and optionally one exact command), and only

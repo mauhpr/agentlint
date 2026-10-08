@@ -1,4 +1,4 @@
-"""Evidence receipts (ADR 0003): test recognition, exit status and reuse."""
+"""Evidence receipts: test recognition, exit status and reuse."""
 
 from __future__ import annotations
 

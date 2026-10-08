@@ -1,63 +1,68 @@
-# Custom Rules Guide
+# Custom rules
 
-AgentLint lets you create project-specific rules using the same interface as built-in rules. Custom rules are Python files placed in a directory of your choice.
+You can add project-specific rules written in Python. Custom rules use the same
+`Rule` interface as the built-in rules and run in the same engine, for every
+supported agent.
 
-## Setup
+## Quick start
 
 1. Create a rules directory in your project:
 
-```bash
-mkdir -p .agentlint/rules
-```
+   ```bash
+   mkdir -p .agentlint/rules
+   ```
 
-2. Enable it in `agentlint.yml` and add your pack name to `packs:`:
+2. Add a rule file:
 
-```yaml
-packs:
-  - universal
-  - myproject          # activates rules with pack = "myproject"
-
-custom_rules_dir: .agentlint/rules/
-```
-
-Rules whose `pack` is not in `packs:` are loaded but silently skipped. Use `agentlint doctor` to detect this.
-
-## Creating a rule
-
-Create a `.py` file in your custom rules directory. Each file can contain one or more `Rule` subclasses.
-
-```python
-# .agentlint/rules/no_raw_sql.py
-from agentlint.models import Rule, RuleContext, Violation, Severity, HookEvent
+   ```python
+   # .agentlint/rules/no_direct_db.py
+   from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 
-class NoRawSQL(Rule):
-    id = "no-raw-sql"
-    description = "Blocks raw SQL queries — use the ORM instead"
-    severity = Severity.WARNING
-    events = [HookEvent.PRE_TOOL_USE]
-    pack = "myproject"
+   class NoDirectDB(Rule):
+       id = "no-direct-db"
+       description = "API routes must not import the database layer directly"
+       severity = Severity.WARNING
+       events = [HookEvent.POST_TOOL_USE]
+       pack = "myproject"
 
-    def evaluate(self, context: RuleContext) -> list[Violation]:
-        content = context.file_content or ""
-        if not content:
-            return []
+       def evaluate(self, context: RuleContext) -> list[Violation]:
+           if not context.file_path or "/routes/" not in context.file_path:
+               return []
+           if context.file_content and "from database" in context.file_content:
+               return [
+                   Violation(
+                       rule_id=self.id,
+                       message="Route imports the database directly. Use the repository layer.",
+                       severity=self.severity,
+                       file_path=context.file_path,
+                   )
+               ]
+           return []
+   ```
 
-        # Check for raw SQL patterns
-        sql_keywords = ["execute(", "raw_sql(", "cursor.execute("]
-        for keyword in sql_keywords:
-            if keyword in content:
-                return [
-                    Violation(
-                        rule_id=self.id,
-                        message=f"Raw SQL detected ({keyword}). Use the ORM.",
-                        severity=self.severity,
-                        file_path=context.file_path,
-                        suggestion="Use Model.objects or the query builder instead.",
-                    )
-                ]
-        return []
-```
+3. Point `agentlint.yml` at the directory and activate the pack:
+
+   ```yaml
+   packs:
+     - python
+     - myproject          # activates rules with pack = "myproject"
+
+   custom_rules_dir: .agentlint/rules/
+   ```
+
+   `universal` and `quality` are always active, so you do not need to list
+   them. Remove one only with `exclude_packs`.
+
+4. Check that it loaded:
+
+   ```bash
+   agentlint list-rules --pack myproject
+   agentlint doctor
+   ```
+
+Rules whose `pack` is not in `packs:` are loaded but skipped. `agentlint doctor`
+reports these orphaned packs.
 
 ## Rule anatomy
 
@@ -65,137 +70,283 @@ Every rule needs these class attributes:
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `id` | `str` | Unique identifier. Prefix with `custom/` for clarity. |
-| `description` | `str` | One-line description. |
-| `severity` | `Severity` | `ERROR` (blocks), `WARNING` (advises), or `INFO` (reports). |
-| `events` | `list[HookEvent]` | When this rule runs. |
-| `pack` | `str` | Pack name — any string. Must be listed in `packs:` to activate. |
+| `id` | `str` | Unique identifier. Do not reuse a built-in rule ID ([rules.md](rules.md)). |
+| `description` | `str` | One-line description, shown by `agentlint list-rules`. |
+| `severity` | `Severity` | `ERROR` (blocks on `PreToolUse`), `WARNING` (advises), or `INFO` (reports). |
+| `events` | `list[HookEvent]` | Events this rule runs on. |
+| `pack` | `str` | Pack name, any string. It must be listed in `packs:` to activate. |
 
 And one method:
 
 ```python
 def evaluate(self, context: RuleContext) -> list[Violation]:
-    """Return a list of violations (empty list = pass)."""
+    """Return a list of violations. An empty list means pass."""
 ```
+
+A `Violation` has `rule_id`, `message` and `severity`, plus optional
+`file_path`, `line`, `suggestion` (shown as a correction to the agent),
+`operation` and `policy_source`. A rule may return a severity different from
+its class default for an individual violation.
+
+The project `severity` setting (`strict` / `relaxed`) and the circuit breaker
+apply to custom rules the same way as to built-in rules. If `evaluate()` raises
+an exception, the error is logged and the rule is skipped for that call, unless
+the rule is required (see below).
+
+## A blocking rule
+
+`ERROR` violations on `PreToolUse` deny the tool call. This rule blocks shell
+commands that run migrations against the production database URL:
+
+```python
+# .agentlint/rules/no_prod_migrations.py
+import re
+
+from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
+
+_MIGRATE = re.compile(r"\b(alembic\s+upgrade|manage\.py\s+migrate)\b")
+
+
+class NoProdMigrations(Rule):
+    id = "no-prod-migrations"
+    description = "Block database migrations that target production"
+    severity = Severity.ERROR
+    events = [HookEvent.PRE_TOOL_USE]
+    pack = "myproject"
+
+    def evaluate(self, context: RuleContext) -> list[Violation]:
+        command = context.command or ""
+        if _MIGRATE.search(command) and "PROD_DATABASE_URL" in command:
+            return [
+                Violation(
+                    rule_id=self.id,
+                    message="Migration targets the production database.",
+                    severity=self.severity,
+                    suggestion="Run migrations through the deploy pipeline instead.",
+                )
+            ]
+        return []
+```
+
+`context.command` is `tool_input["command"]`. It is set for shell tools that
+use that key (for example Claude Code's `Bash`).
 
 ## RuleContext fields
 
-Your `evaluate` method receives a `RuleContext` with:
+`evaluate()` receives a `RuleContext` (`src/agentlint/core/models.py`). Fields
+that do not apply to the current event are `None`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `event` | `HookEvent` | Current lifecycle event |
-| `tool_name` | `str` | Tool being used (Write, Edit, Bash, etc.) |
-| `tool_input` | `dict` | Raw tool input from Claude Code |
-| `project_dir` | `str` | Absolute path to project root |
-| `file_content` | `str \| None` | File content (for Write/Edit operations) |
-| `file_content_before` | `str \| None` | File content before edit (for diff-based rules, PostToolUse only) |
-| `file_path` | `str \| None` | Target file path (from `tool_input`) |
-| `command` | `str \| None` | Bash command (from `tool_input`) |
-| `config` | `dict` | Per-rule config from `agentlint.yml` |
-| `session_state` | `dict` | Mutable shared state across the session |
-| `prompt` | `str \| None` | User prompt text (UserPromptSubmit only) |
-| `subagent_output` | `str \| None` | Subagent's last assistant message (SubagentStop only) |
-| `agent_transcript_path` | `str \| None` | Path to subagent's JSONL transcript (SubagentStop only) |
-| `agent_type` | `str \| None` | Subagent type, e.g. "general-purpose" (SubagentStart/Stop) |
-| `agent_id` | `str \| None` | Unique subagent identifier (SubagentStart/Stop) |
-| `notification_type` | `str \| None` | Notification type (Notification only) |
-| `compact_source` | `str \| None` | Context that was compacted (PreCompact only) |
+| `event` | `HookEvent` | Current lifecycle event. |
+| `tool_name` | `str` | The agent's own tool name, e.g. `Bash`, `Write`, `Edit` for Claude Code. Use `normalized_tool` to match across agents. |
+| `tool_input` | `dict` | Tool arguments as sent by the agent. |
+| `project_dir` | `str` | Absolute project root. |
+| `file_content` | `str \| None` | New content for `PreToolUse` writes (from `tool_input["content"]`), or the file on disk after `PostToolUse`. |
+| `file_content_before` | `str \| None` | File content before the edit, cached at `PreToolUse` for `Write`/`Edit` and available on `PostToolUse`. |
+| `config` | `dict` | The `rules:` mapping from `agentlint.yml`. Read your settings with `context.config.get(self.id, {})`. |
+| `session_state` | `dict` | Mutable state persisted across calls in the same session. |
+| `prompt` | `str \| None` | Prompt text (`UserPromptSubmit`). |
+| `subagent_output` | `str \| None` | Subagent's last message (`SubagentStop`). |
+| `notification_type` | `str \| None` | Notification type (`Notification`). |
+| `compact_source` | `str \| None` | `manual` or `auto` (`PreCompact`). |
+| `agent_transcript_path` | `str \| None` | Subagent JSONL transcript (`SubagentStop`). |
+| `agent_type` | `str \| None` | Subagent type (`SubagentStart`/`SubagentStop`). |
+| `agent_id` | `str \| None` | Subagent ID (`SubagentStart`/`SubagentStop`). |
+| `agent_platform` | `str` | Adapter name: `claude`, `cursor`, `codex`, `gemini`, `continue`, `kimi`, `grok`, `openai`, `mcp`, `generic`, or `unknown`. |
+| `working_directory` | `str \| None` | The tool's working directory when the agent reports one (Codex); may be below `project_dir`. |
+| `tool_response` | `dict \| None` | Tool result on `PostToolUse`, when the agent sends one. |
 
-## Hook events
+Properties:
 
-AgentLint supports all 17 Claude Code hook events. Choose which events your rule responds to:
+| Property | Type | Description |
+|----------|------|-------------|
+| `file_path` | `str \| None` | `tool_input["file_path"]`. |
+| `relative_file_path` | `str \| None` | `file_path` relative to `project_dir`, for path matching. |
+| `command` | `str \| None` | `tool_input["command"]`. |
+| `normalized_tool` | `NormalizedTool` | Tool category (`SHELL`, `FILE_WRITE`, `FILE_EDIT`, `FILE_READ`, `SEARCH`, `WEB_FETCH`, `WEB_SEARCH`, `SUB_AGENT`, `NOTEBOOK`, `UNKNOWN`) mapped from `tool_name` for the current `agent_platform`. |
 
-**Registered by `agentlint setup`** (7 events):
+### Custom rules see the original input
 
-| Event | When | Can block? |
-|-------|------|-----------|
-| `HookEvent.PRE_TOOL_USE` | Before a tool call | Yes (ERROR = deny protocol) |
-| `HookEvent.POST_TOOL_USE` | After a tool call | No (advise only) |
-| `HookEvent.USER_PROMPT_SUBMIT` | When user sends a prompt | No (advise only) |
-| `HookEvent.SUB_AGENT_START` | When a subagent spawns | No (injects `additionalContext`) |
-| `HookEvent.SUB_AGENT_STOP` | When a subagent completes | No (advise only) |
-| `HookEvent.NOTIFICATION` | On system notifications | No (advise only) |
-| `HookEvent.STOP` | End of session | No (report only) |
+For built-in operation guards, AgentLint splits shell commands into parsed
+operations and drops display and read-only ones, so `grep "rm -rf" log` is not
+treated as a deletion. Custom rules do not get this projection: `tool_input`
+and `command` contain the original, unmodified command. Credential, file-write
+and organization rules also see the original input. If your rule should ignore
+quoted text or read-only commands, handle that in the rule.
 
-**Available for custom rules** (10 additional events):
+## Events
 
-| Event | When |
-|-------|------|
-| `HookEvent.SESSION_START` | Session begins |
-| `HookEvent.SESSION_END` | Session ends |
-| `HookEvent.PRE_COMPACT` | Before context compaction |
-| `HookEvent.POST_TOOL_USE_FAILURE` | After a tool call fails |
-| `HookEvent.PERMISSION_REQUEST` | User asked to approve an action |
-| `HookEvent.CONFIG_CHANGE` | Settings changed mid-session |
-| `HookEvent.WORKTREE_CREATE` | Git worktree created |
-| `HookEvent.WORKTREE_REMOVE` | Git worktree removed |
-| `HookEvent.TEAMMATE_IDLE` | Teammate goes idle |
-| `HookEvent.TASK_COMPLETED` | Background task completes |
+Which events reach AgentLint depends on the agent and on the hooks its setup
+installs; see the page for your agent (for example
+[agents/claude.md](agents/claude.md)). Rules can target any `HookEvent`:
 
-Custom rules targeting these events work out of the box — the CLI routes any event string to the engine. You only need to add the corresponding hook entry to `.claude/settings.json` if it's not already registered.
+| Event | When | Can an ERROR block? |
+|-------|------|---------------------|
+| `HookEvent.PRE_TOOL_USE` | Before a tool call | Yes |
+| `HookEvent.POST_TOOL_USE` | After a tool call | No, advisory |
+| `HookEvent.POST_TOOL_USE_FAILURE` | After a tool call fails | No |
+| `HookEvent.USER_PROMPT_SUBMIT` | When the user sends a prompt | No, advisory |
+| `HookEvent.SUB_AGENT_START` | When a subagent starts | No, injects context |
+| `HookEvent.SUB_AGENT_STOP` | When a subagent finishes | No, advisory |
+| `HookEvent.NOTIFICATION` | On agent notifications | No |
+| `HookEvent.PRE_COMPACT` | Before context compaction | No |
+| `HookEvent.SESSION_START` | Session begins | No |
+| `HookEvent.SESSION_END` | Session ends | No |
+| `HookEvent.STOP` | Agent finishes a turn | No, report |
+| `HookEvent.PERMISSION_REQUEST` | Permission prompt | No |
+| `HookEvent.CONFIG_CHANGE` | Settings changed | No |
+| `HookEvent.WORKTREE_CREATE` | Git worktree created | No |
+| `HookEvent.WORKTREE_REMOVE` | Git worktree removed | No |
+| `HookEvent.TEAMMATE_IDLE` | Teammate goes idle | No |
+| `HookEvent.TASK_COMPLETED` | Background task completes | No |
 
-## Using session state
+For Claude Code, `agentlint setup claude` registers `PreToolUse`,
+`PostToolUse`, `UserPromptSubmit`, `SubagentStart`, `SubagentStop`,
+`Notification` and `Stop`. To use another event, add a hook entry for it that
+runs `agentlint check --event <EventName>`.
 
-Rules can share state across invocations using `context.session_state`. This is a mutable dict persisted between hook calls:
+## Rule configuration
+
+Read per-rule settings from `context.config`:
+
+```yaml
+rules:
+  no-direct-db:
+    route_dirs: ["/routes/", "/api/"]
+```
+
+```python
+route_dirs = context.config.get(self.id, {}).get("route_dirs", ["/routes/"])
+```
+
+`enabled: false`, `allow_paths` and `ignore_paths` under the rule's key work for
+custom rules as for built-in ones. See [configuration.md](configuration.md).
+
+## Required rules
+
+A workspace policy can list rule IDs under `workspace.required_rules`. Required
+rules cannot be disabled: `enabled: false`, global path exemptions, inline
+ignore comments, severity relaxation and circuit-breaker degradation do not
+remove their findings, and an exception inside a required rule produces a
+blocking error. This applies to custom rule IDs too, as long as the rule's pack
+is active. See [configuration.md](configuration.md).
+
+Approvals (`agentlint approve`) only relax built-in rules mapped to an action
+class; they do not apply to custom rules. See
+[approvals-and-evidence.md](approvals-and-evidence.md).
+
+## Session state
+
+`context.session_state` is a dict persisted between calls in the same agent
+session. Use a key prefix unique to your rule:
 
 ```python
 def evaluate(self, context: RuleContext) -> list[Violation]:
     state = context.session_state
-    state["my_counter"] = state.get("my_counter", 0) + 1
-    # State persists to the next invocation
-    ...
+    state["no-direct-db.count"] = state.get("no-direct-db.count", 0) + 1
+    return []
 ```
 
-## Testing your rule
+## Testing a rule
+
+Load rules the same way AgentLint does, then call `evaluate()` with a
+hand-built context:
 
 ```python
-# tests/test_my_rule.py
+# tests/test_custom_rules.py
+from pathlib import Path
+
 from agentlint.models import HookEvent, RuleContext
-from your_rules.no_raw_sql import NoRawSQL
+from agentlint.packs import load_custom_rules
+
+PROJECT = Path(__file__).resolve().parents[1]
 
 
-def test_detects_raw_sql():
-    rule = NoRawSQL()
+def _rule(rule_id: str):
+    rules = load_custom_rules(".agentlint/rules", str(PROJECT))
+    return next(r for r in rules if r.id == rule_id)
+
+
+def test_flags_direct_db_import():
     context = RuleContext(
-        event=HookEvent.PRE_TOOL_USE,
+        event=HookEvent.POST_TOOL_USE,
         tool_name="Write",
-        tool_input={"file_path": "app/views.py"},
-        project_dir="/tmp",
-        file_content="cursor.execute('SELECT * FROM users')",
+        tool_input={"file_path": "app/routes/users.py"},
+        project_dir=str(PROJECT),
+        file_content="from database import session\n",
     )
-    violations = rule.evaluate(context)
-    assert len(violations) == 1
-    assert "Raw SQL" in violations[0].message
+    violations = _rule("no-direct-db").evaluate(context)
+    assert [v.rule_id for v in violations] == ["no-direct-db"]
 
 
-def test_passes_orm_code():
-    rule = NoRawSQL()
+def test_passes_repository_import():
     context = RuleContext(
-        event=HookEvent.PRE_TOOL_USE,
+        event=HookEvent.POST_TOOL_USE,
         tool_name="Write",
-        tool_input={"file_path": "app/views.py"},
-        project_dir="/tmp",
-        file_content="users = User.objects.filter(active=True)",
+        tool_input={"file_path": "app/routes/users.py"},
+        project_dir=str(PROJECT),
+        file_content="from app.repositories import users\n",
     )
-    assert rule.evaluate(context) == []
+    assert _rule("no-direct-db").evaluate(context) == []
+```
+
+To try a rule end to end, pipe a payload into `agentlint check`:
+
+```bash
+echo '{"tool_name": "Bash", "tool_input": {"command": "PROD_DATABASE_URL=x alembic upgrade head"}}' \
+  | agentlint check --event PreToolUse --adapter claude
 ```
 
 ## Rule discovery
 
-AgentLint auto-loads custom rules by scanning the configured directory:
+- Every `.py` file directly in `custom_rules_dir` is loaded. Subdirectories are
+  not scanned.
+- Files starting with `_` (`_helpers.py`, `__init__.py`) are skipped. Use them
+  for shared code.
+- Each file may define several `Rule` subclasses. Every subclass with an `id`
+  is instantiated with no arguments.
+- `custom_rules_dir` is relative to the project root (or to the policy file
+  that sets it, for workspace policies).
+- A file that fails to import is logged and skipped; other rules still load.
 
-- **File naming**: Any `.py` file in the directory is loaded (non-recursive)
-- **Skipped files**: Files starting with `_` (e.g., `_helpers.py`, `__init__.py`) are ignored — use these for shared utilities
-- **Class detection**: Each file is scanned for subclasses of `Rule` — you can have multiple rule classes per file
-- **Pack attribute**: Set `pack` to any name (e.g., `"fintech"`, `"myproject"`). The pack name must appear in your `packs:` list to activate — use `agentlint doctor` to detect orphaned packs
+### Distributing rules as a package
 
-### Debugging tips
+Rules can also be installed as a Python package through the `agentlint.rules`
+entry-point group. Each entry point must be a callable that returns a `Rule` or
+a list of rules. Installed rules are filtered by `packs:` like directory rules.
 
-If your custom rule isn't loading:
+```toml
+# pyproject.toml of your rules package
+[project.entry-points."agentlint.rules"]
+myproject = "myproject_rules:rules"
+```
 
-1. **Check the path**: Verify `custom_rules_dir` in `agentlint.yml` is relative to your project root
-2. **Check the filename**: Ensure it doesn't start with `_`
-3. **Check the class**: It must subclass `Rule` from `agentlint.models` and have all required attributes (`id`, `description`, `severity`, `events`, `pack`)
-4. **Enable debug logging**: Run with `AGENTLINT_LOG_LEVEL=DEBUG agentlint check --event PreToolUse` to see rule loading output
-5. **Test in isolation**: Import your rule file directly in a Python script to check for syntax errors
+```python
+# myproject_rules/__init__.py
+from agentlint.models import Rule
+
+from myproject_rules.no_direct_db import NoDirectDB
+
+
+def rules() -> list[Rule]:
+    return [NoDirectDB()]
+```
+
+## Debugging
+
+If a rule does not run:
+
+1. Run `agentlint list-rules --pack <pack>`. If the rule is missing, the file
+   did not load.
+2. Check that `custom_rules_dir` is relative to the project root and the file
+   name does not start with `_`.
+3. Check that the class subclasses `Rule` and sets `id`, `description`,
+   `severity`, `events` and `pack`.
+4. Check that `pack` is listed in `packs:`. `agentlint doctor` reports orphaned
+   packs.
+5. Run with debug logging to see import errors:
+   `AGENTLINT_LOG_LEVEL=DEBUG agentlint list-rules`.
+6. Capture a sanitized record of a real hook call with
+   `agentlint check --diagnostic-bundle <file>`. See
+   [diagnostics.md](diagnostics.md).

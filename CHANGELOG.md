@@ -2,7 +2,7 @@
 
 ## v2.9.0 (2026-10-08) — Precise Operations, Drift, Typed Approvals and Evidence
 
-Second half of `docs/rfcs/0001-trust-diagnostics-precision.md`.
+Follows 2.8.0: makes command checks precise and records human decisions and verification evidence. See [Approvals and evidence](docs/approvals-and-evidence.md).
 
 ### Added
 
@@ -16,10 +16,10 @@ Second half of `docs/rfcs/0001-trust-diagnostics-precision.md`.
   `packs:` lists, with `drift_ignore_packs` for intentional omissions.
 - Typed, expiring approvals: `agentlint approve grant|list|revoke`, ten action
   classes, repository- and optionally command-bound, audited, human-only
-  (`approval-self-grant` blocks agent attempts). ADR 0002.
+  (`approval-self-grant` blocks agent attempts).
 - Evidence receipts and `agentlint evidence`: test-run receipts for recognized
   test commands (including redirected logs), external `review` /
-  `deploy-verified` receipts via `evidence.receipts_dirs`. ADR 0003.
+  `deploy-verified` receipts via `evidence.receipts_dirs`.
 - `RuleContext.tool_response` carries the PostToolUse result for exit status.
 
 ### Changed
@@ -72,7 +72,7 @@ Second half of `docs/rfcs/0001-trust-diagnostics-precision.md`.
 
 Field feedback from Codex workspaces found the rules correct but the reporting
 hard to trust. This release makes coverage, degraded operation and denials
-explicit. See `docs/rfcs/0001-trust-diagnostics-precision.md`.
+explicit. See [Diagnostics](docs/diagnostics.md).
 
 ### Added
 

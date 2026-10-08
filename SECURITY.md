@@ -4,72 +4,73 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.3.x   | Yes       |
-| 0.2.x   | Yes       |
-| 0.1.x   | No        |
+| 2.9.x   | Yes       |
+| < 2.9   | No        |
+
+Security fixes are released as patch versions of the latest minor release.
+Upgrade with `agentlint update`.
 
 ## Reporting a vulnerability
 
-If you discover a security vulnerability in AgentLint, please report it responsibly.
-
 **Do not open a public GitHub issue.**
 
-Instead, email **mauricio_perez_r@hotmail.com** with the subject prefix
-`[SECURITY][AgentLint]` and include:
+Use GitHub private vulnerability reporting (the repository's **Security** tab →
+**Report a vulnerability**), or email **mauricio_perez_r@hotmail.com** with the
+subject prefix `[SECURITY][AgentLint]`. Include:
 
-- A description of the vulnerability
-- Steps to reproduce
-- Potential impact
+- a description of the vulnerability;
+- steps to reproduce, including the agent, the exact tool call or command, and
+  your AgentLint version (`agentlint --version`);
+- the impact you expect.
+
+Do not include real credentials in the report. Redact paths and secrets.
 
 ## Response timeline
 
-- **Acknowledgment**: within 48 hours
-- **Initial assessment**: within 1 week
-- **Fix or mitigation**: as soon as practical, depending on severity
+- **Acknowledgment**: within 48 hours.
+- **Initial assessment**: within 1 week.
+- **Fix or mitigation**: as soon as practical, depending on severity.
 
-We will coordinate disclosure with you and credit you in the release notes (unless you prefer otherwise).
+We will coordinate disclosure with you and credit you in the release notes
+unless you prefer otherwise.
 
----
+## Scope
 
-## Why these rules matter
+AgentLint is a guardrail that inspects tool calls from AI coding agents through
+their hook systems. Examples of what we treat as vulnerabilities:
 
-AI coding agents are powerful but imperfect. They operate with broad tool access and can cause real damage when guardrails are missing. These incidents are not hypothetical.
+- **Bypass of an ERROR rule**: a command or file write that an ERROR rule is
+  documented to block, but which AgentLint allows (for example through quoting,
+  shell parsing, path handling, or an adapter's payload shape).
+- **Bypass of required rules or approvals**: disabling or exempting a required
+  workspace rule or locked organization rule, or an agent creating or widening
+  an approval.
+- **Credential leakage**: secrets or file contents written to logs, session
+  state, local recordings, diagnostic bundles, or AgentChute events beyond the
+  documented privacy-safe summaries.
+- **Code execution from hook input**: a hook payload, config file or hook file
+  that makes AgentLint execute code or commands it should not.
+- **Unsafe hook installation**: `setup`, `onboard` or `doctor --fix` writing
+  hook or config files that weaken the agent's existing security settings.
 
-### Secret leaks in generated code
+## What AgentLint is not
 
-Agents trained on code that includes API keys may reproduce those patterns. A widely-reported incident involved an agent writing `sk_live_` Stripe keys into committed source code, resulting in charges exceeding $30,000 before the key was revoked.
+AgentLint is not a sandbox. It only sees what the agent sends to its hooks, and
+it cannot stop actions that never pass through a hook: commands the agent's
+platform does not report, programs that a permitted command starts, or agents
+running without hooks installed. Rules are pattern- and parser-based and can be
+evaded; treat AgentLint as one layer alongside OS permissions, scoped
+credentials, branch protection and review. Missed detections that are not a
+documented guarantee are bugs, not vulnerabilities; report them as normal
+issues.
 
-**AgentLint rules:** `no-secrets` (blocks 15+ token patterns), `no-env-commit` (blocks `.env` writes)
-
-### Bash escape hatches (GitHub #16461)
-
-When Write/Edit tools are restricted, agents bypass guardrails by writing files through Bash: `cat > file.py << EOF`, `echo "content" > file.py`, `tee file.py`, etc. This is the most common escape pattern in Claude Code.
-
-**AgentLint rules:** `no-bash-file-write` (security pack, blocks 12+ write patterns)
-
-### Destructive commands
-
-Agents occasionally run `rm -rf` on the wrong directory, wipe databases with `DROP TABLE`, or force-push over main branch history. One documented case involved an agent running `rm -rf ~`, destroying the user's home directory.
-
-**AgentLint rules:** `no-destructive-commands` (catastrophic patterns return ERROR), `no-force-push`
-
-### Test suite weakening
-
-Agents may "fix" failing tests by adding `@pytest.mark.skip`, replacing assertions with `assert True`, or commenting out failing checks. This passes CI but silently removes test coverage.
-
-**AgentLint rules:** `no-test-weakening`
-
-## Security pack
-
-The `security` pack is opt-in because its rules are opinionated and may produce false positives in workflows that legitimately use Bash for file operations (e.g., build scripts, deployment pipelines).
-
-Enable it when:
-- You are working on security-sensitive projects
-- You want maximum protection against agent escape hatches
-- You are running agents with broad tool access
+The `security` pack is opt-in because its rules are stricter and may produce
+false positives (for example, build scripts that write files through the
+shell). Enable it with:
 
 ```yaml
 packs:
-  - universal
   - security
 ```
+
+See [docs/rules.md](docs/rules.md) for what each rule covers.
