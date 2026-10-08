@@ -102,7 +102,7 @@ This path does not record heartbeats, sessions or AgentChute events. Load the co
 
 - Project directory: `--project-dir`, then `AGENTLINT_PROJECT_DIR`, then `CLAUDE_PROJECT_DIR`, then the current directory.
 - Session state key: `AGENTLINT_SESSION_ID`, otherwise the parent process ID. Set `AGENTLINT_SESSION_ID` to one value per agent session so session-scoped rules and suppressions work.
-- `agentlint setup generic` writes nothing. Its printed `webhook_url` snippet is not a supported setting; ignore it.
+- `agentlint setup generic` writes nothing; it prints the `agentlint check` call to use.
 - To ship a reusable integration for a new agent, see [Custom adapters](../custom-adapters.md).
 
 ## Uninstall

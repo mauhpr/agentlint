@@ -9,44 +9,51 @@ pip install agentlint openai-agents
 agentlint init          # writes agentlint.yml
 ```
 
-`agentlint setup openai` writes no files. The snippet it prints (`from openai.agents import Agent` with `guardrails=[adapter.as_guardrail()]`) does not work with the SDK: the package imports as `agents`, and `Agent` has no `guardrails` parameter. Use the code below instead.
+`agentlint setup openai` writes no files; it prints the snippet below.
 
-Attach an AgentLint check to each function tool with a tool input guardrail:
+Attach AgentLint to each function tool with a tool input guardrail:
 
 ```python
-import json
-
-from agents import Agent, Runner, ToolGuardrailFunctionOutput
-from agents.decorators import tool, tool_input_guardrail
+from agents import Agent, Runner
+from agents.decorators import tool
 
 from agentlint.adapters.openai_agents import OpenAIAgentsAdapter
 
-adapter = OpenAIAgentsAdapter()
+agentlint = OpenAIAgentsAdapter()
 
 
-@tool_input_guardrail
-def agentlint_shell(data):
-    args = json.loads(data.context.tool_arguments or "{}")
-    result = adapter.evaluate_tool_call("Bash", {"command": args.get("command", "")})
-    if result["tripwire_triggered"]:
-        reasons = "\n".join(
-            f"[{v['rule_id']}] {v['message']}"
-            for v in result["violations"]
-            if v["severity"] == "error"
-        )
-        return ToolGuardrailFunctionOutput.reject_content(reasons)
-    return ToolGuardrailFunctionOutput.allow()
-
-
-@tool(tool_input_guardrails=[agentlint_shell])
+@tool(tool_input_guardrails=[agentlint.tool_input_guardrail("Bash")])
 def run_shell(command: str) -> str:
     """Run a shell command in the project."""
     ...
 
 
-agent = Agent(name="builder", tools=[run_shell])
+@tool(
+    tool_input_guardrails=[
+        agentlint.tool_input_guardrail("Write", arguments={"file_path": "path", "content": "text"})
+    ]
+)
+def write_file(path: str, text: str) -> str:
+    """Write a file in the project."""
+    ...
+
+
+agent = Agent(name="builder", tools=[run_shell, write_file])
 result = Runner.run_sync(agent, "List the files in the repo")
 ```
+
+`tool_input_guardrail(tool_name, arguments=None, project_dir=None)` takes what
+the tool does in AgentLint terms (`Bash`, `Write` or `Edit`) and, if your tool's
+argument names differ, a mapping from AgentLint's keys (`command`, `file_path`,
+`content`, `old_string`, `new_string`) to yours. On an ERROR the SDK skips the
+call and returns the AgentLint reasons to the model
+(`ToolGuardrailFunctionOutput.reject_content`); otherwise the call proceeds.
+
+To write the guardrail yourself, call `agentlint.evaluate_tool_call(...)` inside
+your own `@tool_input_guardrail` function. Guardrail APIs belong to the SDK; see
+its [guardrails documentation](https://openai.github.io/openai-agents-python/guardrails/).
+`as_guardrail()` from earlier versions returned a plain dict the SDK can't use
+and is deprecated.
 
 `reject_content` skips the tool call and returns the AgentLint reasons to the model instead. Guardrail APIs belong to the SDK; check its [guardrails documentation](https://openai.github.io/openai-agents-python/guardrails/) for your installed version.
 
@@ -81,7 +88,7 @@ Map each tool to the Claude-style name and argument shape that AgentLint rules e
 | Writes a file | `Write` | `{"file_path": "...", "content": "..."}` |
 | Edits a file | `Edit` | `{"file_path": "...", "content": "..."}` |
 
-Other names (such as `file_write` or `shell`) match no tool-specific rules.
+The adapter's own names `shell`, `file_write` and `file_edit` are translated to these; any other name matches no tool-specific rules.
 
 Tool guardrails only run for function tools and local MCP server tools. Hosted tools and the SDK's built-in shell and apply-patch tools do not go through this pipeline, so AgentLint cannot see those calls.
 

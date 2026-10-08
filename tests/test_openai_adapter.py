@@ -68,9 +68,10 @@ class TestEvaluateToolCall:
         assert result["tripwire_triggered"] is False
         assert result["blocked_count"] == 0
 
-    def test_guardrail_dict(self) -> None:
+    def test_guardrail_dict_is_deprecated(self) -> None:
         adapter = OpenAIAgentsAdapter()
-        guardrail = adapter.as_guardrail()
+        with pytest.warns(DeprecationWarning, match="tool_input_guardrail"):
+            guardrail = adapter.as_guardrail()
         assert guardrail["name"] == "agentlint"
         assert guardrail["type"] == "tool"
         assert callable(guardrail["handler"])
@@ -164,3 +165,77 @@ class TestOpenAIAdapterMisc:
 
         adapter = OpenAIAgentsAdapter()
         adapter.uninstall_hooks(str(tmp_path))  # should not raise
+
+
+class _FakeOutput:
+    def __init__(self, kind, message=None):
+        self.kind, self.message = kind, message
+
+    @classmethod
+    def allow(cls):
+        return cls("allow")
+
+    @classmethod
+    def reject_content(cls, message):
+        return cls("reject", message)
+
+
+@pytest.fixture
+def fake_sdk(monkeypatch):
+    """Minimal stand-in for the openai-agents package surface we use."""
+    import sys
+    import types
+
+    agents = types.ModuleType("agents")
+    agents.ToolGuardrailFunctionOutput = _FakeOutput
+    decorators = types.ModuleType("agents.decorators")
+    decorators.tool_input_guardrail = lambda fn: fn
+    agents.decorators = decorators
+    monkeypatch.setitem(sys.modules, "agents", agents)
+    monkeypatch.setitem(sys.modules, "agents.decorators", decorators)
+
+
+def _call(guardrail, arguments):
+    import json
+    import types
+
+    data = types.SimpleNamespace(
+        context=types.SimpleNamespace(tool_arguments=json.dumps(arguments))
+    )
+    return guardrail(data)
+
+
+class TestToolInputGuardrail:
+    def test_blocks_dangerous_shell_command(self, fake_sdk, tmp_path) -> None:
+        guardrail = OpenAIAgentsAdapter().tool_input_guardrail("Bash", project_dir=str(tmp_path))
+        out = _call(guardrail, {"command": "git push --force origin main"})
+        assert out.kind == "reject" and "[no-force-push]" in out.message
+        assert _call(guardrail, {"command": "ls"}).kind == "allow"
+
+    def test_maps_tool_argument_names(self, fake_sdk, tmp_path) -> None:
+        guardrail = OpenAIAgentsAdapter().tool_input_guardrail(
+            "Write",
+            arguments={"file_path": "path", "content": "text"},
+            project_dir=str(tmp_path),
+        )
+        out = _call(
+            guardrail,
+            {"path": str(tmp_path / "c.py"), "text": 'API_KEY = "sk_live_abc123def456ghi789"'},
+        )
+        assert out.kind == "reject" and "no-secrets" in out.message
+
+    def test_native_openai_tool_names_are_canonicalized(self, tmp_path) -> None:
+        result = OpenAIAgentsAdapter().evaluate_tool_call(
+            "shell", {"command": "git push --force origin main"}, str(tmp_path)
+        )
+        assert result["tripwire_triggered"] is True
+
+    def test_setup_snippet_uses_the_real_sdk_api(self, tmp_path) -> None:
+        from unittest.mock import patch
+
+        with patch("click.echo") as echo:
+            OpenAIAgentsAdapter().install_hooks(str(tmp_path))
+        text = "\n".join(str(c.args[0]) for c in echo.call_args_list)
+        assert "from agents.decorators import tool" in text
+        assert "tool_input_guardrail(" in text
+        assert "openai.agents" not in text and "as_guardrail" not in text

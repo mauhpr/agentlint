@@ -513,7 +513,19 @@ def _configure_logging() -> None:
     )
 
 
-@click.group()
+class _AgentLintGroup(click.Group):
+    """Turn known user-facing errors into clean CLI messages."""
+
+    def invoke(self, ctx):
+        from agentlint.adapters._utils import UnreadableSettingsError
+
+        try:
+            return super().invoke(ctx)
+        except UnreadableSettingsError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+
+@click.group(cls=_AgentLintGroup)
 @click.version_option(__version__, prog_name="agentlint", message="agentlint %(version)s")
 def main():
     """AgentLint - Real-time quality guardrails for AI coding agents."""
@@ -1502,7 +1514,10 @@ def setup(platform: str, scope: str, project_dir: str | None, dry_run: bool):
 
     adapter.install_hooks(project_dir, scope=scope, dry_run=dry_run, cmd=agentlint_cmd)
 
-    click.echo(f"Installed AgentLint hooks for {platform}")
+    if platform in _HOOK_PLATFORMS:
+        click.echo(f"Installed AgentLint hooks for {platform}")
+    else:
+        click.echo(f"No files were changed for {platform}; add the configuration shown above.")
 
     if platform == "codex" and not dry_run:
         if _codex_hooks_enabled():

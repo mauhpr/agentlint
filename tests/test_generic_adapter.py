@@ -72,7 +72,9 @@ class TestGenericAdapterMisc:
             adapter.install_hooks(str(tmp_path))
         outputs = [str(call.args[0]) for call in mock_echo.call_args_list]
         combined = "\n".join(outputs)
-        assert "Generic adapter configured" in combined
+        assert "check --adapter generic --event pre_tool_use" in combined
+        assert str(tmp_path) in combined
+        assert "webhook_url" not in combined
 
     def test_uninstall_hooks_noop(self, tmp_path) -> None:
         adapter = GenericAdapter()

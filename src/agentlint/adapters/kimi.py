@@ -15,6 +15,7 @@ from typing import Any
 from agentlint.adapters._utils import (
     is_agentlint_flat_entry,
     resolve_command,
+    settings_for_update,
 )
 from agentlint.adapters.base import AgentAdapter
 from agentlint.formats.claude_hooks import ClaudeHookFormatter
@@ -233,7 +234,7 @@ class KimiAdapter(AgentAdapter):
         path = _config_path(scope, project_dir)
         existing = _read_config(path)
 
-        config = dict(existing or {})
+        config = settings_for_update(path, existing)
         our_hooks = _build_hooks(cmd)
         hooks = list(config.get("hooks", []))
 

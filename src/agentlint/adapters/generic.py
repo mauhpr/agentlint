@@ -1,14 +1,8 @@
-"""Generic HTTP/webhook adapter for AgentLint.
+"""Generic adapter for custom agent frameworks and tooling.
 
-This adapter accepts normalized events and tool names via HTTP/webhook,
-making AgentLint usable with custom agent frameworks, CI pipelines,
-and enterprise integrations.
-
-Configuration in agentlint.yml:
-    generic:
-      webhook_url: https://my-ci.example.com/agentlint
-      headers:
-        Authorization: Bearer ${TOKEN}
+Pipe a JSON tool call to ``agentlint check --adapter generic --event <event>``;
+AgentLint prints a JSON decision and exits non-zero when the call is blocked.
+See docs/agents/generic.md for the input and output shapes.
 """
 
 from __future__ import annotations
@@ -91,15 +85,18 @@ class GenericAdapter(AgentAdapter):
         dry_run: bool = False,
         cmd: str | None = None,
     ) -> None:
-        """Generic adapter does not install hooks — print configuration example."""
+        """Generic adapter does not install hooks; print how to call AgentLint."""
         import click
 
-        click.echo("Generic adapter configured via agentlint.yml:")
-        click.echo("""
-generic:
-  webhook_url: https://your-webhook.example.com/agentlint
-  headers:
-    Authorization: Bearer ${TOKEN}
+        agentlint = cmd or "agentlint"
+        click.echo("The generic adapter has no hook file. Call AgentLint from your tool:")
+        click.echo(f"""
+echo '{{"tool_name": "Bash", "tool_input": {{"command": "git push --force origin main"}}}}' \\
+  | {agentlint} check --adapter generic --event pre_tool_use --project-dir {os.path.abspath(project_dir)}
+
+Use Claude-style tool names (Bash, Write, Edit) or shell/file_write/file_edit.
+The output is JSON; a non-zero exit code means the call is blocked.
+Details: https://github.com/mauhpr/agentlint/blob/main/docs/agents/generic.md
 """)
 
     def uninstall_hooks(

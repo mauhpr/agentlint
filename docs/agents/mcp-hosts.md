@@ -14,7 +14,7 @@ This installs the `agentlint-mcp` command. To run it without installing, use `uv
 
 Every host needs the same three things: the command `agentlint-mcp`, no arguments, and `AGENTLINT_PROJECT_DIR` set to the project's absolute path. Hosts often start MCP servers from a different working directory, so do not rely on the current directory.
 
-`agentlint setup mcp` writes nothing; it prints a config snippet. That snippet currently uses the path of the `agentlint` CLI as the command; replace it with `agentlint-mcp` (and use an absolute project path).
+`agentlint setup mcp` writes nothing; it prints a config snippet with the `agentlint-mcp` command (the binary next to your `agentlint`, if found) and the absolute project path.
 
 ### Claude Code
 

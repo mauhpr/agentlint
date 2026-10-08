@@ -1,18 +1,22 @@
 """OpenAI Agents SDK adapter for AgentLint.
 
-This adapter integrates AgentLint with the OpenAI Agents SDK guardrails system.
-Instead of hooks, OpenAI Agents uses guardrail functions that wrap tool calls.
+The OpenAI Agents SDK has no hook files; it checks function-tool calls with
+tool input guardrails. This adapter builds such a guardrail around AgentLint.
 
-Usage:
+Usage (requires ``pip install openai-agents``)::
+
+    from agents import Agent
+    from agents.decorators import tool
+
     from agentlint.adapters.openai_agents import OpenAIAgentsAdapter
-    from openai.agents import Agent, Guardrail
 
-    adapter = OpenAIAgentsAdapter()
-    agent = Agent(
-        name="my-agent",
-        tools=[...],
-        guardrails=[adapter.as_guardrail()],
-    )
+    agentlint_shell = OpenAIAgentsAdapter().tool_input_guardrail("Bash")
+
+    @tool(tool_input_guardrails=[agentlint_shell])
+    def run_shell(command: str) -> str:
+        ...
+
+    agent = Agent(name="builder", tools=[run_shell])
 """
 
 from __future__ import annotations
@@ -128,19 +132,28 @@ class OpenAIAgentsAdapter(AgentAdapter):
         """
         import click
 
-        click.echo("OpenAI Agents SDK uses guardrails, not hooks.")
-        click.echo("Add the guardrail to your agent definition:")
+        click.echo("OpenAI Agents SDK uses tool guardrails, not hooks. No files were changed.")
+        click.echo("Attach AgentLint to each function tool (requires `pip install openai-agents`):")
         click.echo("""
-from agentlint.adapters.openai_agents import OpenAIAgentsAdapter
-from openai.agents import Agent
+from agents import Agent
+from agents.decorators import tool
 
-adapter = OpenAIAgentsAdapter()
-agent = Agent(
-    name="my-agent",
-    tools=[...],
-    guardrails=[adapter.as_guardrail()],
-)
+from agentlint.adapters.openai_agents import OpenAIAgentsAdapter
+
+agentlint_shell = OpenAIAgentsAdapter().tool_input_guardrail("Bash")
+
+
+@tool(tool_input_guardrails=[agentlint_shell])
+def run_shell(command: str) -> str:
+    \"\"\"Run a shell command in the project.\"\"\"
+    ...
+
+
+agent = Agent(name="builder", tools=[run_shell])
 """)
+        click.echo(
+            "Details: https://github.com/mauhpr/agentlint/blob/main/docs/agents/openai-agents.md"
+        )
 
     def uninstall_hooks(
         self,
@@ -160,9 +173,12 @@ agent = Agent(
 
         Returns a guardrail-compatible result dict.
         """
+        from agentlint.adapters.normalize import canonical_tool_call
+
         project_dir = project_dir or self.resolve_project_dir()
         config = load_config(project_dir)
         rules = load_project_rules(config, project_dir)
+        tool_name, tool_input = canonical_tool_call(self, tool_name, tool_input)
 
         context = RuleContext(
             event=HookEvent.PRE_TOOL_USE,
@@ -187,12 +203,60 @@ agent = Agent(
             "warning_count": len(warnings),
         }
 
-    def as_guardrail(self) -> dict[str, Any]:
-        """Return a guardrail dict for OpenAI Agents SDK integration.
+    def tool_input_guardrail(
+        self,
+        tool_name: str = "Bash",
+        arguments: dict[str, str] | None = None,
+        project_dir: str | None = None,
+    ):
+        """Build an OpenAI Agents SDK tool input guardrail that runs AgentLint.
 
-        This is a simplified interface. Full integration requires the
-        openai-agents SDK to be installed.
+        ``tool_name`` is what the tool does in AgentLint terms: ``Bash`` (runs a
+        command), ``Write`` or ``Edit``. ``arguments`` maps AgentLint input keys
+        to your tool's argument names when they differ, e.g.
+        ``{"command": "cmd"}`` or ``{"file_path": "path", "content": "text"}``.
+        When AgentLint finds an ERROR, the tool call is skipped and the reasons
+        are returned to the model instead.
         """
+        import json
+
+        from agents import ToolGuardrailFunctionOutput
+        from agents.decorators import tool_input_guardrail
+
+        mapping = arguments or {}
+
+        @tool_input_guardrail
+        def agentlint_guardrail(data):
+            raw = json.loads(data.context.tool_arguments or "{}")
+            tool_input = dict(raw)
+            for agentlint_key, tool_key in mapping.items():
+                if tool_key in raw:
+                    tool_input[agentlint_key] = raw[tool_key]
+            result = self.evaluate_tool_call(tool_name, tool_input, project_dir)
+            if result["tripwire_triggered"]:
+                reasons = "\n".join(
+                    f"[{v['rule_id']}] {v['message']}"
+                    for v in result["violations"]
+                    if v["severity"] == Severity.ERROR.value
+                )
+                return ToolGuardrailFunctionOutput.reject_content(reasons)
+            return ToolGuardrailFunctionOutput.allow()
+
+        return agentlint_guardrail
+
+    def as_guardrail(self) -> dict[str, Any]:
+        """Deprecated: returns a plain dict the OpenAI Agents SDK cannot use.
+
+        Use :meth:`tool_input_guardrail` instead.
+        """
+        import warnings
+
+        warnings.warn(
+            "OpenAIAgentsAdapter.as_guardrail() is not usable with the OpenAI Agents SDK; "
+            "use tool_input_guardrail() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return {
             "name": "agentlint",
             "description": "AgentLint guardrails for code quality and security",

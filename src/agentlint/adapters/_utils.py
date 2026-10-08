@@ -63,6 +63,24 @@ def read_json_config(path: Path) -> dict | None:
         return None
 
 
+class UnreadableSettingsError(Exception):
+    """A settings file exists but can't be parsed; refuse to overwrite it."""
+
+    def __init__(self, path: Path):
+        super().__init__(
+            f"{path} exists but is not valid configuration. AgentLint will not "
+            "overwrite it. Fix or move the file, then run setup again."
+        )
+        self.path = path
+
+
+def settings_for_update(path: Path, existing: object) -> dict:
+    """Return a mutable copy of parsed settings, or raise if the file is unusable."""
+    if existing is None or not isinstance(existing, dict):
+        raise UnreadableSettingsError(path)
+    return dict(existing)
+
+
 def write_json_config(path: Path, data: dict) -> None:
     """Write a JSON config file with indent=2. Creates parent dirs if needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
