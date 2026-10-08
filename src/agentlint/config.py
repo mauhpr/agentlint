@@ -44,6 +44,10 @@ class AgentLintConfig:
     rule_origins: dict[str, str] = field(default_factory=dict)
     # True when `packs:` was written explicitly (stack detection was skipped).
     packs_explicit: bool = False
+    # Packs intentionally omitted despite repository evidence (silences drift).
+    drift_ignore_packs: list[str] = field(default_factory=list)
+    # Evidence receipts: {"receipts_dirs": [...], "max_age": "24h"} (ADR 0003).
+    evidence: dict = field(default_factory=dict)
 
     def describe_policy_source(self, rule_id: str, pack: str, *, builtin: bool) -> str:
         """Explain which policy layer makes a rule active, for denial messages."""
@@ -194,6 +198,8 @@ def _load_local_config(project_dir: str, *, strict: bool = False) -> AgentLintCo
             else {}
         ),
         packs_explicit=bool(explicit_packs),
+        drift_ignore_packs=[p for p in (raw.get("drift_ignore_packs") or []) if isinstance(p, str)],
+        evidence=raw.get("evidence") if isinstance(raw.get("evidence"), dict) else {},
     )
 
 

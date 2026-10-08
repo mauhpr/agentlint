@@ -397,6 +397,12 @@ agentlint doctor
 # Preview a Codex apply_patch with the hook's exact validator and rules
 agentlint check-patch change.patch
 
+# Approve one action class for this repo, for a limited time (human-only)
+agentlint approve grant git-push-protected --reason "hotfix" --ttl 30m
+
+# Show test/review/deploy evidence for this repo
+agentlint evidence
+
 # Scan changed files for CI pipelines
 agentlint ci --diff origin/main...HEAD
 ```

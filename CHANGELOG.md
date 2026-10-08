@@ -1,5 +1,45 @@
 # Changelog
 
+## v2.9.0 (2026-10-08) — Precise Operations, Drift, Typed Approvals and Evidence
+
+Second half of `docs/rfcs/0001-trust-diagnostics-precision.md`.
+
+### Added
+
+- Parsed shell operations: commands are split on `&&`, `||`, `;`, `|`, `&` and
+  newlines and classified as display, read-only or state-changing. Built-in
+  operation guards see only state-changing operations; unmodelled syntax keeps
+  raw-text checks.
+- `allow_operations` per-rule allowances that exempt only the matching parsed
+  operation (`binary` + `args_prefix` or `args_regex`).
+- Pack drift detection in `status`, `status --json` and `doctor` for explicit
+  `packs:` lists, with `drift_ignore_packs` for intentional omissions.
+- Typed, expiring approvals: `agentlint approve grant|list|revoke`, ten action
+  classes, repository- and optionally command-bound, audited, human-only
+  (`approval-self-grant` blocks agent attempts). ADR 0002.
+- Evidence receipts and `agentlint evidence`: test-run receipts for recognized
+  test commands (including redirected logs), external `review` /
+  `deploy-verified` receipts via `evidence.receipts_dirs`. ADR 0003.
+- `RuleContext.tool_response` carries the PostToolUse result for exit status.
+
+### Changed
+
+- `no-destructive-commands`, `no-force-push` and `no-push-to-main` evaluate each
+  operation separately.
+- `drift-detector` recognizes `uv run pytest`, `python -m pytest` and other
+  runners by parsed operation, ignores display text such as `echo pytest`, does
+  not count runs reported as failed, and accepts fresh receipts at commit time.
+- `doctor` notes rules that still use whole-command `allow_patterns`.
+
+### Fixed
+
+- `git push -u origin feat/x && gh pr create --base main` is no longer reported
+  as a push to `main`.
+- Quoted arguments to read-only commands (`grep "rm -rf" log`,
+  `git log --grep "DROP DATABASE"`) no longer trigger mutation guards.
+
+---
+
 ## v2.8.0 (2026-10-08) — Coverage Truth and Actionable Diagnostics
 
 Field feedback from Codex workspaces found the rules correct but the reporting

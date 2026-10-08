@@ -124,6 +124,101 @@ files), substitutions and mixed read/write command strings receive the original
 checks. Production-name matching still does not discover opaque cloud project IDs
 or infer approval from previous conversations or saved plan files.
 
+### Parsed operations (v2.9.0)
+
+Shell commands made only of simple commands joined by `&&`, `||`, `;`, `|`,
+`&` or newlines are split into operations, and each is classified as display
+(`echo`, `printf`), read-only (`grep`, `rg`, `cat`, `git log/diff/status/show`,
+`gh pr view/list`, `find` without actions, `sed` without `-i`, allow-listed
+cloud reads, ...) or state-changing. Built-in operation guards only see the
+state-changing operations, so quoted arguments to read-only commands
+(`grep "rm -rf" log`) no longer look like mutations. `no-destructive-commands`,
+`no-force-push` and `no-push-to-main` evaluate each operation separately, so
+`git push -u origin feat && gh pr create --base main` is not a push to `main`.
+
+Anything not fully modelled — `$`/backtick substitutions, subshells, heredocs,
+unterminated quotes, or data piped into an interpreter (`... | bash`,
+`| xargs`, `| ssh`) — keeps the original raw-text checks. Credential,
+file-write, custom and organization rules always see the original input.
+
+Prefer structured `allow_operations` to `allow_patterns`. An allowance exempts
+only the parsed operation it matches; other operations in the same command are
+still checked. Required workspace rules ignore both.
+
+```yaml
+rules:
+  no-destructive-commands:
+    allow_operations:
+      - binary: rm
+        args_prefix: ["-rf", "build"]      # rm -rf build...
+      - binary: rm
+        args_regex: '-rf dist/\S+'          # full-match on the joined arguments
+```
+
+`allow_patterns` still work but exempt the whole command when they match;
+`agentlint doctor` points out rules that use them.
+
+### Pack drift (v2.9.0)
+
+When a repository's `agentlint.yml` lists `packs:` explicitly, `status` and
+`doctor` compare it with a bounded scan of the repository (depth 3, skipping
+dependency folders, nested repositories and worktrees) and report packs the
+code calls for but the configuration omits — for example a "Python-only"
+config in a repository with `ui/package.json` and React components. Nothing is
+changed automatically. A `projects:` mapping that enables the pack for that
+directory, or `drift_ignore_packs`, records an intentional omission:
+
+```yaml
+drift_ignore_packs: [seo]
+```
+
+Workspace-level baselines are not judged for drift.
+
+### Typed approvals (v2.9.0)
+
+A person can approve one **action class** for one repository for a limited
+time. A matching approval turns that rule's ERROR into a WARNING citing the
+approval; each use is audited (`~/.cache/agentlint/approval-audit.jsonl`).
+Approvals never apply to locked, required-workspace or organization rules, and
+an approval for one class never covers another — `git-merge` does not
+authorize `model-spend`.
+
+```sh
+agentlint approve grant git-push-protected --reason "hotfix 4.2.1" --ttl 30m \
+  --operation "git push origin main"
+agentlint approve list
+agentlint approve revoke apr_1a2b3c4d
+```
+
+Classes: `git-push-protected`, `git-merge`, `infra-apply`, `cloud-delete`,
+`cloud-paid-create`, `destructive-op`, `cicd-edit`, `package-publish`,
+`production-access`, `model-spend`. TTL defaults to 1h (max 24h). `grant`
+requires an interactive terminal, and agent tool calls that run
+`agentlint approve grant` or write the approvals file are blocked
+(`approval-self-grant`). Storage: `AGENTLINT_APPROVALS_FILE`
+(default `~/.cache/agentlint/approvals.jsonl`). See `docs/rfcs/0002-typed-approvals.md`.
+
+### Evidence receipts (v2.9.0)
+
+AgentLint records a `test-run` receipt when a recognized test command finishes
+(pytest, `python -m pytest`, `uv run pytest`, `make test`, npm/pnpm/yarn test,
+vitest, jest, go test, cargo test), including redirected runs such as
+`uv run pytest -q > log 2>&1` or `| tee log`. A non-zero exit status reported by
+the agent means no receipt; `echo pytest` is not a test run. Other tools can
+write `test-run`, `review` or `deploy-verified` receipts into extra directories:
+
+```yaml
+evidence:
+  receipts_dirs: [~/.local/state/my-tool/receipts]
+  max_age: 24h
+```
+
+`drift-detector` accepts a fresh receipt for the current HEAD, newer than the
+last edit, as "tests were run"; its warnings cite the latest evidence.
+`agentlint evidence` lists the latest local tests, review and verified
+deployment for a repository. Receipts never unblock an ERROR. Format:
+`docs/rfcs/0003-evidence-receipts.md`.
+
 ### `stack`
 
 Controls how rule packs are activated.
@@ -466,7 +561,15 @@ Tracks file edits and test runs. Fires through two channels:
 2. **Commit boundary** (PreToolUse, **v1.10.0+**): fires once per
    `git commit` attempt when the agent has crossed the threshold without
    running tests. `git commit --amend --no-edit` is skipped (no new
-   content). Resets after a successful test run.
+   content). Resets after a successful test run. Since v2.9.0 a fresh
+   evidence receipt (written by AgentLint or another tool) newer than the
+   last edit also satisfies the check, and the warning cites the latest
+   evidence.
+
+Test runs are recognized from parsed operations (`uv run pytest`,
+`python -m pytest`, `make test`, npm/pnpm/yarn test, vitest, jest, go test,
+cargo test), including redirected output; `echo pytest` is not a run, and a run
+the agent reports as failed does not reset the counter.
 
 Only counts code files — config files (`.yml`, `.md`, etc.) are excluded.
 

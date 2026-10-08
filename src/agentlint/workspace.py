@@ -96,5 +96,11 @@ def load_workspace_config(project_dir: str, loader: Callable) -> AgentLintConfig
             **base.rule_origins,
             **(local.rule_origins if local_dir != root else {}),
         },
-        packs_explicit=local.packs_explicit if local_dir != root else base.packs_explicit,
+        # Drift is judged against a repository's own explicit packs; a workspace
+        # baseline is not a statement about any one repository's stack.
+        packs_explicit=local.packs_explicit if local_dir != root else False,
+        drift_ignore_packs=list(
+            dict.fromkeys([*base.drift_ignore_packs, *local.drift_ignore_packs])
+        ),
+        evidence=_merge(base.evidence, local.evidence),
     )

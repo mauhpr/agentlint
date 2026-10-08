@@ -95,3 +95,104 @@ def _has_seo_framework(root: Path) -> bool:
         return bool(_SSR_SSG_FRAMEWORKS & set(deps.keys()))
     except (json.JSONDecodeError, OSError):
         return False
+
+
+# --- Configuration drift (v2.9.0) -------------------------------------------
+
+_SKIP_DIRS = {
+    "node_modules",
+    ".git",
+    ".venv",
+    "venv",
+    "env",
+    "dist",
+    "build",
+    "__pycache__",
+    ".next",
+    ".nuxt",
+    "target",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    "vendor",
+    "site-packages",
+    ".cache",
+    "coverage",
+    ".worktrees",
+    "worktrees",
+}
+_FRONTEND_SUFFIXES = {".tsx", ".jsx", ".vue", ".svelte"}
+_MAX_DEPTH = 3
+_MAX_ENTRIES = 20_000
+
+
+def _stack_signals(root: Path) -> dict[str, list[str]]:
+    """Shallow, bounded, breadth-first scan for stack evidence below the root.
+
+    Nested repositories and worktrees (directories with their own `.git`) are
+    skipped: their files are another checkout's evidence, not this repository's.
+    """
+    from collections import deque
+
+    signals: dict[str, list[str]] = {"python": [], "frontend": [], "react": [], "seo": []}
+    component_files = 0
+    seen = 0
+    queue: deque[tuple[Path, int]] = deque([(root, 0)])
+    while queue and seen < _MAX_ENTRIES:
+        directory, depth = queue.popleft()
+        try:
+            entries = sorted(directory.iterdir(), key=lambda e: e.name)
+        except OSError:
+            continue
+        for entry in entries:
+            seen += 1
+            if entry.is_dir():
+                if (
+                    depth < _MAX_DEPTH
+                    and entry.name not in _SKIP_DIRS
+                    and not entry.is_symlink()
+                    and not (entry / ".git").exists()
+                ):
+                    queue.append((entry, depth + 1))
+                continue
+            rel = entry.relative_to(root).as_posix()
+            if entry.name in {"pyproject.toml", "setup.py"}:
+                signals["python"].append(rel)
+            elif entry.name == "package.json":
+                signals["frontend"].append(rel)
+                if _has_react(entry.parent):
+                    signals["react"].append(rel)
+                if _has_seo_framework(entry.parent):
+                    signals["seo"].append(rel)
+            elif entry.suffix in _FRONTEND_SUFFIXES:
+                component_files += 1
+    if component_files:
+        signals["frontend"].append(f"{component_files} .tsx/.jsx/.vue/.svelte file(s)")
+    return signals
+
+
+def detect_drift(config, project_dir: str) -> list[dict]:
+    """Packs the repository shows evidence for but an explicit `packs:` omits.
+
+    Only explicit pack lists can drift (auto-detection follows the repository).
+    `projects:` mappings that enable the pack for the evidence's directory, and
+    packs listed in `drift_ignore_packs`, are not reported. Never edits config.
+    """
+    if not getattr(config, "packs_explicit", False):
+        return []
+    ignored = set(getattr(config, "drift_ignore_packs", []) or [])
+    findings = []
+    for pack, evidence in _stack_signals(Path(project_dir)).items():
+        if not evidence or pack in config.packs or pack in ignored or pack not in PACK_MODULES:
+            continue
+        uncovered = [
+            item
+            for item in evidence
+            if not any(
+                item.startswith(prefix.rstrip("/") + "/") and pack in (proj.get("packs") or [])
+                for prefix, proj in (config.projects or {}).items()
+            )
+        ]
+        if uncovered:
+            findings.append({"pack": pack, "evidence": uncovered[:5]})
+    return findings
