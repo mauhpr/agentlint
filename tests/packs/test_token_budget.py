@@ -165,3 +165,47 @@ class TestTokenBudgetReport:
         ctx = _ctx(event=HookEvent.STOP, session_state=state)
         violations = self.rule.evaluate(ctx)
         assert "1m" in violations[0].message
+
+
+class TestTokenBudgetCountedTools:
+    """Shell/read calls are reported but do not push a session toward 'wrap up'."""
+
+    rule = TokenBudget()
+
+    def _run(self, tools, config=None):
+        state: dict = {}
+        fired = []
+        for tool in tools:
+            fired += self.rule.evaluate(_ctx(tool_name=tool, session_state=state, config=config))
+        return state, fired
+
+    def test_bash_calls_do_not_trigger_mid_session_warning(self):
+        state, fired = self._run(["Bash"] * 300)
+        assert fired == []
+        assert state["token_budget"]["total_calls"] == 300
+        [report] = self.rule.evaluate(_ctx(event=HookEvent.STOP, session_state=state))
+        assert report.severity == Severity.INFO
+        assert "300 tool calls" in report.message and "Bash: 300" in report.message
+
+    def test_file_changes_still_warn_with_bash_interleaved(self):
+        _, fired = self._run(["Bash", "Edit"] * 160)
+        assert len(fired) == 1
+        assert "160/200 file-changing tool calls" in fired[0].message
+
+    def test_count_tools_all_restores_counting_every_call(self):
+        config = {"token-budget": {"count_tools": "all"}}
+        _, fired = self._run(["Bash"] * 160, config)
+        assert len(fired) == 1 and "160/200 tool calls" in fired[0].message
+
+    def test_count_tools_custom_list(self):
+        config = {"token-budget": {"count_tools": ["Bash"], "max_tool_invocations": 10}}
+        _, fired = self._run(["Edit"] * 20 + ["Bash"] * 8, config)
+        assert len(fired) == 1 and "8/10" in fired[0].message
+
+    def test_stop_warns_only_when_counted_calls_exceed_budget(self):
+        config = {"token-budget": {"max_tool_invocations": 5}}
+        state, _ = self._run(["Bash"] * 50 + ["Write"] * 6, config)
+        [report] = self.rule.evaluate(
+            _ctx(event=HookEvent.STOP, session_state=state, config=config)
+        )
+        assert report.severity == Severity.WARNING

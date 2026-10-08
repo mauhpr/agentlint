@@ -20,6 +20,9 @@ def isolate_agentlint_state(monkeypatch, tmp_path):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "sessions"))
     monkeypatch.setenv("AGENTLINT_HEARTBEAT_DIR", str(tmp_path / "heartbeat"))
+    monkeypatch.setenv("AGENTLINT_APPROVALS_FILE", str(tmp_path / "approvals.jsonl"))
+    monkeypatch.setenv("AGENTLINT_APPROVAL_AUDIT_FILE", str(tmp_path / "approval-audit.jsonl"))
+    monkeypatch.setenv("AGENTLINT_RECEIPTS_DIR", str(tmp_path / "receipts"))
     # User-scope hook files (~/.codex/hooks.json etc.) must not leak in from the
     # developer's machine now that status inspects both scopes.
     monkeypatch.setenv("HOME", str(tmp_path / "home"))

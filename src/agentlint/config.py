@@ -44,6 +44,12 @@ class AgentLintConfig:
     rule_origins: dict[str, str] = field(default_factory=dict)
     # True when `packs:` was written explicitly (stack detection was skipped).
     packs_explicit: bool = False
+    # Packs intentionally omitted despite repository evidence (silences drift).
+    drift_ignore_packs: list[str] = field(default_factory=list)
+    # Evidence receipts: {"receipts_dirs": [...], "max_age": "24h"}.
+    evidence: dict = field(default_factory=dict)
+    # Core packs (universal, quality) deliberately turned off.
+    exclude_packs: list[str] = field(default_factory=list)
 
     def describe_policy_source(self, rule_id: str, pack: str, *, builtin: bool) -> str:
         """Explain which policy layer makes a rule active, for denial messages."""
@@ -104,11 +110,23 @@ class AgentLintConfig:
             ) > len(best_match):
                 best_match = clean
                 best_packs = project_config.get("packs")
-        return best_packs if best_packs else self.packs
+        return with_core_packs(best_packs, self.exclude_packs) if best_packs else self.packs
 
     def with_packs(self, packs: list[str]) -> AgentLintConfig:
         """Return a copy with different packs."""
         return replace(self, packs=packs)
+
+
+# Packs that are always active, whether packs are detected or listed explicitly.
+# Remove one only by naming it in `exclude_packs`.
+CORE_PACKS = ("universal", "quality")
+
+
+def with_core_packs(packs: list[str], exclude: list[str] | None = None) -> list[str]:
+    """Return packs with the core packs prepended (unless excluded), de-duplicated."""
+    excluded = set(exclude or [])
+    core = [p for p in CORE_PACKS if p not in excluded]
+    return list(dict.fromkeys([*core, *(p for p in packs if p not in excluded)]))
 
 
 def get_rule_setting(rules_dict: dict, rule_id: str, key: str, default=None):
@@ -175,6 +193,8 @@ def _load_local_config(project_dir: str, *, strict: bool = False) -> AgentLintCo
         packs = detect_stack(project_dir)
     else:
         packs = ["universal"]
+    exclude_packs = [x for x in (raw.get("exclude_packs") or []) if isinstance(x, str)]
+    packs = with_core_packs(packs, exclude_packs)
 
     return AgentLintConfig(
         severity=severity,
@@ -194,6 +214,9 @@ def _load_local_config(project_dir: str, *, strict: bool = False) -> AgentLintCo
             else {}
         ),
         packs_explicit=bool(explicit_packs),
+        drift_ignore_packs=[p for p in (raw.get("drift_ignore_packs") or []) if isinstance(p, str)],
+        evidence=raw.get("evidence") if isinstance(raw.get("evidence"), dict) else {},
+        exclude_packs=exclude_packs,
     )
 
 

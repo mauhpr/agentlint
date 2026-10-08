@@ -6,6 +6,29 @@ import time
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
+# By default the budget counts file-changing calls only. Shell and read calls are
+# still tallied for the Stop summary, but they do not move a session toward the
+# "consider wrapping up" warning: long verification work (tests, git, CI checks)
+# should not push an agent to stop early. Set `count_tools: all` to count every call.
+_DEFAULT_COUNT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
+
+
+def _counted_tools(config: dict) -> frozenset[str] | None:
+    """Tool names that count toward the budget; None means every tool."""
+    value = config.get("count_tools")
+    if value == "all":
+        return None
+    if isinstance(value, list) and all(isinstance(v, str) for v in value):
+        return frozenset(value)
+    return _DEFAULT_COUNT_TOOLS
+
+
+def _budget_calls(budget: dict, counted: frozenset[str] | None) -> int:
+    invocations = budget.get("tool_invocations", {})
+    if counted is None:
+        return sum(invocations.values())
+    return sum(n for tool, n in invocations.items() if tool in counted)
+
 
 class TokenBudget(Rule):
     """Track session activity metrics and warn on excessive usage."""
@@ -48,20 +71,24 @@ class TokenBudget(Rule):
         content = context.tool_input.get("content", "")
         budget["total_content_bytes"] = budget.get("total_content_bytes", 0) + len(content)
 
-        # Track total calls
-        total = sum(invocations.values())
-        budget["total_calls"] = total
+        # Track total calls (all tools) and the calls that count toward the budget
+        budget["total_calls"] = sum(invocations.values())
+        counted = _counted_tools(config)
+        if counted is not None and tool not in counted:
+            return []
+        total = _budget_calls(budget, counted)
 
         # Warn at threshold
         max_invocations = config.get("max_tool_invocations", 200)
         warn_pct = config.get("warn_at_percent", 80)
         threshold = int(max_invocations * warn_pct / 100)
+        kind = "tool calls" if counted is None else "file-changing tool calls"
 
         if total == threshold:
             return [
                 Violation(
                     rule_id=self.id,
-                    message=f"Session activity: {total}/{max_invocations} tool calls ({warn_pct}% of budget)",
+                    message=f"Session activity: {total}/{max_invocations} {kind} ({warn_pct}% of budget)",
                     severity=self.severity,
                     suggestion="Consider wrapping up or breaking this into smaller tasks.",
                 )
@@ -88,7 +115,8 @@ class TokenBudget(Rule):
         tool_summary = ", ".join(f"{name}: {count}" for name, count in top_tools)
 
         max_invocations = config.get("max_tool_invocations", 200)
-        severity = Severity.WARNING if total > max_invocations else Severity.INFO
+        counted_total = _budget_calls(budget, _counted_tools(config))
+        severity = Severity.WARNING if counted_total > max_invocations else Severity.INFO
 
         return [
             Violation(

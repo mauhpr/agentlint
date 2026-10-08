@@ -11,9 +11,9 @@ from agentlint.circuit_breaker import apply_circuit_breaker
 from agentlint.config import AgentLintConfig, get_rule_setting
 from agentlint.exceptions import applies as exception_applies
 from agentlint.exceptions import audit_use
-from agentlint.models import Rule, RuleContext, Severity, Violation
+from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 from agentlint.recorder import safe_command_summary
-from agentlint.utils.shell import mutation_command
+from agentlint.utils.shell import Operation, active_operations, mutation_command
 
 logger = logging.getLogger("agentlint")
 
@@ -42,6 +42,38 @@ _MUTATION_RULES = {
     "package-manager-in-chroot",
 }
 
+# Rules whose patterns describe a single command. They are evaluated once per
+# state-changing operation so text from one operation (e.g. `gh pr create
+# --base main`) cannot complete a match started in another (`git push ...`).
+# Rules that legitimately correlate operations (dry-run-required, production
+# context, rate limits) keep seeing the joined state-changing operations.
+_PER_OPERATION_RULES = {"no-destructive-commands", "no-push-to-main", "no-force-push"}
+
+
+def _operation_allowed(operation: Operation, allowances: list) -> bool:
+    """Match a structured `allow_operations` entry against one parsed operation."""
+    words = list(operation.words)
+    if words and words[0] in {"command", "env"}:
+        from agentlint.utils.shell import unwrap_simple_command
+
+        words = unwrap_simple_command(words) or words
+    if not words:
+        return False
+    binary, args = words[0].rsplit("/", 1)[-1], words[1:]
+    for entry in allowances:
+        if not isinstance(entry, dict) or entry.get("binary") != binary:
+            continue
+        prefix = entry.get("args_prefix")
+        pattern = entry.get("args_regex")
+        if prefix is not None and isinstance(prefix, list) and args[: len(prefix)] == prefix:
+            return True
+        if isinstance(pattern, str):
+            import re
+
+            if re.fullmatch(pattern, " ".join(args)):
+                return True
+    return False
+
 
 @dataclass
 class EvaluationResult:
@@ -68,15 +100,38 @@ class Engine:
         result = EvaluationResult()
         required = set(self.config.required_rules)
         mutation_context = context
+        operations: list[Operation] | None = None
         if context.tool_name == "Bash" and isinstance(context.command, str):
+            operations = active_operations(context.command)
+            projected = (
+                " ; ".join(op.text for op in operations)
+                if operations is not None
+                else mutation_command(context.command)
+            )
             mutation_context = replace(
                 context,
-                tool_input={
-                    **context.tool_input,
-                    "command": mutation_command(context.command),
-                },
+                tool_input={**context.tool_input, "command": projected},
             )
+        if context.event == HookEvent.PRE_TOOL_USE:
+            from agentlint.approvals import self_approval_attempt
+
+            attempt = self_approval_attempt(context.tool_name, context.tool_input or {})
+            if attempt:
+                result.violations.append(
+                    Violation(
+                        rule_id="approval-self-grant",
+                        severity=Severity.ERROR,
+                        message=f"Agents cannot create approvals: this tool call {attempt}",
+                        operation=context.tool_name,
+                        policy_source="AgentLint approvals (built-in, always on)",
+                        suggestion=(
+                            "Ask the user to run `agentlint approve grant <class>` in their own "
+                            "terminal if they want to approve this action."
+                        ),
+                    )
+                )
         protected = required | {rule.id for rule in self.rules if getattr(rule, "locked", False)}
+        protected.add("approval-self-grant")
         if protected:
             cb = {
                 **self.config.circuit_breaker,
@@ -146,25 +201,45 @@ class Engine:
             result.rule_ids_evaluated.append(rule.id)
 
             try:
-                checked = (
-                    mutation_context
-                    if (
-                        rule.id in _MUTATION_RULES
-                        and type(rule).__module__.startswith("agentlint.packs.")
-                        and not getattr(rule, "locked", False)
-                    )
-                    else context
+                projected_rule = (
+                    rule.id in _MUTATION_RULES
+                    and type(rule).__module__.startswith("agentlint.packs.")
+                    and not getattr(rule, "locked", False)
                 )
+                checked = mutation_context if projected_rule else context
                 if rule.id in required:
                     checked = replace(
                         checked,
                         config={
                             key: value
                             for key, value in checked.config.items()
-                            if key not in {"allow_paths", "allow_patterns", "ignore_paths"}
+                            if key
+                            not in {
+                                "allow_paths",
+                                "allow_patterns",
+                                "allow_operations",
+                                "ignore_paths",
+                            }
                         },
                     )
-                violations = rule.evaluate(checked)
+                allowances = (
+                    []
+                    if rule.id in required
+                    else get_rule_setting(context.config, rule.id, "allow_operations", [])
+                )
+                if (
+                    projected_rule
+                    and operations is not None
+                    and (rule.id in _PER_OPERATION_RULES or allowances)
+                ):
+                    violations = self._evaluate_per_operation(
+                        rule,
+                        checked,
+                        operations,
+                        allowances if isinstance(allowances, list) else [],
+                    )
+                else:
+                    violations = rule.evaluate(checked)
             except Exception:
                 logger.exception("Rule %s raised an exception", rule.id)
                 if rule.id in required:
@@ -197,6 +272,13 @@ class Engine:
                         v.suggestion = (
                             "Run 'agentlint policy explain' or inspect the rule configuration."
                         )
+
+            if (
+                not getattr(rule, "locked", False)
+                and rule.id not in required
+                and type(rule).__module__.startswith("agentlint.packs.")
+            ):
+                self._apply_approvals(rule.id, context, violations)
 
             for v in violations:
                 exempted = False
@@ -276,3 +358,44 @@ class Engine:
                 ]
 
         return result
+
+    @staticmethod
+    def _evaluate_per_operation(rule, context, operations, allowances):
+        """Evaluate a rule against each state-changing operation separately."""
+        violations: list[Violation] = []
+        seen: set[tuple[str, str]] = set()
+        for operation in operations:
+            if allowances and _operation_allowed(operation, allowances):
+                continue
+            for v in rule.evaluate(
+                replace(context, tool_input={**context.tool_input, "command": operation.text})
+            ):
+                key = (v.rule_id, v.message)
+                if key in seen:
+                    continue
+                seen.add(key)
+                if not v.operation:
+                    v.operation = safe_command_summary(operation.text)
+                violations.append(v)
+        return violations
+
+    @staticmethod
+    def _apply_approvals(rule_id: str, context: RuleContext, violations: list[Violation]) -> None:
+        """Relax ERRORs covered by a typed, unexpired, audited human approval."""
+        from agentlint.approvals import RULE_ACTION_CLASS, audit_use, matching_grant
+
+        if rule_id not in RULE_ACTION_CLASS:
+            return
+        command = context.command if context.tool_name == "Bash" else None
+        for v in violations:
+            if v.severity != Severity.ERROR:
+                continue
+            grant = matching_grant(rule_id, repository=context.project_dir, command=command)
+            if grant and audit_use(
+                grant, rule_id=rule_id, repository=context.project_dir, command=command
+            ):
+                v.severity = Severity.WARNING
+                v.message += (
+                    f" (allowed by approval {grant['id']}: {grant['action_class']}, "
+                    f"until {grant['expires_at']})"
+                )

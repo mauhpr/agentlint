@@ -1,10 +1,78 @@
 # Changelog
 
+## v2.9.0 (2026-10-08) — Precise Operations, Drift, Typed Approvals and Evidence
+
+Follows 2.8.0: makes command checks precise and records human decisions and verification evidence. See [Approvals and evidence](docs/approvals-and-evidence.md).
+
+### Added
+
+- Parsed shell operations: commands are split on `&&`, `||`, `;`, `|`, `&` and
+  newlines and classified as display, read-only or state-changing. Built-in
+  operation guards see only state-changing operations; unmodelled syntax keeps
+  raw-text checks.
+- `allow_operations` per-rule allowances that exempt only the matching parsed
+  operation (`binary` + `args_prefix` or `args_regex`).
+- Pack drift detection in `status`, `status --json` and `doctor` for explicit
+  `packs:` lists, with `drift_ignore_packs` for intentional omissions.
+- Typed, expiring approvals: `agentlint approve grant|list|revoke`, ten action
+  classes, repository- and optionally command-bound, audited, human-only
+  (`approval-self-grant` blocks agent attempts).
+- Evidence receipts and `agentlint evidence`: test-run receipts for recognized
+  test commands (including redirected logs), external `review` /
+  `deploy-verified` receipts via `evidence.receipts_dirs`.
+- `RuleContext.tool_response` carries the PostToolUse result for exit status.
+
+### Changed
+
+- `no-destructive-commands`, `no-force-push` and `no-push-to-main` evaluate each
+  operation separately.
+- `drift-detector` recognizes `uv run pytest`, `python -m pytest` and other
+  runners by parsed operation, ignores display text such as `echo pytest`, does
+  not count runs reported as failed, and accepts fresh receipts at commit time.
+- `doctor` notes rules that still use whole-command `allow_patterns`.
+- `token-budget` counts only file-changing calls toward its mid-session
+  warning by default (`count_tools`, use `all` for the previous behaviour).
+  Shell and read calls still appear in the Stop summary. Integrations that send
+  Bash post-tool events (Codex, and the Claude plugin from 2.9.0) no longer
+  nudge long test/verification sessions to wrap up early.
+
+### Security
+
+- **Built-in rules now apply to Gemini, Kimi, Grok and Cursor shell/file tools.**
+  `agentlint check` passed native tool names (`run_shell_command`, `Shell`,
+  `WriteFile`, `write`, ...) straight to rules that only recognize `Bash`,
+  `Write` and `Edit`, so on those agents most built-in checks — secrets,
+  force-push, destructive commands and more — never fired. Native tool calls
+  are now translated to the canonical names and input keys before evaluation.
+  Claude Code, Codex and Continue were not affected.
+- Gemini hooks now also match `run_shell_command`, Gemini CLI's shell tool.
+  Re-run `agentlint setup gemini` to update an existing installation.
+
+### Changed (hooks)
+
+- Post-tool hooks installed by `agentlint setup` now include each agent's shell
+  tool (`Bash`, `Shell`, `run_shell_command`, `bash`), so completed test runs
+  are recognized and recorded as evidence. Re-run `agentlint setup <agent>` to
+  update existing installations.
+
+### Fixed
+
+- `universal` and `quality` are now always active, as documented, including
+  when `packs:` is listed explicitly or set per directory under `projects:`.
+  Previously an explicit list silently dropped the quality pack (and universal,
+  if omitted). Turn a core pack off deliberately with `exclude_packs: [quality]`.
+- `git push -u origin feat/x && gh pr create --base main` is no longer reported
+  as a push to `main`.
+- Quoted arguments to read-only commands (`grep "rm -rf" log`,
+  `git log --grep "DROP DATABASE"`) no longer trigger mutation guards.
+
+---
+
 ## v2.8.0 (2026-10-08) — Coverage Truth and Actionable Diagnostics
 
 Field feedback from Codex workspaces found the rules correct but the reporting
 hard to trust. This release makes coverage, degraded operation and denials
-explicit. See `docs/rfcs/0001-trust-diagnostics-precision.md`.
+explicit. See [Diagnostics](docs/diagnostics.md).
 
 ### Added
 

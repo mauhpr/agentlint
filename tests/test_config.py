@@ -59,7 +59,7 @@ class TestLoadConfig:
         cfg = {"packs": ["universal", "custom-pack"]}
         (tmp_path / "agentlint.yml").write_text(yaml.dump(cfg))
         config = load_config(str(tmp_path))
-        assert config.packs == ["universal", "custom-pack"]
+        assert config.packs == ["universal", "quality", "custom-pack"]
         assert "python" not in config.packs
 
     def test_custom_rules_dir(self, tmp_path):
@@ -106,7 +106,7 @@ class TestLoadConfig:
         (tmp_path / "agentlint.yml").write_text(yaml.dump(cfg))
         config = load_config(str(tmp_path))
         # Config still loads — the warning is logged
-        assert config.packs == ["universal", "nonexistent-pack"]
+        assert config.packs == ["universal", "quality", "nonexistent-pack"]
 
     def test_unknown_pack_no_warning_when_custom_rules_dir_set(self, tmp_path, caplog):
         """Custom pack names should not warn when custom_rules_dir is configured."""
@@ -114,7 +114,7 @@ class TestLoadConfig:
         (tmp_path / "agentlint.yml").write_text(yaml.dump(cfg))
         with caplog.at_level("WARNING", logger="agentlint"):
             config = load_config(str(tmp_path))
-        assert config.packs == ["universal", "fintech"]
+        assert config.packs == ["universal", "quality", "fintech"]
         assert "Unknown pack" not in caplog.text
 
     def test_unknown_pack_warns_when_no_custom_rules_dir(self, tmp_path, caplog):
@@ -193,7 +193,7 @@ class TestMonorepoProjects:
             projects={"frontend/": {"packs": ["universal", "frontend", "react"]}},
         )
         result = config.resolve_packs_for_file("/project/frontend/App.tsx", "/project")
-        assert result == ["universal", "frontend", "react"]
+        assert result == ["universal", "quality", "frontend", "react"]
 
     def test_resolve_packs_backend_file(self):
         config = AgentLintConfig(
@@ -204,7 +204,7 @@ class TestMonorepoProjects:
             },
         )
         result = config.resolve_packs_for_file("/project/backend/app.py", "/project")
-        assert result == ["universal", "python"]
+        assert result == ["universal", "quality", "python"]
 
     def test_resolve_packs_root_file(self):
         config = AgentLintConfig(
@@ -228,7 +228,7 @@ class TestMonorepoProjects:
             },
         )
         result = config.resolve_packs_for_file("/project/backend/api/views.py", "/project")
-        assert result == ["universal", "python", "security"]
+        assert result == ["universal", "quality", "python", "security"]
 
     def test_resolve_packs_no_file_path(self):
         config = AgentLintConfig(
@@ -314,3 +314,35 @@ class TestCircuitBreakerConfig:
         (tmp_path / "agentlint.yml").write_text("packs:\n  - universal\n")
         config = load_config(str(tmp_path))
         assert config.circuit_breaker == {}
+
+
+class TestCorePacks:
+    """universal and quality are always active unless explicitly excluded."""
+
+    def test_explicit_packs_keep_core_packs(self, tmp_path):
+        (tmp_path / "agentlint.yml").write_text("packs: [security]\n")
+        assert load_config(str(tmp_path)).packs == ["universal", "quality", "security"]
+
+    def test_non_auto_stack_keeps_quality(self, tmp_path):
+        (tmp_path / "agentlint.yml").write_text("stack: manual\n")
+        assert load_config(str(tmp_path)).packs == ["universal", "quality"]
+
+    def test_exclude_packs_opts_out(self, tmp_path):
+        (tmp_path / "agentlint.yml").write_text(
+            "packs: [universal, python]\nexclude_packs: [quality]\n"
+        )
+        config = load_config(str(tmp_path))
+        assert config.packs == ["universal", "python"]
+        assert config.resolve_packs_for_file(str(tmp_path / "x.py"), str(tmp_path)) == [
+            "universal",
+            "python",
+        ]
+
+    def test_project_mapping_keeps_core_packs(self, tmp_path):
+        (tmp_path / "agentlint.yml").write_text("projects:\n  web/:\n    packs: [frontend]\n")
+        config = load_config(str(tmp_path))
+        assert config.resolve_packs_for_file(str(tmp_path / "web" / "a.tsx"), str(tmp_path)) == [
+            "universal",
+            "quality",
+            "frontend",
+        ]

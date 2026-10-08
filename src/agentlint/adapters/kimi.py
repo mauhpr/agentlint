@@ -68,7 +68,7 @@ def _build_hooks(cmd: str) -> list[dict]:
         },
         {
             "event": "PostToolUse",
-            "matcher": "WriteFile|StrReplaceFile",
+            "matcher": "Shell|WriteFile|StrReplaceFile",
             "_agentlint": "v2",
             "command": f"{cmd} check --event PostToolUse --adapter kimi",
             "timeout": 10,

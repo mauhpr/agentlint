@@ -128,7 +128,10 @@ def test_codex_posttool_error_protocol_and_sanitized_bundle(tmp_path):
 
 @pytest.mark.parametrize(("mode", "blocked"), [("standard", False), ("strict", True)])
 def test_codex_token_budget_obeys_effective_severity_at_cli_boundary(tmp_path, mode, blocked):
-    (tmp_path / "agentlint.yml").write_text(f"severity: {mode}\npacks: [universal]\n")
+    # Bash calls only count toward the budget when explicitly configured (v2.9.0).
+    (tmp_path / "agentlint.yml").write_text(
+        f"severity: {mode}\npacks: [universal]\nrules:\n  token-budget:\n    count_tools: all\n"
+    )
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     (sessions / "warning-test.json").write_text(

@@ -212,6 +212,7 @@ _GROK_TOOL_MAP: dict[str, NormalizedTool] = {
 
 # Gemini tool name mappings
 _GEMINI_TOOL_MAP: dict[str, NormalizedTool] = {
+    "run_shell_command": NormalizedTool.SHELL,
     "bash": NormalizedTool.SHELL,
     "write_file": NormalizedTool.FILE_WRITE,
     "replace": NormalizedTool.FILE_EDIT,
@@ -298,6 +299,8 @@ class RuleContext:
     # v2.0.0 — agent-agnostic platform identification
     agent_platform: str = "unknown"  # "claude", "cursor", "openai", "mcp", etc.
     working_directory: str | None = None  # Native tool cwd; may be below project_dir.
+    # v2.9.0 — PostToolUse tool result (used only for exit status / evidence).
+    tool_response: dict | None = None
 
     @property
     def file_path(self) -> str | None:

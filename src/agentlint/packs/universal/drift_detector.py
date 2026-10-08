@@ -17,14 +17,13 @@ agent is about to publish the work, which is the natural decision point.
 from __future__ import annotations
 
 import re
+import time
 from pathlib import PurePath
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _WRITE_TOOLS = {"Write", "Edit"}
 _BASH_TOOLS = {"Bash"}
-
-_TEST_RUNNERS = ("pytest", "vitest", "jest", "npm test", "make test")
 
 # Match `git commit` but NOT `git commit --no-edit` or amend-no-edit which
 # don't introduce new content. We're trying to catch the *content-publishing*
@@ -91,13 +90,36 @@ class DriftDetector(Rule):
             if files_edited > threshold and not last_test_run:
                 if state.get("_drift_warned_at_commit"):
                     return []
+                from agentlint.evidence import describe, find_receipts
+
+                evidence_cfg = context.config.get("_evidence", {}) or {}
+                extra = evidence_cfg.get("receipts_dirs") or []
+                max_age = evidence_cfg.get("max_age")
+                # A passing (or completed) test receipt newer than the last edit,
+                # possibly written by another tool, satisfies this check.
+                if find_receipts(
+                    context.project_dir,
+                    kind="test-run",
+                    since=state.get("last_edit_ts"),
+                    extra_dirs=extra,
+                    max_age=max_age,
+                ):
+                    return []
                 state["_drift_warned_at_commit"] = True
+                latest = find_receipts(
+                    context.project_dir, kind="test-run", extra_dirs=extra, max_age=max_age
+                )
+                evidence = (
+                    f" Latest evidence predates these edits — {describe(latest[0])}."
+                    if latest
+                    else " No test evidence found for this repository."
+                )
                 return [
                     Violation(
                         rule_id=self.id,
                         message=(
                             f"Committing {files_edited} edits without running tests "
-                            "since last test run"
+                            "since last test run." + evidence
                         ),
                         severity=self.severity,
                         suggestion=(
@@ -111,8 +133,13 @@ class DriftDetector(Rule):
         # POST_TOOL_USE: existing mid-session behaviour, unchanged.
         # Track test runs from Bash commands.
         if context.tool_name in _BASH_TOOLS:
+            from agentlint.evidence import find_test_command, outcome
+
             command = context.command or ""
-            if any(runner in command for runner in _TEST_RUNNERS):
+            if (
+                find_test_command(command)
+                and outcome(failed_event=False, tool_response=context.tool_response) != "failed"
+            ):
                 state["edited_files"] = []
                 state["last_test_run"] = True
                 state["_drift_warned"] = False
@@ -127,6 +154,7 @@ class DriftDetector(Rule):
                 edited.add(file_path)
             state["edited_files"] = list(edited)
             state["last_test_run"] = False
+            state["last_edit_ts"] = time.time()
 
         files_edited = len(state.get("edited_files", []))
         last_test_run = state.get("last_test_run", True)

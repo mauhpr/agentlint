@@ -40,6 +40,7 @@ _GEMINI_EVENT_MAP: dict[str, AgentEvent] = {
 
 # Mapping from Gemini tool names to NormalizedTool
 _GEMINI_TOOL_MAP: dict[str, NormalizedTool] = {
+    "run_shell_command": NormalizedTool.SHELL,
     "bash": NormalizedTool.SHELL,
     "write_file": NormalizedTool.FILE_WRITE,
     "replace": NormalizedTool.FILE_EDIT,
@@ -57,7 +58,7 @@ def _build_hooks(cmd: str) -> dict:
         "hooks": {
             "BeforeTool": [
                 {
-                    "matcher": "write_file|replace|bash",
+                    "matcher": "write_file|replace|run_shell_command|bash",
                     "hooks": [
                         {
                             "name": "agentlint-pre",
@@ -71,7 +72,7 @@ def _build_hooks(cmd: str) -> dict:
             ],
             "AfterTool": [
                 {
-                    "matcher": "write_file|replace",
+                    "matcher": "write_file|replace|run_shell_command|bash",
                     "hooks": [
                         {
                             "name": "agentlint-post",

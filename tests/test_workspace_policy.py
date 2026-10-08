@@ -48,7 +48,7 @@ def test_compose_additive_packs_and_repository_exceptions(workspace):
     nested = repo / "src"
     nested.mkdir()
     config = load_config(str(nested))
-    assert config.packs == ["universal", "autopilot", "python"]
+    assert config.packs == ["universal", "quality", "autopilot", "python"]
     assert config.rules["no-secrets"] == {"enabled": True, "allow_paths": ["fixture.py"]}
     assert config.rules["max-file-size"]["limit"] == 600
     assert config.custom_rules_dir == str(repo / "rules")

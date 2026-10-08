@@ -82,7 +82,7 @@ def _build_hooks(cmd: str) -> dict:
             ],
             "PostToolUse": [
                 {
-                    "matcher": "write|edit",
+                    "matcher": "bash|write|edit",
                     "hooks": [
                         {
                             "type": "command",

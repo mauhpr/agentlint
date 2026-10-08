@@ -1,4 +1,14 @@
-# Subagent Safety
+# Subagent safety (Claude Code)
+
+> This page applies to **Claude Code only**. Subagents, `SubagentStart` /
+> `SubagentStop` hooks, frontmatter hooks in agent `.md` files and the plugin
+> resolver are Claude Code features. For Claude Code setup see
+> [agents/claude.md](agents/claude.md); other agents have their own pages listed
+> in [docs/README.md](README.md).
+>
+> Hook behaviour for subagents depends on your Claude Code version. Check the
+> Claude Code hooks documentation for the version you run, and use
+> `agentlint status` to confirm which hook events reach AgentLint.
 
 ## The limitation
 
@@ -8,7 +18,10 @@ This is a Claude Code architectural property, not an AgentLint bug. Each subagen
 
 ## What AgentLint does
 
-AgentLint uses three mechanisms to address the subagent safety gap:
+AgentLint uses three mechanisms to address the subagent safety gap. The first
+two are rules in the `autopilot` pack, which is opt-in and experimental; add
+`autopilot` to `packs:` to enable them (see [`subagent-safety-briefing`](rules.md#subagent-safety-briefing) and
+[`subagent-transcript-audit`](rules.md#subagent-transcript-audit)).
 
 ### 1. Safety briefing injection (SubagentStart)
 
@@ -47,7 +60,7 @@ Findings appear as WARNING violations and are included in the session Stop repor
 
 ### 3. AgentLint's own agents are protected
 
-The plugin's agent definitions (`doctor.md`, `fix.md`, `security-audit.md`) include `PreToolUse` frontmatter hooks that run AgentLint's blocking rules inside the subagent context. This gives real-time blocking protection specifically for AgentLint's own subagents.
+The Claude Code plugin's agent definitions ([mauhpr/agentlint-plugin](https://github.com/mauhpr/agentlint-plugin): `agents/doctor.md`, `agents/fix.md`, `agents/security-audit.md`) include `PreToolUse` frontmatter hooks that run AgentLint's blocking rules inside the subagent context. This gives real-time blocking protection specifically for AgentLint's own subagents.
 
 ## Protecting your own subagents
 

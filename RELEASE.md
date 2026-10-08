@@ -51,9 +51,6 @@ Do not publish from a local machine.
      --notes-file /path/to/release-notes.md
    ```
 
-   `gh-personal` can be used instead of `gh` on machines configured with that
-   wrapper.
-
 7. Let GitHub Actions publish to PyPI.
    - The workflow is `.github/workflows/publish.yml`.
    - It runs on `release.published`.
@@ -79,6 +76,16 @@ Do not publish from a local machine.
    agentlint X.Y.Z
    ```
 
+9. Bump the Claude Code plugin in
+   [mauhpr/agentlint-plugin](https://github.com/mauhpr/agentlint-plugin).
+   - Follow that repository's `RELEASE.md`: update the version in
+     `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`,
+     `README.md` and `CHANGELOG.md`.
+   - Plugin CI installs the exact AgentLint version from PyPI
+     (`uv tool install "agentlint==X.Y.Z"`). For about 10 minutes after a
+     publish, uv's index cache may not see the new version yet; if the install
+     step cannot find the version, wait and re-run the job.
+
 ## Important rules
 
 - Do not run `uv publish` locally. PyPI credentials are intentionally owned by
@@ -87,5 +94,4 @@ Do not publish from a local machine.
   publishing, create a follow-up patch version.
 - Keep release notes focused on user-visible behavior, fixes, and migration
   notes.
-- If the release changes AgentLint behavior consumed by `agentlint-plugin`,
-  release AgentLint first, verify PyPI, then release the plugin.
+- Always release AgentLint first, verify PyPI, then release the plugin.

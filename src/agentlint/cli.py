@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -548,23 +549,11 @@ def _evaluate_tool_context(context, config, rules):
         # For Write, the new content is in tool_input
         content = tool_input.get("content", "")
         if content:
-            context = RuleContext(
-                event=context.event,
-                tool_name=context.tool_name,
-                tool_input=context.tool_input,
-                project_dir=context.project_dir,
+            context = replace(
+                context,
                 file_content=content,
                 file_content_before=file_content_before,
-                config=context.config,
                 session_state=session_state,
-                prompt=context.prompt,
-                subagent_output=context.subagent_output,
-                notification_type=context.notification_type,
-                compact_source=context.compact_source,
-                agent_transcript_path=context.agent_transcript_path,
-                agent_type=context.agent_type,
-                agent_id=context.agent_id,
-                agent_platform=context.agent_platform,
             )
 
     # For PostToolUse on file operations, try to read file content
@@ -590,23 +579,11 @@ def _evaluate_tool_context(context, config, rules):
             file_content_before = file_cache.pop(file_path, None)
 
         if file_content is not None:
-            context = RuleContext(
-                event=context.event,
-                tool_name=context.tool_name,
-                tool_input=context.tool_input,
-                project_dir=context.project_dir,
+            context = replace(
+                context,
                 file_content=file_content,
                 file_content_before=file_content_before,
-                config=context.config,
                 session_state=session_state,
-                prompt=context.prompt,
-                subagent_output=context.subagent_output,
-                notification_type=context.notification_type,
-                compact_source=context.compact_source,
-                agent_transcript_path=context.agent_transcript_path,
-                agent_type=context.agent_type,
-                agent_id=context.agent_id,
-                agent_platform=context.agent_platform,
             )
 
     # Resolve project-specific packs for monorepo
@@ -633,6 +610,35 @@ def _evaluate_tool_context(context, config, rules):
     )
 
     return result, elapsed_ms
+
+
+def _record_test_evidence(context) -> None:
+    """Write a test-run receipt when a recognized test command finished."""
+    if context.tool_name != "Bash" or context.event not in (
+        HookEvent.POST_TOOL_USE,
+        HookEvent.POST_TOOL_USE_FAILURE,
+    ):
+        return
+    try:
+        from agentlint.evidence import exit_status, find_test_command, outcome, write_receipt
+
+        command = find_test_command(context.command or "")
+        if not command:
+            return
+        result = outcome(
+            failed_event=context.event == HookEvent.POST_TOOL_USE_FAILURE,
+            tool_response=context.tool_response,
+        )
+        if result == "failed":
+            return
+        write_receipt(
+            "test-run",
+            command=command,
+            exit_code=exit_status(context.tool_response),
+            repo=context.project_dir,
+        )
+    except Exception:
+        logger.debug("Failed to record test evidence", exc_info=True)
 
 
 def _patch_violation(exc) -> Violation:
@@ -683,7 +689,10 @@ def _evaluate_tool_call(context, config, rules, *, patch: bool):
 )
 @click.option("--project-dir", default=None, help="Project directory")
 @click.option(
-    "--adapter", default=None, help="Agent adapter (claude, cursor). Auto-detected if not set."
+    "--adapter",
+    default=None,
+    help="Agent adapter (claude, codex, cursor, gemini, continue, kimi, grok, generic, ...). "
+    "Auto-detected if not set.",
 )
 @click.option(
     "--format",
@@ -777,15 +786,23 @@ def check(
     rules_config = config.rules
     if config.circuit_breaker:
         rules_config = {**rules_config, "_circuit_breaker_global": config.circuit_breaker}
+    if config.evidence:
+        rules_config = {**rules_config, "_evidence": config.evidence}
 
     # Load persisted session state
     session_state = load_session()
 
-    # Build context with event-specific fields
-    tool_input = raw.get("tool_input", {})
+    # Build context with event-specific fields. Native tool names (Gemini's
+    # run_shell_command, Kimi's Shell, ...) become the canonical Bash/Write/Edit
+    # that built-in rules check.
+    from agentlint.adapters.normalize import canonical_tool_call
+
+    tool_name, tool_input = canonical_tool_call(
+        adapter_obj, raw.get("tool_name", ""), raw.get("tool_input", {})
+    )
     context = RuleContext(
         event=hook_event,
-        tool_name=raw.get("tool_name", ""),
+        tool_name=tool_name,
         tool_input=tool_input,
         project_dir=project_dir,
         config=rules_config,
@@ -801,11 +818,15 @@ def check(
         agent_id=raw.get("agent_id"),
         agent_platform=adapter_obj.platform_name,
         working_directory=working_directory,
+        tool_response=raw.get("tool_response")
+        if isinstance(raw.get("tool_response"), dict)
+        else None,
     )
 
     result, elapsed_ms = _evaluate_tool_call(
         context, config, rules, patch=adapter_obj.platform_name == "codex"
     )
+    _record_test_evidence(context)
     timing = session_state.setdefault("_hook_timing", {"total_ms": 0.0, "count": 0})
     timing["total_ms"] += elapsed_ms
     timing["count"] += 1
@@ -852,9 +873,9 @@ def check(
                 "v": 1,
                 "ts": time.time(),
                 "event": event,
-                "tool_name": raw.get("tool_name", ""),
+                "tool_name": tool_name,
                 "tool_summary": summarize_tool_input(
-                    raw.get("tool_name", ""),
+                    tool_name,
                     tool_input,
                     raw.get("prompt"),
                 ),
@@ -965,6 +986,8 @@ def check_patch(patch_file, project_dir: str | None, cwd: str | None, as_json: b
     rules_config = config.rules
     if config.circuit_breaker:
         rules_config = {**rules_config, "_circuit_breaker_global": config.circuit_breaker}
+    if config.evidence:
+        rules_config = {**rules_config, "_evidence": config.evidence}
     context = RuleContext(
         event=HookEvent.PRE_TOOL_USE,
         tool_name="apply_patch",
@@ -998,6 +1021,127 @@ def check_patch(patch_file, project_dir: str | None, cwd: str | None, as_json: b
             for line in PlainJsonFormatter()._format_violation_lines(result.violations):
                 click.echo(f"  {line}")
     sys.exit(1 if blocked else 0)
+
+
+@main.command()
+@click.option("--project-dir", default=None, help="Repository to show evidence for")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON")
+def evidence(project_dir: str | None, as_json: bool):
+    """Show verification evidence (test runs, reviews, verified deploys) for this repo."""
+    from agentlint.evidence import LEVEL_LABELS, describe, find_receipts, git_head
+
+    project_dir = _resolve_project_dir(project_dir)
+    config = load_config(project_dir)
+    receipts = find_receipts(
+        project_dir,
+        extra_dirs=config.evidence.get("receipts_dirs") or [],
+        max_age=config.evidence.get("max_age"),
+    )
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "repo": os.path.realpath(project_dir),
+                    "head": git_head(project_dir),
+                    "receipts": [
+                        {k: v for k, v in r.items() if not k.startswith("_")} for r in receipts
+                    ],
+                },
+                indent=2,
+            )
+        )
+        return
+    click.echo(
+        f"Evidence for {os.path.realpath(project_dir)} (HEAD {git_head(project_dir) or 'unknown'}):"
+    )
+    for kind, label in LEVEL_LABELS.items():
+        latest = next((r for r in receipts if r["kind"] == kind), None)
+        click.echo(f"  {label:<20} {describe(latest) if latest else 'none'}")
+
+
+def _is_interactive() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+@main.group()
+def approve():
+    """Typed, expiring approvals issued by a human (docs/approvals-and-evidence.md)."""
+
+
+@approve.command("grant")
+@click.argument("action_class")
+@click.option("--reason", required=True, help="Why this is approved (recorded)")
+@click.option("--ttl", default="1h", show_default=True, help="Lifetime, e.g. 30m, 2h (max 24h)")
+@click.option("--operation", default=None, help="Restrict to one exact literal command")
+@click.option("--project-dir", default=None, help="Repository the approval is bound to")
+def approve_grant(action_class, reason, ttl, operation, project_dir):
+    """Approve one ACTION_CLASS for this repository until the TTL expires."""
+    from agentlint.approvals import ACTION_CLASSES, create_grant, parse_ttl
+
+    if action_class not in ACTION_CLASSES:
+        click.echo(f"Unknown action class '{action_class}'. Choose one of:", err=True)
+        for name, description in ACTION_CLASSES.items():
+            click.echo(f"  {name:<20} {description}", err=True)
+        sys.exit(2)
+    if not _is_interactive():
+        click.echo("Approvals must be granted by a person in an interactive terminal.", err=True)
+        sys.exit(2)
+    try:
+        lifetime = parse_ttl(ttl)
+    except ValueError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(2)
+    repository = os.path.abspath(_resolve_project_dir(project_dir))
+    scope = f"exactly `{operation}`" if operation else "any matching command"
+    click.echo(f"Approve '{action_class}' ({ACTION_CLASSES[action_class]})")
+    click.echo(f"  repository: {repository}\n  scope: {scope}\n  expires in: {ttl}")
+    if not click.confirm("Grant this approval?", default=False):
+        sys.exit(1)
+    try:
+        grant = create_grant(
+            action_class,
+            repository=repository,
+            reason=reason,
+            ttl=lifetime,
+            operation=operation,
+        )
+    except (ValueError, OSError) as exc:
+        click.echo(f"Could not create approval: {exc}", err=True)
+        sys.exit(2)
+    click.echo(f"Granted {grant['id']} until {grant['expires_at']}")
+
+
+@approve.command("list")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON")
+def approve_list(as_json):
+    """List active approvals."""
+    from agentlint.approvals import active_grants
+
+    grants = active_grants()
+    if as_json:
+        click.echo(json.dumps(grants, indent=2))
+        return
+    if not grants:
+        click.echo("No active approvals.")
+        return
+    for g in grants:
+        scope = f" `{g['operation']}`" if g.get("operation") else ""
+        click.echo(
+            f"{g['id']}  {g['action_class']:<20} until {g['expires_at']}  "
+            f"{g['repository']}{scope} — {g['reason']}"
+        )
+
+
+@approve.command("revoke")
+@click.argument("grant_id")
+def approve_revoke(grant_id):
+    """Revoke an approval before it expires."""
+    from agentlint.approvals import revoke_grant
+
+    if not revoke_grant(grant_id):
+        click.echo(f"No approval {grant_id}", err=True)
+        sys.exit(1)
+    click.echo(f"Revoked {grant_id}")
 
 
 @main.command()
@@ -1222,7 +1366,10 @@ agentchute:
     help="Output format (only applies with --summary)",
 )
 @click.option(
-    "--adapter", default=None, help="Agent adapter (claude, cursor). Auto-detected if not set."
+    "--adapter",
+    default=None,
+    help="Agent adapter (claude, codex, cursor, gemini, continue, kimi, grok, generic, ...). "
+    "Auto-detected if not set.",
 )
 def report(project_dir: str | None, summary: bool, output_format: str, adapter: str | None):
     """Generate session summary report (for Stop event)."""
@@ -2060,7 +2207,10 @@ def _local_protections(config, rules, policy: dict) -> list[str]:
 
 
 def _effective_policy(config, project_dir: str) -> dict:
+    from agentlint.detector import detect_drift
+
     return {
+        "drift": detect_drift(config, project_dir),
         "workspace_config": os.environ.get("AGENTLINT_WORKSPACE_CONFIG"),
         "layers": config.layers,
         "packs": config.packs,
@@ -2151,6 +2301,11 @@ def status(project_dir: str | None, as_json: bool):
         click.echo(f"  Required: {', '.join(config.required_rules)}")
     if config.exceptions:
         click.echo(f"  Exceptions: {len(config.exceptions)} active (exact-command, expiring)")
+    for drift in policy["drift"]:
+        click.echo(
+            f"  ! Drift: '{drift['pack']}' pack is not enabled, but the repository contains "
+            f"{', '.join(drift['evidence'])}"
+        )
     if config.projects:
         click.echo("  Projects:")
         for prefix, proj in sorted(config.projects.items()):
@@ -2196,6 +2351,12 @@ def status(project_dir: str | None, as_json: bool):
 
     click.echo("")
     needs_fix = not config_ok or any(coverage[p].state in {"missing", "stale"} for p in detected)
+    if policy["drift"] and not needs_fix:
+        click.echo(
+            "Next: review pack drift above — add the pack (or a projects: mapping), "
+            "or list it under drift_ignore_packs if the omission is intentional."
+        )
+        return
     unobserved = [
         p
         for p in detected
@@ -2371,6 +2532,21 @@ def doctor(project_dir: str | None, fix: bool, online: bool):
         )
         local = _local_protections(config, load_project_rules(config, project_dir), cloud["policy"])
         checks_ok.append("Still enforced locally: " + "; ".join(local))
+
+    from agentlint.detector import detect_drift
+
+    for drift in detect_drift(config, project_dir):
+        issues.append(
+            f"Pack drift: '{drift['pack']}' is not enabled but the repository contains "
+            f"{', '.join(drift['evidence'])}. Add it (or a projects: mapping), or list it "
+            "under drift_ignore_packs if intentional."
+        )
+    for rule_id, rule_cfg in sorted(config.rules.items()):
+        if isinstance(rule_cfg, dict) and rule_cfg.get("allow_patterns"):
+            notes.append(
+                f"{rule_id}: allow_patterns exempt the whole command when they match; prefer "
+                "allow_operations, which exempt only the matching parsed operation."
+            )
 
     # Check custom rules
     if config.custom_rules_dir:
