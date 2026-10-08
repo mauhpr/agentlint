@@ -30,6 +30,11 @@ Second half of `docs/rfcs/0001-trust-diagnostics-precision.md`.
   runners by parsed operation, ignores display text such as `echo pytest`, does
   not count runs reported as failed, and accepts fresh receipts at commit time.
 - `doctor` notes rules that still use whole-command `allow_patterns`.
+- `token-budget` counts only file-changing calls toward its mid-session
+  warning by default (`count_tools`, use `all` for the previous behaviour).
+  Shell and read calls still appear in the Stop summary. Integrations that send
+  Bash post-tool events (Codex, and the Claude plugin from 2.9.0) no longer
+  nudge long test/verification sessions to wrap up early.
 
 ### Fixed
 

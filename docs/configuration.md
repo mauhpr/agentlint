@@ -637,8 +637,15 @@ rules:
 
 Tracks session activity (tool invocations, content bytes, duration). Warns at configurable threshold.
 
+Since v2.9.0 the budget counts **file-changing** calls (`Write`, `Edit`,
+`MultiEdit`, `NotebookEdit`; Codex `apply_patch` arrives as these) by default.
+Shell and read calls still appear in the Stop summary but do not move a session
+toward the mid-session "consider wrapping up" warning, so long verification
+work (tests, git, CI checks) is not nudged to stop early.
+
 **Config options:**
-- `max_tool_invocations` — Maximum tool calls before warning (default: `200`)
+- `count_tools` — Tools that count toward the budget: a list of tool names, or `all` (default: file-changing tools)
+- `max_tool_invocations` — Maximum counted tool calls before warning (default: `200`)
 - `max_content_bytes` — Maximum content bytes (default: `500000`)
 - `warn_at_percent` — Warning threshold (default: `80`)
 
