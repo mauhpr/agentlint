@@ -1,5 +1,48 @@
 # Changelog
 
+## v2.8.0 (2026-10-08) — Coverage Truth and Actionable Diagnostics
+
+Field feedback from Codex workspaces found the rules correct but the reporting
+hard to trust. This release makes coverage, degraded operation and denials
+explicit. See `docs/rfcs/0001-trust-diagnostics-precision.md`.
+
+### Added
+
+- `agentlint status` checks project **and user** scope hook files for every
+  agent, parses wired events, and recognizes delegating wrapper scripts. Each
+  agent is shown as configured -> enabled -> observed.
+- Hook heartbeat: every `check` records event, tool type, project fingerprint,
+  version and time (no content) so `status` can prove hooks actually run.
+- `status --json` with agents, effective policy layers, per-rule origin,
+  required rules, exceptions, cloud health and local protections.
+- `agentlint check-patch` and MCP `check_patch`: preview a Codex `apply_patch`
+  with the hook's exact validator and rules, read-only.
+- AgentChute queue health: oldest pending age, size, last outcome and HTTP
+  status, last success, next retry, soft-limit warnings (no auto-discard).
+- `doctor --online` to refresh the cloud policy explicitly.
+
+### Changed
+
+- Patch denials name the file, hunk, first context line (credentials masked)
+  and every candidate line; missing and ambiguous hunks are distinguished, and
+  the correction explains what to change.
+- Denials show `File: path:line`, and the policy source names the layer:
+  built-in vs custom pack, required by workspace policy, configured in a
+  repository file, or defaults.
+- `doctor` is read-only by default (no policy refresh without `--online` or
+  `--fix`), reports never-observed or stale hooks and degraded cloud delivery,
+  and lists what is still enforced locally.
+- HTTP 429/503 from AgentChute honour `Retry-After` (capped at one hour) and are
+  classified separately from auth, client and network errors.
+- `destructive-confirmation-gate` no longer suggests a non-existent
+  `bypass_ops` setting.
+
+### Fixed
+
+- `doctor --fix` no longer installs a duplicate project-level integration when
+  user-scope hooks or a wrapper already cover the platform.
+
+---
 ## v2.7.1 (2026-10-06) — Python Reads and Advisory Codex Feedback
 
 ### Fixed

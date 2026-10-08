@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml
@@ -38,6 +38,25 @@ class AgentLintConfig:
     required_rules: list[str] = field(default_factory=list)
     source_paths: list[str] = field(default_factory=list)
     exceptions: list[dict] = field(default_factory=list)
+    # Provenance: ordered policy layers ({"kind": "workspace"|"repository", "path"})
+    # and, per rule, the layer file that last configured it.
+    layers: list[dict] = field(default_factory=list)
+    rule_origins: dict[str, str] = field(default_factory=dict)
+    # True when `packs:` was written explicitly (stack detection was skipped).
+    packs_explicit: bool = False
+
+    def describe_policy_source(self, rule_id: str, pack: str, *, builtin: bool) -> str:
+        """Explain which policy layer makes a rule active, for denial messages."""
+        origin = f"built-in {pack} pack" if builtin else f"custom pack '{pack}'"
+        workspace = next((x["path"] for x in self.layers if x["kind"] == "workspace"), None)
+        if rule_id in self.required_rules and workspace:
+            return f"{origin}; required by workspace policy {workspace}"
+        if rule_id in self.rule_origins:
+            return f"{origin}; configured in {self.rule_origins[rule_id]}"
+        if self.layers:
+            files = ", ".join(x["path"] for x in self.layers)
+            return f"{origin}; default settings (policy files: {files})"
+        return f"{origin}; built-in defaults (no policy file)"
 
     @property
     def is_recording_enabled(self) -> bool:
@@ -89,19 +108,7 @@ class AgentLintConfig:
 
     def with_packs(self, packs: list[str]) -> AgentLintConfig:
         """Return a copy with different packs."""
-        return AgentLintConfig(
-            severity=self.severity,
-            packs=packs,
-            rules=self.rules,
-            custom_rules_dir=self.custom_rules_dir,
-            circuit_breaker=self.circuit_breaker,
-            recording=self.recording,
-            agentchute=self.agentchute,
-            projects=self.projects,
-            required_rules=self.required_rules,
-            source_paths=self.source_paths,
-            exceptions=self.exceptions,
-        )
+        return replace(self, packs=packs)
 
 
 def get_rule_setting(rules_dict: dict, rule_id: str, key: str, default=None):
@@ -180,6 +187,13 @@ def _load_local_config(project_dir: str, *, strict: bool = False) -> AgentLintCo
         projects=raw.get("projects", {}),
         source_paths=[str(selected_path)] if selected_path else [],
         exceptions=exceptions,
+        layers=[{"kind": "repository", "path": str(selected_path)}] if selected_path else [],
+        rule_origins=(
+            {rule_id: str(selected_path) for rule_id in raw.get("rules", {}) or {}}
+            if selected_path and isinstance(raw.get("rules"), dict)
+            else {}
+        ),
+        packs_explicit=bool(explicit_packs),
     )
 
 

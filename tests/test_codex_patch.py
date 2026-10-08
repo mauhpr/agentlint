@@ -253,3 +253,95 @@ def test_oversized_input_file_rejected(tmp_path):
     (tmp_path / "large").write_text("x" * 5_000_001)
     with pytest.raises(PatchError, match="size limit"):
         patch_contexts(context(tmp_path, envelope("*** Delete File: large")))
+
+
+DUPLICATED = "def a():\n    return 1\n\n\ndef b():\n    return 1\n"
+
+
+def test_ambiguous_hunk_names_file_hunk_context_and_lines(tmp_path):
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "mod.py").write_text(DUPLICATED)
+    patch = envelope("*** Update File: pkg/mod.py\n@@\n-    return 1\n+    return 2")
+    with pytest.raises(PatchError) as info:
+        patch_contexts(context(tmp_path, patch))
+    exc = info.value
+    assert (exc.path, exc.hunk, exc.reason) == ("pkg/mod.py", 1, "ambiguous")
+    assert exc.candidate_lines == [2, 6]
+    text = exc.describe()
+    assert "pkg/mod.py hunk 1" in text
+    assert "`return 1`" in text
+    assert "lines 2, 6" in text
+    assert "unique surrounding context" in exc.correction()
+
+
+def test_missing_hunk_is_distinguished_from_ambiguous(tmp_path):
+    (tmp_path / "x.py").write_text("a = 1\nb = 2\n")
+    patch = envelope("*** Update File: x.py\n@@\n a = 1\n-b = 2\n+b = 3\n@@\n-c = 9\n+c = 10")
+    with pytest.raises(PatchError) as info:
+        patch_contexts(context(tmp_path, patch))
+    assert (info.value.reason, info.value.hunk) == ("missing", 2)
+    assert "not found" in info.value.describe()
+    assert info.value.candidate_lines == []
+
+
+def test_repeated_anchor_uses_first_match_after_cursor(tmp_path):
+    (tmp_path / "x.py").write_text("x = 1\nclass A:\n    y = 1\nclass A:\n    y = 2\n")
+    patch = envelope("*** Update File: x.py\n@@ class A:\n-    y = 1\n+    y = 3")
+    [ctx] = patch_contexts(context(tmp_path, patch))
+    assert ctx.file_content == "x = 1\nclass A:\n    y = 3\nclass A:\n    y = 2\n"
+
+
+def test_excerpt_masks_credential_like_context(tmp_path):
+    secret = "sk_live_" + "a1b2c3d4e5f6g7h8i9j0k1l2"
+    (tmp_path / "x.py").write_text(f'KEY = "{secret}"\nKEY = "{secret}"\n')
+    patch = envelope(f'*** Update File: x.py\n@@\n-KEY = "{secret}"\n+KEY = None')
+    with pytest.raises(PatchError) as info:
+        patch_contexts(context(tmp_path, patch))
+    assert secret not in info.value.describe()
+    assert "[redacted]" in info.value.describe()
+
+
+def test_hook_denial_is_located_and_actionable(tmp_path):
+    (tmp_path / "mod.py").write_text(DUPLICATED)
+    patch = envelope("*** Update File: mod.py\n@@\n-    return 1\n+    return 2")
+    reason = check(tmp_path, patch)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "[codex-patch-inspection] mod.py hunk 1" in reason
+    assert "File: mod.py:2" in reason
+    assert "Operation: apply_patch hunk 1" in reason
+    assert "Policy: Codex patch inspection" in reason
+
+
+def _preview(tmp_path, patch, *args):
+    return CliRunner().invoke(
+        main, ["check-patch", "--project-dir", str(tmp_path), *args, "-"], input=patch
+    )
+
+
+def test_check_patch_preview_matches_hook_and_writes_nothing(tmp_path, monkeypatch):
+    cache = tmp_path / "cache"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "mod.py").write_text(DUPLICATED)
+    patch = envelope("*** Update File: mod.py\n@@\n-    return 1\n+    return 2")
+    result = _preview(tmp_path, patch, "--json")
+    assert result.exit_code == 1, result.output
+    data = json.loads(result.output)
+    assert data["decision"] == "deny"
+    [v] = data["violations"]
+    assert v["rule_id"] == "codex-patch-inspection"
+    assert (v["file_path"], v["line"]) == ("mod.py", 2)
+    assert (tmp_path / "mod.py").read_text() == DUPLICATED
+    assert not cache.exists()
+    assert not (tmp_path / "home").exists()
+
+
+def test_check_patch_allows_clean_patch_and_runs_rules(tmp_path):
+    (tmp_path / "mod.py").write_text(DUPLICATED)
+    ok = envelope("*** Update File: mod.py\n@@ def b():\n-    return 1\n+    return 2")
+    result = _preview(tmp_path, ok)
+    assert result.exit_code == 0, result.output
+    assert "Patch allowed" in result.output
+    secret = envelope('*** Add File: c.py\n+API_KEY = "sk_live_abc123def456ghi789"')
+    denied = _preview(tmp_path, secret)
+    assert denied.exit_code == 1
+    assert "no-secrets" in denied.output and "DENIED" in denied.output

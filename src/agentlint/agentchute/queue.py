@@ -50,6 +50,15 @@ def _retry_path() -> Path:
     return _queue_root() / "retry.json"
 
 
+def _health_path() -> Path:
+    return _queue_root() / "health.json"
+
+
+# Soft limits only produce warnings; queued events are never discarded automatically.
+SOFT_CAP_EVENTS = 10_000
+SOFT_CAP_BYTES = 50 * 1024 * 1024
+
+
 def _load_json(path: Path, default: Any) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -234,13 +243,18 @@ def flush_queue(
             response = client.post_events_batch(batch)
             if response is None:
                 result.failed += len(batch)
-                _record_failure()
+                _record_failure(
+                    outcome=getattr(client, "last_outcome", None),
+                    http_status=getattr(client, "last_http_status", None),
+                    retry_after=getattr(client, "retry_after_s", None),
+                )
+                result.aborted_reason = getattr(client, "last_outcome", None)
                 return result
 
             failed_ids = set(response.get("failed") or [])
             if failed_ids:
                 result.failed += len(failed_ids)
-                _record_failure()
+                _record_failure(outcome="partial_failure")
                 return result
 
             delivered = int(response.get("accepted", 0) or 0) + int(
@@ -253,24 +267,57 @@ def flush_queue(
             index += len(raw_batch)
             _save_json(_cursor_path(), {"offset": cursor})
             _clear_retry()
+            _update_health(last_success_at=time.time(), last_outcome="ok")
 
         return result
     finally:
         _release_lock()
 
 
-def queue_status() -> dict:
+def _queued_at(raw: str) -> float | None:
+    try:
+        value = json.loads(raw).get("queued_at")
+    except (json.JSONDecodeError, AttributeError):
+        return None
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def queue_status(now: float | None = None) -> dict:
+    """Queue size, backlog age and delivery health. Read-only."""
+    now = now if now is not None else time.time()
     lines = _read_lines()
     cursor = int(_load_json(_cursor_path(), {"offset": 0}).get("offset", 0))
     retry = _load_json(_retry_path(), {})
+    health = _load_json(_health_path(), {})
     pending = max(0, len(lines) - cursor)
+    oldest = next(
+        (ts for ts in (_queued_at(raw) for raw in lines[cursor:]) if ts is not None), None
+    )
+    try:
+        size = _queue_path().stat().st_size
+    except OSError:
+        size = 0
+    next_attempt = retry.get("next_attempt_at")
+    warnings = []
+    if pending >= SOFT_CAP_EVENTS:
+        warnings.append(f"{pending} undelivered events exceed the soft limit of {SOFT_CAP_EVENTS}")
+    if size >= SOFT_CAP_BYTES:
+        warnings.append(f"queue file is {size // (1024 * 1024)} MB (soft limit 50 MB)")
     return {
         "queue_path": str(_queue_path()),
         "queued": len(lines),
         "delivered_cursor": cursor,
         "pending": pending,
-        "next_attempt_at": retry.get("next_attempt_at"),
+        "bytes": size,
+        "oldest_pending_age_s": (now - oldest) if oldest is not None else None,
+        "next_attempt_at": next_attempt,
+        "next_attempt_in_s": max(0.0, next_attempt - now) if next_attempt else None,
         "failures": retry.get("failures", 0),
+        "last_outcome": health.get("last_outcome"),
+        "last_http_status": health.get("last_http_status"),
+        "last_error_at": health.get("last_error_at"),
+        "last_success_at": health.get("last_success_at"),
+        "warnings": warnings,
     }
 
 
@@ -324,11 +371,29 @@ def _release_lock() -> None:
         _lock_path().unlink()
 
 
-def _record_failure() -> None:
+def _record_failure(
+    *,
+    outcome: str | None = None,
+    http_status: int | None = None,
+    retry_after: float | None = None,
+) -> None:
     retry = _load_json(_retry_path(), {})
     failures = int(retry.get("failures", 0) or 0) + 1
     delay = min(_BACKOFF_CAP_S, 2 ** min(failures, 8))
+    if retry_after is not None:
+        # Honour the server's explicit throttle window, even beyond our own cap.
+        delay = max(delay, retry_after)
     _save_json(_retry_path(), {"failures": failures, "next_attempt_at": time.time() + delay})
+    _update_health(
+        last_error_at=time.time(),
+        last_outcome=outcome or "unknown_error",
+        last_http_status=http_status,
+    )
+
+
+def _update_health(**fields: Any) -> None:
+    with contextlib.suppress(OSError):
+        _save_json(_health_path(), {**_load_json(_health_path(), {}), **fields})
 
 
 def _clear_retry() -> None:

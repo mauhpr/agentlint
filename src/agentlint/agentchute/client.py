@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from agentlint.agentchute.settings import (
@@ -59,6 +59,11 @@ class AgentChuteClient:
     api_url: str
     license_key: str
     user_agent: str = "agentlint/agentchute"
+    # Outcome of the most recent batch POST, for queue health reporting:
+    # ok | rate_limited | server_error | auth_error | client_error | network_error
+    last_outcome: str | None = field(default=None, compare=False)
+    last_http_status: int | None = field(default=None, compare=False)
+    retry_after_s: float | None = field(default=None, compare=False)
 
     @classmethod
     def from_env(cls) -> AgentChuteClient | None:
@@ -116,6 +121,9 @@ class AgentChuteClient:
         The server accepts duplicate event IDs as success, allowing local
         retries after network failures without double-counting events.
         """
+        self.last_outcome = None
+        self.last_http_status = None
+        self.retry_after_s = None
         if not events:
             return {"accepted": 0, "duplicates": 0, "failed": []}
 
@@ -123,6 +131,7 @@ class AgentChuteClient:
             import requests  # lazy import — only paid when AgentChute is on
         except ImportError:
             logger.warning("agentlint.agentchute: requests not installed; batch flush disabled")
+            self.last_outcome = "network_error"
             return None
 
         try:
@@ -138,16 +147,34 @@ class AgentChuteClient:
             )
         except requests.exceptions.Timeout:
             logger.debug("agentlint.agentchute: batch POST timed out")
+            self.last_outcome = "network_error"
             return None
         except requests.exceptions.RequestException as e:
             logger.debug("agentlint.agentchute: batch POST failed (%s)", e)
+            self.last_outcome = "network_error"
             return None
 
+        status = response.status_code
+        self.last_http_status = status if isinstance(status, int) else None
         if 200 <= response.status_code < 300:
+            self.last_outcome = "ok"
             try:
                 return response.json()
             except ValueError:
                 return {"accepted": len(events), "duplicates": 0, "failed": []}
+
+        if status == 429 or status == 503:
+            self.last_outcome = "rate_limited" if status == 429 else "server_error"
+            headers = getattr(response, "headers", None) or {}
+            self.retry_after_s = parse_retry_after(headers.get("Retry-After"))
+            logger.debug("agentlint.agentchute: batch POST throttled (status %d)", status)
+            return None
+        if isinstance(status, int) and status >= 500:
+            self.last_outcome = "server_error"
+        elif status in (401, 403):
+            self.last_outcome = "auth_error"
+        else:
+            self.last_outcome = "client_error"
 
         if response.status_code in (401, 403):
             logger.warning(
@@ -184,3 +211,30 @@ def _safe_post(client: AgentChuteClient, event: dict) -> None:
         client.post_event(event)
     except Exception:  # noqa: BLE001
         logger.debug("agentlint.agentchute: post_event_async swallowed", exc_info=True)
+
+
+_RETRY_AFTER_CAP_S = 3600.0
+
+
+def parse_retry_after(value: object, *, now: float | None = None) -> float | None:
+    """Parse a Retry-After header (delta seconds or HTTP date), capped at one hour."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    value = value.strip()
+    try:
+        seconds = float(value)
+    except ValueError:
+        from email.utils import parsedate_to_datetime
+
+        try:
+            when = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
+        if when is None:
+            return None
+        import time as _time
+
+        seconds = when.timestamp() - (now if now is not None else _time.time())
+    if seconds != seconds:  # NaN
+        return None
+    return max(0.0, min(_RETRY_AFTER_CAP_S, seconds))

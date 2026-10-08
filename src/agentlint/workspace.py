@@ -88,4 +88,13 @@ def load_workspace_config(project_dir: str, loader: Callable) -> AgentLintConfig
         required_rules=list(dict.fromkeys(required)),
         source_paths=list(dict.fromkeys([*base.source_paths, *local.source_paths])),
         exceptions=[*base.exceptions, *local.exceptions] if local_dir != root else base.exceptions,
+        layers=[
+            {"kind": "workspace", "path": str(path)},
+            *(local.layers if local_dir != root else []),
+        ],
+        rule_origins={
+            **base.rule_origins,
+            **(local.rule_origins if local_dir != root else {}),
+        },
+        packs_explicit=local.packs_explicit if local_dir != root else base.packs_explicit,
     )

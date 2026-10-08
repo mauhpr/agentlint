@@ -188,11 +188,10 @@ class Engine:
                             else context.tool_name
                         )
                     if not v.policy_source:
-                        config_files = ", ".join(self.config.source_paths)
-                        v.policy_source = (
-                            f"{rule.pack} pack; {config_files}"
-                            if config_files
-                            else f"{rule.pack} pack (built-in defaults)"
+                        v.policy_source = self.config.describe_policy_source(
+                            rule.id,
+                            rule.pack,
+                            builtin=type(rule).__module__.startswith("agentlint.packs."),
                         )
                     if not v.suggestion:
                         v.suggestion = (
