@@ -83,3 +83,31 @@ def test_canonicalization_keeps_native_keys_and_unknown_tools():
         {"command": "x"},
     )
     assert canonical_tool_call(gemini, "Bash", {"command": "ls"}) == ("Bash", {"command": "ls"})
+
+
+@pytest.mark.parametrize(
+    ("platform", "path", "post_event", "shell_tool"),
+    [
+        ("claude", ".claude/settings.json", "PostToolUse", "Bash"),
+        ("continue", ".continue/settings.json", "PostToolUse", "Bash"),
+        ("cursor", ".cursor/hooks.json", "postToolUse", "Shell"),
+        ("gemini", ".gemini/settings.json", "AfterTool", "run_shell_command"),
+        ("grok", ".grok/settings.json", "PostToolUse", "bash"),
+        ("kimi", ".kimi/config.toml", "PostToolUse", "Shell"),
+    ],
+)
+def test_post_tool_hooks_include_shell_so_test_runs_are_seen(
+    tmp_path, platform, path, post_event, shell_tool
+):
+    """Completed test commands must reach AgentLint to become evidence."""
+    get_adapter(platform).install_hooks(str(tmp_path), scope="project", cmd="agentlint")
+    text = (tmp_path / path).read_text()
+    if path.endswith(".toml"):
+        import tomllib
+
+        hooks = [h for h in tomllib.loads(text)["hooks"] if h.get("event") == post_event]
+        matchers = [h.get("matcher", "") for h in hooks]
+    else:
+        entries = json.loads(text)["hooks"][post_event]
+        matchers = [e.get("matcher", "") for e in entries]
+    assert any(shell_tool in m.split("|") for m in matchers), matchers

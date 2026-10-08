@@ -48,6 +48,13 @@ Second half of `docs/rfcs/0001-trust-diagnostics-precision.md`.
 - Gemini hooks now also match `run_shell_command`, Gemini CLI's shell tool.
   Re-run `agentlint setup gemini` to update an existing installation.
 
+### Changed (hooks)
+
+- Post-tool hooks installed by `agentlint setup` now include each agent's shell
+  tool (`Bash`, `Shell`, `run_shell_command`, `bash`), so completed test runs
+  are recognized and recorded as evidence. Re-run `agentlint setup <agent>` to
+  update existing installations.
+
 ### Fixed
 
 - `universal` and `quality` are now always active, as documented, including

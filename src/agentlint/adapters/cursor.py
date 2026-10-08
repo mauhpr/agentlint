@@ -64,7 +64,7 @@ def _build_hooks(cmd: str) -> dict:
             ],
             "postToolUse": [
                 {
-                    "matcher": "Write|Delete",
+                    "matcher": "Shell|Write|Delete",
                     "_agentlint": "v2",
                     "command": f"{cmd} check --event postToolUse --adapter cursor",
                     "timeout": 10,

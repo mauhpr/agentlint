@@ -72,7 +72,7 @@ def _build_hooks(cmd: str) -> dict:
             ],
             "AfterTool": [
                 {
-                    "matcher": "write_file|replace",
+                    "matcher": "write_file|replace|run_shell_command|bash",
                     "hooks": [
                         {
                             "name": "agentlint-post",
