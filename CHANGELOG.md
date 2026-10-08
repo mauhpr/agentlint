@@ -36,6 +36,18 @@ Second half of `docs/rfcs/0001-trust-diagnostics-precision.md`.
   Bash post-tool events (Codex, and the Claude plugin from 2.9.0) no longer
   nudge long test/verification sessions to wrap up early.
 
+### Security
+
+- **Built-in rules now apply to Gemini, Kimi, Grok and Cursor shell/file tools.**
+  `agentlint check` passed native tool names (`run_shell_command`, `Shell`,
+  `WriteFile`, `write`, ...) straight to rules that only recognize `Bash`,
+  `Write` and `Edit`, so on those agents most built-in checks — secrets,
+  force-push, destructive commands and more — never fired. Native tool calls
+  are now translated to the canonical names and input keys before evaluation.
+  Claude Code, Codex and Continue were not affected.
+- Gemini hooks now also match `run_shell_command`, Gemini CLI's shell tool.
+  Re-run `agentlint setup gemini` to update an existing installation.
+
 ### Fixed
 
 - `universal` and `quality` are now always active, as documented, including

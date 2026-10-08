@@ -212,6 +212,7 @@ _GROK_TOOL_MAP: dict[str, NormalizedTool] = {
 
 # Gemini tool name mappings
 _GEMINI_TOOL_MAP: dict[str, NormalizedTool] = {
+    "run_shell_command": NormalizedTool.SHELL,
     "bash": NormalizedTool.SHELL,
     "write_file": NormalizedTool.FILE_WRITE,
     "replace": NormalizedTool.FILE_EDIT,

@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -548,23 +549,11 @@ def _evaluate_tool_context(context, config, rules):
         # For Write, the new content is in tool_input
         content = tool_input.get("content", "")
         if content:
-            context = RuleContext(
-                event=context.event,
-                tool_name=context.tool_name,
-                tool_input=context.tool_input,
-                project_dir=context.project_dir,
+            context = replace(
+                context,
                 file_content=content,
                 file_content_before=file_content_before,
-                config=context.config,
                 session_state=session_state,
-                prompt=context.prompt,
-                subagent_output=context.subagent_output,
-                notification_type=context.notification_type,
-                compact_source=context.compact_source,
-                agent_transcript_path=context.agent_transcript_path,
-                agent_type=context.agent_type,
-                agent_id=context.agent_id,
-                agent_platform=context.agent_platform,
             )
 
     # For PostToolUse on file operations, try to read file content
@@ -590,23 +579,11 @@ def _evaluate_tool_context(context, config, rules):
             file_content_before = file_cache.pop(file_path, None)
 
         if file_content is not None:
-            context = RuleContext(
-                event=context.event,
-                tool_name=context.tool_name,
-                tool_input=context.tool_input,
-                project_dir=context.project_dir,
+            context = replace(
+                context,
                 file_content=file_content,
                 file_content_before=file_content_before,
-                config=context.config,
                 session_state=session_state,
-                prompt=context.prompt,
-                subagent_output=context.subagent_output,
-                notification_type=context.notification_type,
-                compact_source=context.compact_source,
-                agent_transcript_path=context.agent_transcript_path,
-                agent_type=context.agent_type,
-                agent_id=context.agent_id,
-                agent_platform=context.agent_platform,
             )
 
     # Resolve project-specific packs for monorepo
@@ -712,7 +689,10 @@ def _evaluate_tool_call(context, config, rules, *, patch: bool):
 )
 @click.option("--project-dir", default=None, help="Project directory")
 @click.option(
-    "--adapter", default=None, help="Agent adapter (claude, cursor). Auto-detected if not set."
+    "--adapter",
+    default=None,
+    help="Agent adapter (claude, codex, cursor, gemini, continue, kimi, grok, generic, ...). "
+    "Auto-detected if not set.",
 )
 @click.option(
     "--format",
@@ -812,11 +792,17 @@ def check(
     # Load persisted session state
     session_state = load_session()
 
-    # Build context with event-specific fields
-    tool_input = raw.get("tool_input", {})
+    # Build context with event-specific fields. Native tool names (Gemini's
+    # run_shell_command, Kimi's Shell, ...) become the canonical Bash/Write/Edit
+    # that built-in rules check.
+    from agentlint.adapters.normalize import canonical_tool_call
+
+    tool_name, tool_input = canonical_tool_call(
+        adapter_obj, raw.get("tool_name", ""), raw.get("tool_input", {})
+    )
     context = RuleContext(
         event=hook_event,
-        tool_name=raw.get("tool_name", ""),
+        tool_name=tool_name,
         tool_input=tool_input,
         project_dir=project_dir,
         config=rules_config,
@@ -887,9 +873,9 @@ def check(
                 "v": 1,
                 "ts": time.time(),
                 "event": event,
-                "tool_name": raw.get("tool_name", ""),
+                "tool_name": tool_name,
                 "tool_summary": summarize_tool_input(
-                    raw.get("tool_name", ""),
+                    tool_name,
                     tool_input,
                     raw.get("prompt"),
                 ),
@@ -1380,7 +1366,10 @@ agentchute:
     help="Output format (only applies with --summary)",
 )
 @click.option(
-    "--adapter", default=None, help="Agent adapter (claude, cursor). Auto-detected if not set."
+    "--adapter",
+    default=None,
+    help="Agent adapter (claude, codex, cursor, gemini, continue, kimi, grok, generic, ...). "
+    "Auto-detected if not set.",
 )
 def report(project_dir: str | None, summary: bool, output_format: str, adapter: str | None):
     """Generate session summary report (for Stop event)."""
