@@ -17,6 +17,7 @@ from agentlint.adapters._utils import (
     is_agentlint_nested_entry,
     read_json_config,
     resolve_command,
+    settings_for_update,
     write_json_config,
 )
 from agentlint.adapters.base import AgentAdapter
@@ -206,7 +207,7 @@ class CodexAdapter(AgentAdapter):
         path = _hooks_path(scope, project_dir)
         existing = read_json_config(path)
 
-        config = dict(existing or {})
+        config = settings_for_update(path, existing)
         hooks_template = _build_hooks(cmd)
 
         hooks = dict(config.get("hooks", {}))

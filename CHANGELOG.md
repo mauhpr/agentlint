@@ -1,5 +1,29 @@
 # Changelog
 
+## v2.9.1 (2026-10-08) — Adapter Setup Fixes
+
+### Fixed
+
+- **OpenAI Agents SDK:** new `OpenAIAgentsAdapter.tool_input_guardrail()` returns
+  a real SDK tool input guardrail (verified with openai-agents 0.23). The
+  snippet printed by `agentlint setup openai` and the module docs now use it;
+  they previously imported `openai.agents` and passed `guardrails=` to `Agent`,
+  neither of which exists. `evaluate_tool_call()` accepts the adapter's own
+  `shell`/`file_write`/`file_edit` names. `as_guardrail()` is deprecated.
+- **`agentlint setup mcp`** prints the `agentlint-mcp` server command and an
+  absolute project path (it printed the `agentlint` CLI path).
+- **`agentlint setup generic`** prints the real `agentlint check --adapter
+  generic` usage instead of a non-existent `webhook_url` setting.
+- **Gemini:** hook output uses Gemini's event names in `hookEventName`
+  (`AfterTool`, not `post_tool_use`).
+- **Setup no longer overwrites settings it can't parse.** If an agent's
+  settings file exists but isn't valid JSON/TOML (or isn't an object), setup,
+  onboarding and `doctor --fix` stop with an error and leave the file untouched.
+- `setup` no longer reports "Installed AgentLint hooks" for MCP, generic and
+  OpenAI, which only print configuration.
+
+---
+
 ## v2.9.0 (2026-10-08) — Precise Operations, Drift, Typed Approvals and Evidence
 
 Follows 2.8.0: makes command checks precise and records human decisions and verification evidence. See [Approvals and evidence](docs/approvals-and-evidence.md).

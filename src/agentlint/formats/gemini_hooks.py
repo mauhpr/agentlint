@@ -7,6 +7,17 @@ import json
 from agentlint.formats.base import OutputFormatter
 from agentlint.models import AgentEvent, Severity, Violation
 
+_GEMINI_NATIVE_EVENTS = {
+    AgentEvent.PRE_TOOL_USE.value: "BeforeTool",
+    AgentEvent.POST_TOOL_USE.value: "AfterTool",
+    AgentEvent.USER_PROMPT.value: "BeforeAgent",
+    AgentEvent.STOP.value: "AfterAgent",
+    AgentEvent.NOTIFICATION.value: "Notification",
+    AgentEvent.SESSION_START.value: "SessionStart",
+    AgentEvent.SESSION_END.value: "SessionEnd",
+    AgentEvent.PRE_COMPACT.value: "PreCompress",
+}
+
 
 class GeminiHookFormatter(OutputFormatter):
     """Formats violations for the Gemini CLI hook protocol.
@@ -39,6 +50,8 @@ class GeminiHookFormatter(OutputFormatter):
             return None
 
         event_str = event.value if isinstance(event, AgentEvent) else event
+        # Gemini expects its own event names (AfterTool, not post_tool_use).
+        event_str = _GEMINI_NATIVE_EVENTS.get(event_str, event_str)
 
         errors = [v for v in violations if v.severity == Severity.ERROR]
         warnings = [v for v in violations if v.severity == Severity.WARNING]

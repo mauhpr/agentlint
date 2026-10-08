@@ -118,17 +118,16 @@ class MCPAdapter(AgentAdapter):
         """Print MCP server configuration for various hosts."""
         import click
 
-        cmd = cmd or "agentlint-mcp"
         click.echo("Add this to your MCP host configuration:")
         click.echo(
             json.dumps(
                 {
                     "mcpServers": {
                         "agentlint": {
-                            "command": cmd,
+                            "command": _mcp_command(cmd),
                             "args": [],
                             "env": {
-                                "AGENTLINT_PROJECT_DIR": project_dir,
+                                "AGENTLINT_PROJECT_DIR": os.path.abspath(project_dir),
                             },
                         }
                     }
@@ -234,3 +233,18 @@ class MCPAdapter(AgentAdapter):
             "custom_rules_dir": config.custom_rules_dir,
             "rules": config.rules,
         }
+
+
+def _mcp_command(cmd: str | None) -> str:
+    """The MCP server executable, next to the resolved agentlint binary if present.
+
+    `setup` passes the path of the `agentlint` CLI; the MCP server is the separate
+    `agentlint-mcp` entry point (installed with the `agentlint[mcp]` extra).
+    """
+    if cmd:
+        candidate = os.path.join(os.path.dirname(cmd), "agentlint-mcp")
+        if os.path.basename(cmd) == "agentlint" and os.path.exists(candidate):
+            return candidate
+        if os.path.basename(cmd) == "agentlint-mcp":
+            return cmd
+    return "agentlint-mcp"
