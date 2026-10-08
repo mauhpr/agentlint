@@ -103,4 +103,5 @@ def load_workspace_config(project_dir: str, loader: Callable) -> AgentLintConfig
             dict.fromkeys([*base.drift_ignore_packs, *local.drift_ignore_packs])
         ),
         evidence=_merge(base.evidence, local.evidence),
+        exclude_packs=local.exclude_packs if local_dir != root else base.exclude_packs,
     )

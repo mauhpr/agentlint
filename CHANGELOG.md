@@ -38,6 +38,10 @@ Second half of `docs/rfcs/0001-trust-diagnostics-precision.md`.
 
 ### Fixed
 
+- `universal` and `quality` are now always active, as documented, including
+  when `packs:` is listed explicitly or set per directory under `projects:`.
+  Previously an explicit list silently dropped the quality pack (and universal,
+  if omitted). Turn a core pack off deliberately with `exclude_packs: [quality]`.
 - `git push -u origin feat/x && gh pr create --base main` is no longer reported
   as a push to `main`.
 - Quoted arguments to read-only commands (`grep "rm -rf" log`,
