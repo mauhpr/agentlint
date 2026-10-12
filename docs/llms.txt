@@ -1,0 +1,23 @@
+# AgentLint
+
+> Local rule and heuristic checks for proposed coding-agent file changes and shell commands. Supported integrations can block errors and return actionable feedback. AgentLint is not an OS sandbox; integration coverage varies.
+
+## Getting started
+- [Overview](https://mauhpr.github.io/agentlint/)
+- [Quickstart](https://mauhpr.github.io/agentlint/quickstart/)
+- [Integrations](https://mauhpr.github.io/agentlint/#agents)
+
+## Native agent guides
+- [Claude Code](https://mauhpr.github.io/agentlint/agents/claude/)
+- [Codex](https://mauhpr.github.io/agentlint/agents/codex/)
+- [Cursor](https://mauhpr.github.io/agentlint/agents/cursor/)
+- [Gemini CLI](https://mauhpr.github.io/agentlint/agents/gemini/)
+
+## Reference
+- [Rules](https://mauhpr.github.io/agentlint/rules/)
+- [Configuration](https://mauhpr.github.io/agentlint/configuration/)
+- [Diagnostics](https://mauhpr.github.io/agentlint/diagnostics/)
+- [CI](https://mauhpr.github.io/agentlint/ci/)
+- [CLI](https://mauhpr.github.io/agentlint/cli/)
+- [Optional cloud and privacy](https://mauhpr.github.io/agentlint/agentchute/)
+- [Source](https://github.com/mauhpr/agentlint)

@@ -1,0 +1,78 @@
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("InstrumentSerif-Italic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root, [data-md-color-scheme="default"] {
+  --md-text-font: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --md-code-font: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --md-primary-fg-color: #f4f1e9;
+  --md-primary-bg-color: #20382b;
+  --md-primary-bg-color--light: #526357;
+  --md-accent-fg-color: #32684f;
+  --md-default-bg-color: #faf8f3;
+  --md-default-fg-color: #20382b;
+  --md-default-fg-color--light: #59675d;
+  --md-default-fg-color--lighter: #a3aaa2;
+  --md-typeset-a-color: #32684f;
+  --md-code-bg-color: #f0eee6;
+  --md-code-fg-color: #20382b;
+}
+
+html { scroll-padding-top: 5rem; }
+.md-header { box-shadow: none; border-bottom: 1px solid #eaeaea; }
+.md-header__title { font-weight: 650; }
+.md-source__facts { color: #59675d; }
+.md-header__button.md-logo img { width: 1.55rem; height: 1.55rem; }
+.md-search__form { border: 1px solid #d7dcd3; border-radius: 4px; background: #fffdf8; }
+.md-search__form:hover { background: #fffdf8; }
+.md-search__input { color: #20382b; }
+.md-search__input::placeholder { color: #59675d; }
+.md-search__icon { color: #32684f; }
+.md-grid { max-width: 76rem; }
+.md-main__inner { margin-top: 2.5rem; }
+.md-typeset { font-size: .84rem; line-height: 1.7; }
+.md-typeset h1 { color: #20382b; letter-spacing: -.025em; font-weight: 650; }
+.md-typeset h2 { letter-spacing: -.02em; font-weight: 600; margin-top: 2.2em; }
+.md-typeset h3 { font-weight: 600; }
+.md-typeset pre > code { border: 1px solid #eaeaea; border-radius: 6px; }
+.md-typeset table:not([class]) { border-color: #eaeaea; box-shadow: none; }
+.md-typeset table:not([class]) th { background: #f0eee6; }
+.md-typeset a { text-underline-offset: .18em; }
+.md-typeset a:hover { text-decoration: underline; }
+.md-typeset a:focus-visible, .md-button:focus-visible { outline: 2px solid #32684f; outline-offset: 4px; }
+.md-nav__item .md-nav__link--active { color: #32684f; font-weight: 650; }
+.md-nav__title { box-shadow: none; background: transparent; }
+.md-footer { background: #eceee6; color: #20382b; }
+.md-footer-meta { background: #20382b; }
+.md-top { background: #fffdf8; color: #20382b; }
+
+.agentlint-hero { padding: 1rem 0 2.8rem; }
+.md-typeset .agentlint-eyebrow { margin: 0 0 1.1rem; font-size: .62rem; font-weight: 650; letter-spacing: .14em; }
+.md-typeset .agentlint-hero h1 { font-size: clamp(2.4rem, 4.3vw, 3.75rem); line-height: 1.05; margin: 0 0 1.2rem; max-width: 19ch; }
+.agentlint-hero h1 em { font-family: "Instrument Serif", Georgia, serif; font-weight: 400; color: #32684f; }
+.md-typeset .agentlint-lede { max-width: 38rem; font-size: 1rem; color: #59675d; line-height: 1.6; }
+.agentlint-actions { display: flex; gap: .65rem; flex-wrap: wrap; margin-top: 1.6rem; }
+.md-typeset .md-button { color: #32684f; background: transparent; font-size: .75rem; font-weight: 550; border: 1px solid #32684f; border-radius: 4px; padding: .6em 1.25em; }
+.md-typeset .md-button--primary { background: #20382b; color: #fffdf8; border-color: #20382b; }
+.md-typeset .md-button:hover { background: #32684f; color: #fffdf8; border-color: #32684f; text-decoration: none; }
+.agentlint-video { width: 100%; display: block; aspect-ratio: 16 / 9; border: 1px solid #eaeaea; border-radius: 8px; background: #f4f1e9; }
+.md-typeset .agentlint-caption { font-size: .69rem; color: #59675d; margin: .8rem 0 2.8rem; }
+.agentlint-paths { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0 2.6rem; }
+.agentlint-path { padding: 1.4rem; border: 1px solid #eaeaea; border-radius: 8px; background: #fffdf8; }
+.md-typeset .agentlint-path h3 { margin-top: 0; }
+.agentlint-path p:last-child { margin-bottom: 0; }
+.md-typeset .agentlint-boundary { padding: 1.2rem 0; border-top: 1px solid #eaeaea; border-bottom: 1px solid #eaeaea; color: #59675d; }
+
+@media (max-width: 76.1875em) {
+  .md-nav--primary .md-nav__title[for="__drawer"] { background: #f4f1e9; color: #20382b; }
+}
+@media (max-width: 600px) {
+  .md-main__inner { margin-top: 1.25rem; }
+  .agentlint-hero { padding-top: .5rem; }
+  .agentlint-paths { grid-template-columns: 1fr; }
+  .md-typeset .agentlint-hero h1 { font-size: 2.5rem; }
+}

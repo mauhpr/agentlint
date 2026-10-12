@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <meta property="og:type" content="website">
+  {% if page %}
+    <meta property="og:title" content="{{ page.title | default(config.site_name, true) | e }}">
+    <meta property="og:description" content="{{ page.meta.description | default(config.site_description, true) | e }}">
+    <meta property="og:url" content="{{ page.canonical_url | e }}">
+  {% else %}
+    <meta property="og:title" content="{{ config.site_name | e }}">
+    <meta property="og:description" content="{{ config.site_description | e }}">
+  {% endif %}
+  <meta property="og:image" content="{{ config.site_url }}media/agentlint-demo-poster.png">
+  <meta name="twitter:card" content="summary_large_image">
+{% endblock %}

@@ -121,6 +121,30 @@ User docs live in [`docs/`](docs/README.md). `tests/test_docs.py` enforces:
 Update the docs in the same PR as the behavior change, and add an entry to
 `CHANGELOG.md`.
 
+### Preview the documentation site
+
+The [documentation site](https://mauhpr.github.io/agentlint/) uses MkDocs Material.
+Its dependencies are isolated from the Python package and hash-locked:
+
+```bash
+uv venv --python 3.13 .docs-venv
+uv pip sync --python .docs-venv/bin/python --require-hashes requirements-docs.txt
+.docs-venv/bin/mkdocs build --strict
+.docs-venv/bin/mkdocs serve
+```
+
+When changing documentation dependencies, update `requirements-docs.in`, then
+regenerate the lock:
+
+```bash
+uv pip compile --universal --python-version 3.13 --generate-hashes --output-file requirements-docs.txt requirements-docs.in
+```
+
+The Documentation workflow builds pull requests with strict link validation.
+Only builds from `main` deploy to GitHub Pages. Generated `site/` output and the
+local docs environment are not committed. The editorial font in `docs/assets/`
+is self-hosted under its included SIL Open Font License.
+
 ## Pull requests
 
 - One feature or fix per PR.

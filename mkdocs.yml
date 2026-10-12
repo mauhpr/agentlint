@@ -1,0 +1,83 @@
+site_name: AgentLint
+site_description: Local guardrails for AI coding agents. Check proposed file changes and shell commands before they run.
+site_url: https://mauhpr.github.io/agentlint/
+repo_url: https://github.com/mauhpr/agentlint
+repo_name: mauhpr/agentlint
+edit_uri: blob/main/docs/
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  language: en
+  font: false
+  logo: assets/agentlint.svg
+  favicon: assets/agentlint.svg
+  palette:
+    scheme: default
+    primary: custom
+    accent: custom
+  features:
+    - navigation.sections
+    - navigation.footer
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+extra_css:
+  - assets/agentlint.css
+
+exclude_docs: |
+  /overrides/
+
+validation:
+  nav:
+    omitted_files: warn
+  links:
+    not_found: warn
+    anchors: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: README.md
+  - Quickstart: quickstart.md
+  - Agent setup:
+      - Claude Code: agents/claude.md
+      - Codex: agents/codex.md
+      - Cursor: agents/cursor.md
+      - Gemini CLI: agents/gemini.md
+      - Continue: agents/continue.md
+      - Kimi Code CLI: agents/kimi.md
+      - Grok CLI: agents/grok.md
+      - OpenAI Agents SDK: agents/openai-agents.md
+      - MCP hosts: agents/mcp-hosts.md
+      - Generic integration: agents/generic.md
+  - Using AgentLint:
+      - Rules: rules.md
+      - Configuration: configuration.md
+      - Approvals and evidence: approvals-and-evidence.md
+      - Diagnostics: diagnostics.md
+      - Continuous integration: ci.md
+      - MCP server: mcp.md
+      - Optional cloud: agentchute.md
+      - CLI reference: cli.md
+  - Extending AgentLint:
+      - Custom rules: custom-rules.md
+      - Custom adapters: custom-adapters.md
+      - Subagent safety: subagent-safety.md
+      - Architecture: architecture.md
+
+extra:
+  generator: false
