@@ -15,7 +15,7 @@ It works with **Claude Code, Codex, Cursor, Gemini CLI, Continue, Kimi, Grok**,
 the **OpenAI Agents SDK**, **MCP** hosts and your own tools. It runs locally,
 and nothing leaves your machine unless you opt in.
 
-[![What AgentLint is, what it prevents, and how it fits your coding workflow](docs/media/agentlint-demo-preview.gif)](docs/media/agentlint-demo.mp4)
+https://github.com/user-attachments/assets/ae9a6b72-8bf7-4b73-abe3-7f0f3b483d3b
 
 **[Watch the 53-second product overview](docs/media/agentlint-demo.mp4)** ·
 [Quickstart](docs/quickstart.md)
