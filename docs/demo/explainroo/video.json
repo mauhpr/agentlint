@@ -1,6 +1,6 @@
 {
-  "title": "AgentLint: check before the action",
-  "theme": "midnight",
+  "title": "AgentLint: guardrails for AI coding agents",
+  "theme": "clean",
   "size": "youtube",
   "fps": 30,
   "voice": "af_heart",
@@ -8,24 +8,29 @@
   "pace": 1.05,
   "music": { "style": "tech", "volume": 0.08 },
   "sfx": "minimal",
-  "captions": true,
-  "transition": "fade",
-  "watermark": "explainroo.com",
+  "captions": false,
+  "transition": "cut",
+  "watermark": false,
   "brand": {
-    "accent": "#63e6be",
-    "background": "#101820",
-    "ink": "#f0f6fc",
-    "font": "Inter",
-    "headline": "Inter",
+    "accent": "#2e654c",
+    "background": "#f5f2eb",
+    "ink": "#1d3027",
+    "font": "Geist",
+    "headline": "Instrument Serif",
     "colors": {
-      "text": "#e6edf3",
-      "soft": "#b5c2ce",
-      "muted": "#a3b5c5",
-      "faint": "#718698",
-      "line": "#334755",
-      "field": "#182630",
-      "surface": "#182630",
-      "panel": "#182630"
+      "text": "#1d3027",
+      "soft": "#5f6c63",
+      "muted": "#5f6c63",
+      "faint": "#5f6c63",
+      "line": "#dddcd2",
+      "field": "#e8e6dc",
+      "surface": "#fffef9",
+      "panel": "#e1ebdf"
     }
-  }
+  },
+  "fonts": [
+    { "family": "Geist", "src": "assets/fonts/Geist.ttf", "weight": "100 900" },
+    { "family": "Geist Mono", "src": "assets/fonts/GeistMono.ttf", "weight": "100 900" },
+    { "family": "Instrument Serif", "src": "assets/fonts/InstrumentSerif-Italic.woff2", "weight": 400, "style": "italic" }
+  ]
 }

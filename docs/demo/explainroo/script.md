@@ -1,20 +1,24 @@
-# AgentLint: check before the action
+# AgentLint: guardrails for AI coding agents
 
-> Illustrated hook demonstration with example commands. The commands are
-> inspected as data and are never executed. Decisions are captured from
-> AgentLint's built-in rules using a standard isolated configuration.
+> Illustrated hook demonstration using a non-functional synthetic credential.
+> Its value is masked on screen and omitted from saved evidence. All operations
+> are evaluated as data: no proposed file writes or commands are executed.
+> Decisions use core packs and standard severity in an isolated configuration.
 
-## hook {hold=0.6 min=7}
-[#agent] Your coding agent can edit files and run commands. [#check] AgentLint checks proposed actions before they reach your repository.
+## intro {hold=0.6 min=8}
+[#product] AgentLint adds local guardrails to your coding agent. [#checks] It checks file changes and shell commands before they run.
 
-## block {hold=0.8 min=9}
-[#command] Here, the agent proposes a force push to the main branch. [#deny] The hook blocks it [#reason] and explains the safer next step.
+## problem {hold=0.6 min=8}
+[#risk] A coding agent can accidentally expose credentials or [#delete] delete important files. [#boundary] Project rules catch risky actions before execution.
 
-## recover {hold=0.7 min=9}
-[#inspect] The agent can inspect the diff, [#push] then push to a feature branch. [#allow] AgentLint checks the new command and lets it through when no blocking rule matches.
+## block {hold=0.6 min=10}
+[#propose] Here, the agent tries to hard-code a credential. [#deny] AgentLint blocks the change and [#guidance] explains how to fix it.
 
-## policy {hold=0.7 min=8}
-[#errors] Errors block actions. [#warnings] Warnings stay advisory. [#review] Configure the rules for your project, and keep code review and continuous integration in your workflow.
+## recover {hold=0.6 min=10}
+[#correct] The agent uses an environment variable instead. [#allow] The corrected change is allowed. [#continue] Work continues within your rules.
 
-## install {hold=1.3 min=10}
-[#install] Install AgentLint [#connect] and connect your coding agent. [#verify] Verify the hook is running. [#link] The quickstart includes setup guides for Claude Code, Codex, and other agents.
+## features {hold=0.7 min=10}
+[#local] Checks run locally, with [#rules] configurable rule packs and [#ci] {CI|C I} support. [#agents] Connect Claude Code, Codex, Cursor, or another supported agent.
+
+## install {hold=0.8 min=7}
+[#install] Install AgentLint, [#connect] connect your agent, [#verify] and verify the hook. [#link] Follow the quickstart.

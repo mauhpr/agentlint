@@ -1,20 +1,34 @@
 {
   "agentlint_version": "2.9.1",
   "commands_executed": false,
+  "file_write_operations_executed": false,
+  "credential_fixture": "synthetic marker; omitted from saved inputs",
+  "packs": [
+    "universal",
+    "quality"
+  ],
+  "severity": "standard",
   "examples": [
     {
-      "command": "git push --force origin main",
+      "label": "credential_write",
+      "event": "PreToolUse",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "/example/project/config.py",
+        "content": "<synthetic credential assignment redacted>"
+      },
+      "content_redacted": true,
       "blocked": true,
-      "rules_evaluated": 26,
+      "rules_evaluated": 19,
       "violations": [
         {
-          "rule_id": "no-force-push",
-          "message": "Force push to 'main' is blocked",
+          "rule_id": "no-secrets",
+          "message": "Secret assignment detected: api_key=...",
           "severity": "error",
-          "file_path": null,
+          "file_path": "/example/project/config.py",
           "line": null,
-          "suggestion": "Never force-push to main. Push to a feature branch instead.",
-          "operation": "git push [arguments redacted]",
+          "suggestion": "Use environment variables instead of hard-coded secrets.",
+          "operation": "Write",
           "policy_source": "built-in universal pack; built-in defaults (no policy file)"
         }
       ],
@@ -22,21 +36,34 @@
         "hookSpecificOutput": {
           "hookEventName": "PreToolUse",
           "permissionDecision": "deny",
-          "permissionDecisionReason": "[no-force-push] Force push to 'main' is blocked\n  Operation: git push [arguments redacted]\n  Policy: built-in universal pack; built-in defaults (no policy file)\n  -> Never force-push to main. Push to a feature branch instead."
+          "permissionDecisionReason": "[no-secrets] Secret assignment detected: api_key=...\n  File: /example/project/config.py\n  Operation: Write\n  Policy: built-in universal pack; built-in defaults (no policy file)\n  -> Use environment variables instead of hard-coded secrets."
         }
       }
     },
     {
-      "command": "git diff --stat",
+      "label": "corrected_write",
+      "event": "PreToolUse",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "/example/project/config.py",
+        "content": "import os\napi_key = os.environ[\"PAYMENT_API_KEY\"]\n"
+      },
+      "content_redacted": false,
       "blocked": false,
-      "rules_evaluated": 26,
+      "rules_evaluated": 19,
       "violations": [],
       "hook_output": null
     },
     {
-      "command": "git push origin feature/demo",
+      "label": "test_command",
+      "event": "PreToolUse",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "pytest"
+      },
+      "content_redacted": false,
       "blocked": false,
-      "rules_evaluated": 26,
+      "rules_evaluated": 19,
       "violations": [],
       "hook_output": null
     }
