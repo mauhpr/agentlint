@@ -1,0 +1,44 @@
+{
+  "agentlint_version": "2.9.1",
+  "commands_executed": false,
+  "examples": [
+    {
+      "command": "git push --force origin main",
+      "blocked": true,
+      "rules_evaluated": 26,
+      "violations": [
+        {
+          "rule_id": "no-force-push",
+          "message": "Force push to 'main' is blocked",
+          "severity": "error",
+          "file_path": null,
+          "line": null,
+          "suggestion": "Never force-push to main. Push to a feature branch instead.",
+          "operation": "git push [arguments redacted]",
+          "policy_source": "built-in universal pack; built-in defaults (no policy file)"
+        }
+      ],
+      "hook_output": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "permissionDecision": "deny",
+          "permissionDecisionReason": "[no-force-push] Force push to 'main' is blocked\n  Operation: git push [arguments redacted]\n  Policy: built-in universal pack; built-in defaults (no policy file)\n  -> Never force-push to main. Push to a feature branch instead."
+        }
+      }
+    },
+    {
+      "command": "git diff --stat",
+      "blocked": false,
+      "rules_evaluated": 26,
+      "violations": [],
+      "hook_output": null
+    },
+    {
+      "command": "git push origin feature/demo",
+      "blocked": false,
+      "rules_evaluated": 26,
+      "violations": [],
+      "hook_output": null
+    }
+  ]
+}

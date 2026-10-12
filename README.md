@@ -15,6 +15,13 @@ It works with **Claude Code, Codex, Cursor, Gemini CLI, Continue, Kimi, Grok**,
 the **OpenAI Agents SDK**, **MCP** hosts and your own tools. It runs locally,
 and nothing leaves your machine unless you opt in.
 
+[![AgentLint blocks a force push to main and allows safe next steps](docs/media/agentlint-demo-preview.gif)](docs/media/agentlint-demo.mp4)
+
+**[Watch the 49-second narrated demo](docs/media/agentlint-demo.mp4)** ·
+[Quickstart](docs/quickstart.md) · [Video source and reproduction](docs/demo/README.md)
+
+*Illustrated examples using real hook decisions. The displayed Git commands are not executed.*
+
 ## Install
 
 ```bash
@@ -43,8 +50,10 @@ Full walkthrough: **[Quickstart](docs/quickstart.md)**.
 When an agent tries to write a live API key into `config.py`, the write never
 happens. The agent is told why and what to do instead:
 
+The token prefix is redacted in this example.
+
 ```text
-[no-secrets] Possible secret token detected (prefix 'sk_live_')
+[no-secrets] Possible secret token detected (prefix '[redacted]')
   File: /path/to/project/config.py
   Operation: Write
   Policy: built-in universal pack; built-in defaults (no policy file)

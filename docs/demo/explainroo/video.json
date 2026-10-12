@@ -1,0 +1,31 @@
+{
+  "title": "AgentLint: check before the action",
+  "theme": "midnight",
+  "size": "youtube",
+  "fps": 30,
+  "voice": "af_heart",
+  "speed": 0.98,
+  "pace": 1.05,
+  "music": { "style": "tech", "volume": 0.08 },
+  "sfx": "minimal",
+  "captions": true,
+  "transition": "fade",
+  "watermark": "explainroo.com",
+  "brand": {
+    "accent": "#63e6be",
+    "background": "#101820",
+    "ink": "#f0f6fc",
+    "font": "Inter",
+    "headline": "Inter",
+    "colors": {
+      "text": "#e6edf3",
+      "soft": "#b5c2ce",
+      "muted": "#a3b5c5",
+      "faint": "#718698",
+      "line": "#334755",
+      "field": "#182630",
+      "surface": "#182630",
+      "panel": "#182630"
+    }
+  }
+}
