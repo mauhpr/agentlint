@@ -18,7 +18,7 @@ and nothing leaves your machine unless you opt in.
 https://github.com/user-attachments/assets/ae9a6b72-8bf7-4b73-abe3-7f0f3b483d3b
 
 **[Watch the 53-second product overview](docs/media/agentlint-demo.mp4)** ·
-[Quickstart](docs/quickstart.md)
+[Quickstart](docs/quickstart.md) · [Documentation](https://mauhpr.github.io/agentlint/)
 
 *Real core-rule decisions using a masked synthetic credential. Proposed file writes and commands are evaluated as data, never executed.*
 

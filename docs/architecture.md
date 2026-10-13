@@ -155,4 +155,4 @@ For a release, test these surfaces separately:
 - Claude Code plugin metadata and binary resolver (`agentlint-plugin` CI).
 - AgentLint-to-AgentChute integration: `agentlint test` runs a local and AgentChute end-to-end smoke test.
 
-The full maintainer checklist is in [RELEASE.md](../RELEASE.md).
+The full maintainer checklist is in [RELEASE.md](https://github.com/mauhpr/agentlint/blob/main/RELEASE.md).

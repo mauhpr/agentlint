@@ -457,5 +457,5 @@ uv run ruff check .
 - Add the agent to the supported-agents list in the top-level `README.md`.
 - Add a `CHANGELOG.md` entry.
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for the rest of the PR checklist and
+See [CONTRIBUTING.md](https://github.com/mauhpr/agentlint/blob/main/CONTRIBUTING.md) for the rest of the PR checklist and
 [architecture.md](architecture.md) for where adapters sit in the system.
