@@ -299,3 +299,48 @@ def test_drift_state_is_partitioned_by_worktree(tmp_path):
     # Returning to the first worktree restores its untested edits.
     commit = ctx(HookEvent.PRE_TOOL_USE, "Bash", {"command": "git commit -m x"})
     assert rule.evaluate(commit)
+
+
+def test_absolute_patch_edits_and_shell_tests_use_the_same_actual_worktree(tmp_path):
+    from agentlint.models import HookEvent, RuleContext
+    from agentlint.packs.universal.drift_detector import DriftDetector
+
+    worktree = tmp_path / "worktree"
+    (worktree / ".git").mkdir(parents=True)
+    state = {}
+
+    def context(event, tool, payload, directory):
+        return RuleContext(
+            event=event,
+            tool_name=tool,
+            tool_input=payload,
+            project_dir=str(tmp_path),
+            working_directory=str(directory),
+            session_state=state,
+            config={"drift-detector": {"threshold": 1}},
+            tool_response={"exit_code": 0},
+        )
+
+    rule = DriftDetector()
+    for name in ("a.py", "b.py", "c.py"):
+        rule.evaluate(
+            context(HookEvent.POST_TOOL_USE, "Edit", {"file_path": str(worktree / name)}, tmp_path)
+        )
+    commit = context(HookEvent.PRE_TOOL_USE, "Bash", {"command": "git commit -m change"}, worktree)
+    assert rule.evaluate(commit), "The real worktree must retain its untested absolute-path edits"
+    rule.evaluate(context(HookEvent.POST_TOOL_USE, "Bash", {"command": "pytest -q"}, worktree))
+    assert rule.evaluate(commit) == []
+
+
+def test_saving_json_evidence_does_not_invalidate_tests_of_unchanged_code(tmp_path):
+    from agentlint.models import HookEvent
+
+    rule, ctx, state = _drift_state(tmp_path)
+    write_receipt("test-run", command="pytest -q", exit_code=0, repo=str(tmp_path))
+    last_code_edit = state["last_edit_ts"]
+    rule.evaluate(
+        ctx(HookEvent.POST_TOOL_USE, "Write", {"file_path": str(tmp_path / "receipt.json")})
+    )
+    assert state["last_edit_ts"] == last_code_edit
+    commit = ctx(HookEvent.PRE_TOOL_USE, "Bash", {"command": "git commit -m change"})
+    assert rule.evaluate(commit) == []

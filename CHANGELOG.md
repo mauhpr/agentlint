@@ -9,9 +9,14 @@
 - Exempt valid JSON data from the code-module line limit by default; allow
   opting back into JSON line checks with `max-file-size.exempt_json_data: false`.
 - Scope drift counters and test receipts by session and actual Git worktree.
+- Resolve absolute-path edits to their actual worktree, and keep evidence-only
+  writes from invalidating tests of unchanged code.
 - Suppress summaries of unchanged CLI findings without hiding separate tool errors.
+- Preserve CLI stderr and configuration errors with line numbers during diff filtering.
 - Label patch inspection errors, name the selected project in boundary failures,
   and use named Python scope anchors to disambiguate repeated hunk context.
+- Preserve native exact-before-normalized matching for definition anchors,
+  including indented definitions and whitespace variants elsewhere in the file.
 
 ### Added
 

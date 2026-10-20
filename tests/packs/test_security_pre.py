@@ -46,6 +46,10 @@ class TestNoBashFileWrite:
         command = "uv run pytest -q 2>&1 | tee /private/tmp/test-evidence.log"
         assert self.rule.evaluate(_ctx("Bash", {"command": command})) == []
 
+    def test_heredoc_with_trailing_operations_has_no_read_only_exception(self):
+        command = "cat <<'EOF'\nread-only text\nEOF\necho changed > maintained.py"
+        assert self.rule.evaluate(_ctx("Bash", {"command": command}))
+
     # --- Detection ---
 
     def test_blocks_cat_redirect(self):

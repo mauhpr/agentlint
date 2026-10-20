@@ -90,6 +90,9 @@ report exit codes; those receipts say "completed, result not reported".
 session, newer than the last edit, satisfies "run the tests before committing".
 Its warnings cite only evidence in that scope. Sessionless external receipts
 remain visible through `agentlint evidence` but do not satisfy the drift check.
+Absolute-path edits are attributed to the file's actual Git worktree, even when
+the selected project is a parent directory. Saving evidence or other non-code
+files does not advance the last code-edit timestamp.
 
 ### Local logs and JSON evidence
 
@@ -116,6 +119,8 @@ are retained. When all such findings are removed, their summary no longer emits
 a warning by itself. Unlocated tool failures remain visible. The configured
 linter interprets its suppression comments, including `# noqa: F401`; AgentLint
 does not strip these comments or override the linter's suppression policy.
+Both stdout and stderr are retained. Tool/configuration errors are not treated
+as source diagnostics merely because their messages contain a line number.
 
 ```bash
 agentlint evidence            # latest local tests, review, verified deploy

@@ -183,6 +183,74 @@ def test_fixture_copy_enforces_worktree_destination_and_size(tmp_path, monkeypat
 
 
 @pytest.mark.parametrize(
+    "case", ["missing_source", "source_directory", "missing_parent", "destination_directory"]
+)
+def test_fixture_copy_rejects_invalid_file_endpoints(tmp_path, case):
+    source = tmp_path / "source.html"
+    if case == "source_directory":
+        source.mkdir()
+    elif case != "missing_source":
+        source.write_text("data")
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    target = fixtures / "page.html"
+    if case == "missing_parent":
+        target = fixtures / "missing" / "page.html"
+    elif case == "destination_directory":
+        target.mkdir()
+    with pytest.raises(ValueError, match="regular source"):
+        create_grant(
+            "fixture-copy",
+            repository=str(tmp_path),
+            reason="fixture",
+            operation=f"cp {source} {target}",
+        )
+
+
+def test_fixture_copy_accepts_identical_destination_and_rejects_oversized_destination(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "source.html"
+    source.write_text("data")
+    target = tmp_path / "fixtures" / "page.html"
+    target.parent.mkdir()
+    target.write_text("data")
+    operation = f"cp {source} {target}"
+    create_grant("fixture-copy", repository=str(tmp_path), reason="fixture", operation=operation)
+    assert matching_grant("no-bash-file-write", repository=str(tmp_path), command=operation)
+    monkeypatch.setattr("agentlint.approvals.MAX_FIXTURE_BYTES", 8)
+    target.write_text("different, larger content")
+    with pytest.raises(ValueError, match="overwrite"):
+        create_grant(
+            "fixture-copy", repository=str(tmp_path), reason="fixture", operation=operation
+        )
+
+
+@pytest.mark.parametrize("failure", ["removed", "unreadable"])
+def test_fixture_copy_matching_fails_closed_when_source_cannot_be_read(
+    tmp_path, monkeypatch, failure
+):
+    source = tmp_path / "source.html"
+    source.write_text("data")
+    target = tmp_path / "fixtures" / "page.html"
+    target.parent.mkdir()
+    operation = f"cp {source} {target}"
+    create_grant("fixture-copy", repository=str(tmp_path), reason="fixture", operation=operation)
+    if failure == "removed":
+        source.unlink()
+    else:
+        original_open = Path.open
+
+        def deny_source(path, *args, **kwargs):
+            if path == source:
+                raise PermissionError("source unavailable")
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", deny_source)
+    assert matching_grant("no-bash-file-write", repository=str(tmp_path), command=operation) is None
+
+
+@pytest.mark.parametrize(
     "operation",
     [
         None,

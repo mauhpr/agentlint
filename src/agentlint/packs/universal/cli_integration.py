@@ -54,6 +54,9 @@ def _filter_diff_violations(
     filtered = []
     located = kept = False
     for line in output.splitlines():
+        if re.match(r"\s*(?:error:|fatal:|Traceback\b)", line, re.IGNORECASE):
+            filtered.append(line)
+            continue
         match = re.search(r":(\d+)(?:[:\s]|$)|line\s+(\d+)", line)
         if match:
             located = True
@@ -156,7 +159,11 @@ class CliIntegration(Rule):
             # auto-fix mode: run silently, only warn on actual failure
             if mode == "auto-fix":
                 if result.returncode != 0:
-                    output = (result.stdout or result.stderr or "").strip()
+                    output = "\n".join(
+                        part.strip()
+                        for part in (result.stdout, result.stderr)
+                        if part and part.strip()
+                    )
                     if output and len(output) > max_output:
                         output = output[:max_output] + "..."
                     violations.append(
@@ -173,7 +180,9 @@ class CliIntegration(Rule):
                 continue
 
             if result.returncode != 0:
-                output = (result.stdout or result.stderr or "").strip()
+                output = "\n".join(
+                    part.strip() for part in (result.stdout, result.stderr) if part and part.strip()
+                )
 
                 # diff_only: filter to changed lines only
                 if diff_only:

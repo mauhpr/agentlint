@@ -149,7 +149,7 @@ def _update(before: str, body: list[str], path: str | None = None) -> str:
         hunk += 1
         anchor = None
         if body[i].startswith("@@"):
-            anchor = body[i][2:].strip()
+            anchor = body[i][3:].rstrip() if body[i].startswith("@@ ") else body[i][2:].strip()
             i += 1
         old: list[str] = []
         new: list[str] = []
@@ -179,7 +179,17 @@ def _update(before: str, body: list[str], path: str | None = None) -> str:
         start = cursor
         end = len(source)
         if anchor:
-            matches = [n for n in range(cursor, len(source)) if source[n].strip() == anchor]
+            matches = []
+            # Match the native patcher's anchor search tiers before narrowing
+            # to an AST scope; an earlier fuzzy header cannot beat a later exact one.
+            for normalize in (str, str.rstrip, str.strip):
+                matches = [
+                    n
+                    for n in range(cursor, len(source))
+                    if normalize(source[n]) == normalize(anchor)
+                ]
+                if matches:
+                    break
             if not matches:
                 raise PatchError(
                     "Patch anchor does not match the input file",
@@ -189,7 +199,7 @@ def _update(before: str, body: list[str], path: str | None = None) -> str:
                     excerpt=_excerpt(anchor),
                 )
             start = matches[0] + 1
-            if re.match(r"(?:async\s+def|def|class)\s+", anchor):
+            if re.match(r"(?:async\s+def|def|class)\s+", anchor.lstrip()):
                 end = _python_anchor_end(before, start, end)
         if not old:
             position = len(source)
