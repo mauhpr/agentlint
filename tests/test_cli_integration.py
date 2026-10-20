@@ -613,6 +613,20 @@ class TestCliIntegrationGlobalDefaults:
 
 
 class TestFilterDiffViolations:
+    def test_unchanged_noqa_finding_does_not_leave_a_summary_warning(self):
+        before = "from package import exported  # noqa: F401\nvalue = 1\n"
+        after = before.replace("value = 1", "value = 2")
+        output = "app.py:1:21: F401 unused import\nFound 1 error.\n[*] 1 fixable with --fix."
+        assert _filter_diff_violations(output, before, after) == ""
+
+    def test_unlocated_tool_error_is_not_hidden_with_an_unchanged_finding(self):
+        output = (
+            "app.py:1: F401 unused import\nFound 1 error.\nerror: unable to read tool configuration"
+        )
+        result = _filter_diff_violations(output, "old\nvalue=1\n", "old\nvalue=2\n")
+        assert "unable to read tool configuration" in result
+        assert "F401" not in result
+
     def test_new_file_shows_all(self):
         output = "app.py:1: E501\napp.py:2: E502"
         result = _filter_diff_violations(output, None, "line1\nline2\n")

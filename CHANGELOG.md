@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Treat literal quoted stdin heredocs as input rather than file writes, while
+  checking Python heredoc bodies for writes and keeping unknown syntax conservative.
+- Exempt valid JSON data from the code-module line limit by default; allow
+  opting back into JSON line checks with `max-file-size.exempt_json_data: false`.
+- Scope drift counters and test receipts by session and actual Git worktree.
+- Suppress summaries of unchanged CLI findings without hiding separate tool errors.
+- Label patch inspection errors, name the selected project in boundary failures,
+  and use named Python scope anchors to disambiguate repeated hunk context.
+
+### Added
+
+- Human-issued `fixture-copy` approvals for exact, reusable, expiring local
+  copies into fixture directories, bound to source SHA-256 and audited on use.
+
 ## v2.9.1 (2026-10-08) — Adapter Setup Fixes
 
 ### Fixed

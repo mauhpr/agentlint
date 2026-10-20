@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import replace
 from pathlib import Path
@@ -74,9 +75,18 @@ class PatchError(ValueError):
     def correction(self) -> str:
         if self.reason == "ambiguous":
             return (
-                "Add more unique surrounding context lines to this hunk so it matches "
-                "exactly once. An `@@` anchor only skips matches before the anchor line."
+                "Use an `@@ def name(...):` or `@@ class Name:` anchor for the containing "
+                "Python scope, or add unique surrounding context so the hunk matches once. "
+                "Other anchors only skip matches before their anchor line."
             )
+        if self.reason == "boundary":
+            return (
+                "AgentLint's selected project is an inspection boundary; OS writable roots "
+                "do not expand it. Keep the patch inside the named project, or have the human "
+                "align the hook's --project-dir with the intended workspace."
+            )
+        if self.reason == "read":
+            return "Re-read the named input file and check its existence, encoding and read permissions."
         if self.reason in {"missing", "anchor-missing"}:
             return (
                 "Re-read the file; the hunk context (or anchor) must match the current "
@@ -88,7 +98,11 @@ class PatchError(ValueError):
 def _path(value: str, root: Path, directory: Path) -> Path:
     path = (directory / value).resolve()
     if not value or not path.is_relative_to(root) or path == root:
-        raise PatchError("Patch path is outside the selected project")
+        raise PatchError(
+            f"Patch path is outside the selected project '{root}'",
+            path=str(path),
+            reason="boundary",
+        )
     return path
 
 
@@ -98,7 +112,30 @@ def _read(path: Path) -> str:
             raise PatchError("File exceeds the patch inspection size limit")
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
-        raise PatchError("Could not read a patch input file") from exc
+        raise PatchError(
+            "Could not read a patch input file", path=str(path), reason="read"
+        ) from exc
+
+
+def _python_anchor_end(before: str, line: int, default: int) -> int:
+    """Bound a named Python scope without introducing new patch syntax.
+
+    The native patcher searches forward from an anchor. A unique match inside
+    that scope is also its first forward match; repeated matches inside the
+    scope remain ambiguous. Invalid/non-Python input keeps the original guard.
+    """
+    try:
+        tree = ast.parse(before)
+    except (SyntaxError, ValueError, RecursionError):
+        return default
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and node.lineno == line
+            and node.end_lineno is not None
+        ):
+            return node.end_lineno
+    return default
 
 
 def _update(before: str, body: list[str], path: str | None = None) -> str:
@@ -140,6 +177,7 @@ def _update(before: str, body: list[str], path: str | None = None) -> str:
             if line[0] in " +":
                 new.append(line[1:])
         start = cursor
+        end = len(source)
         if anchor:
             matches = [n for n in range(cursor, len(source)) if source[n].strip() == anchor]
             if not matches:
@@ -151,6 +189,8 @@ def _update(before: str, body: list[str], path: str | None = None) -> str:
                     excerpt=_excerpt(anchor),
                 )
             start = matches[0] + 1
+            if re.match(r"(?:async\s+def|def|class)\s+", anchor):
+                end = _python_anchor_end(before, start, end)
         if not old:
             position = len(source)
         else:
@@ -166,6 +206,9 @@ def _update(before: str, body: list[str], path: str | None = None) -> str:
                     if [s.rstrip() for s in source[n : n + len(old)]] == [s.rstrip() for s in old]
                     and (not eof or n + len(old) == len(source))
                 ]
+            # Preserve native exact-before-normalized matching across the file.
+            # A local whitespace match cannot override a later exact match.
+            positions = [n for n in positions if n + len(old) <= end]
             if len(positions) != 1:
                 first = next((line for line in old if line.strip()), old[0])
                 if positions:
@@ -204,7 +247,11 @@ def patch_contexts(context: RuleContext) -> list[RuleContext]:
     root = Path(context.project_dir).resolve()
     directory = Path(context.working_directory or root).resolve()
     if not directory.is_relative_to(root):
-        raise PatchError("Patch working directory is outside the selected project")
+        raise PatchError(
+            f"Patch working directory is outside the selected project '{root}'",
+            path=str(directory),
+            reason="boundary",
+        )
     pre = context.event == HookEvent.PRE_TOOL_USE
     cache = context.session_state.setdefault("file_cache", {})
     contexts: list[RuleContext] = []

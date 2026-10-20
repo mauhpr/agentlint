@@ -87,6 +87,11 @@ def _python_file_write(command: str) -> bool:
     source = words[index + 1]
     if len(source) > 64 * 1024:
         return fallback
+    return _python_source_file_write(source, fallback=fallback)
+
+
+def _python_source_file_write(source: str, *, fallback: bool = True) -> bool:
+    """Inspect Python source only; never execute it or resolve imports."""
     try:
         tree = ast.parse(source)
     except (SyntaxError, ValueError, RecursionError):
@@ -166,6 +171,29 @@ def _python_file_write(command: str) -> bool:
     return False
 
 
+def _literal_heredoc(command: str) -> tuple[str, str] | None:
+    """Recognize one quoted stdin heredoc with no trailing shell operations.
+
+    Only cat and Python stdin invocations qualify. Quoted delimiters prevent
+    shell expansion of the body; everything else keeps conservative matching.
+    """
+    header, sep, rest = command.partition("\n")
+    if not sep:
+        return None
+    match = re.fullmatch(
+        r"\s*(cat|(?:[\w./-]*/)?python(?:[23](?:\.\d+)?)?\s+-)\s*"
+        r"<<\s*(['\"])([A-Za-z_][A-Za-z_0-9]*)\2\s*",
+        header,
+    )
+    if not match:
+        return None
+    lines = rest.splitlines()
+    delimiter = match[3]
+    if not lines or lines[-1] != delimiter or delimiter in lines[:-1]:
+        return None
+    return ("cat" if match[1] == "cat" else "python"), "\n".join(lines[:-1])
+
+
 # Default safe patterns — narrow idioms that are not security-relevant.
 # Only echo >> (append) to config dotfiles. NOT > (overwrite), NOT cat/tee/sed.
 _DEFAULT_SAFE_PATTERNS = [
@@ -194,6 +222,9 @@ _WRITE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bdd\b.*\bof=(\S+)"), "dd of="),
     # Python is inspected separately so Path(...) and read-only open(...) are allowed.
     (_PYTHON_WRITE_TEXT, "python -c write"),
+    # Unsupported stdin programs remain conservative; literal quoted bodies
+    # are inspected above, and their output redirect is not their write target.
+    (re.compile(r"\bpython(?:[23](?:\.\d+)?)?\b[^\n]*<<"), "python stdin heredoc"),
     # Heredoc: cat << EOF > file or cat > file << EOF.
     (re.compile(r"\bcat\b.*<<\s*['\"\\]?\w+"), "heredoc"),
 ]
@@ -271,6 +302,23 @@ class NoBashFileWrite(Rule):
         if not command:
             return []
 
+        heredoc = _literal_heredoc(command)
+        if heredoc:
+            binary, source = heredoc
+            if binary == "cat" or (
+                len(source) <= 64 * 1024 and not _python_source_file_write(source)
+            ):
+                return []
+            return [
+                Violation(
+                    rule_id=self.id,
+                    message="Bash file write or opaque operation detected in Python stdin heredoc",
+                    severity=self.severity,
+                    operation="Python stdin heredoc",
+                    suggestion="Use apply_patch (Codex) or Write/Edit for file changes; keep stdin Python read-only.",
+                )
+            ]
+
         # Strip quoted string arguments to avoid false positives on content
         # like: gh pr create --body "... cat > file ..."
         from agentlint.utils.bash import KNOWN_CLI_TOOLS, get_command_binary, strip_string_args
@@ -320,7 +368,7 @@ class NoBashFileWrite(Rule):
                 # Check if all target paths are in allowed paths.
                 # A shell redirect is not the destination of a Python file write.
                 # Python destinations are not extracted, so path exemptions cannot apply.
-                target_paths = [] if label == "python -c write" else _extract_target_paths(command)
+                target_paths = [] if label.startswith("python") else _extract_target_paths(command)
 
                 # /dev/null is never a real file write.
                 target_paths = [p for p in target_paths if p != "/dev/null"]
@@ -344,7 +392,12 @@ class NoBashFileWrite(Rule):
                         message=f"Bash file write detected via {label}",
                         severity=self.severity,
                         file_path=file_path,
-                        suggestion="Use the Write or Edit tool instead of writing files through Bash.",
+                        operation=label,
+                        suggestion=(
+                            "Use apply_patch (Codex) or Write/Edit for maintained files. "
+                            "For local test logs, use `pytest -q 2>&1 | tee /private/tmp/tests.log`. "
+                            "For a literal stdin heredoc, quote its delimiter and omit output redirects."
+                        ),
                     )
                 )
                 # One violation per command is sufficient.

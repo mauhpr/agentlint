@@ -67,7 +67,13 @@ A patch is denied if it:
 - overwrites an existing file with an Add or Move operation;
 - exceeds 2 MB, targets a file over 5 MB, or touches more than 200 files.
 
-Relative paths resolve against the tool's working directory, bounded by the project directory. A denied ambiguous hunk names the file, the hunk, the repeated context line and the candidate line numbers. Add more unique context lines; an `@@` anchor only skips matches before the anchor line. Do not reroute a rejected patch through a shell write.
+Relative paths resolve against the tool's working directory, bounded by the project directory. A denied ambiguous hunk names the file, the hunk, the repeated context line and the candidate line numbers. A named Python function/class `@@` anchor bounds inspection to that parsed scope; repeated matches inside it still require more context. Other anchors only skip matches before the anchor line. Do not reroute a rejected patch through a shell write.
+
+Patch inspection errors are labeled separately from rule findings. A boundary
+error names both the rejected path and AgentLint's selected project. OS writable
+roots such as `/private/tmp` do not expand that project boundary. Keep the patch
+inside the selected project or have the human align the hook's `--project-dir`
+with the intended workspace; OS permissions still apply independently.
 
 Preview a patch with the same validator and rules, without writing anything:
 

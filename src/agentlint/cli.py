@@ -643,11 +643,13 @@ def _record_test_evidence(context) -> None:
         )
         if result == "failed":
             return
+        from agentlint.session import workspace_dir
+
         write_receipt(
             "test-run",
             command=command,
             exit_code=exit_status(context.tool_response),
-            repo=context.project_dir,
+            repo=workspace_dir(context.project_dir, context.working_directory),
         )
     except Exception:
         logger.debug("Failed to record test evidence", exc_info=True)
@@ -657,7 +659,7 @@ def _patch_violation(exc) -> Violation:
     """Turn a patch inspection failure into an actionable, located denial."""
     return Violation(
         rule_id="codex-patch-inspection",
-        message=exc.describe(),
+        message=f"{exc.describe()} (patch inspection error)",
         severity=Severity.ERROR,
         file_path=exc.path,
         line=exc.line,

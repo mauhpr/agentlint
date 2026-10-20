@@ -264,3 +264,38 @@ def test_evidence_config_composes(tmp_path):
     (tmp_path / "agentlint.yml").write_text("evidence:\n  receipts_dirs: [/r]\n  max_age: 2h\n")
     assert load_config(str(tmp_path)).evidence == {"receipts_dirs": ["/r"], "max_age": "2h"}
     assert os.environ["AGENTLINT_RECEIPTS_DIR"].endswith("receipts")
+
+
+def test_drift_does_not_cite_or_accept_another_sessions_test_run(tmp_path, monkeypatch):
+    from agentlint.models import HookEvent
+
+    monkeypatch.setenv("AGENTLINT_SESSION_ID", "other-session")
+    write_receipt("test-run", command="pytest other_tests", exit_code=0, repo=str(tmp_path))
+    monkeypatch.setenv("AGENTLINT_SESSION_ID", "current-session")
+    rule, ctx, state = _drift_state(tmp_path)
+    commit = ctx(HookEvent.PRE_TOOL_USE, "Bash", {"command": "git commit -m x"})
+    [warning] = rule.evaluate(commit)
+    assert "other_tests" not in warning.message
+    assert "No test evidence found" in warning.message
+    state["_drift_warned_at_commit"] = False
+    write_receipt("test-run", command="pytest current_tests", exit_code=0, repo=str(tmp_path))
+    assert rule.evaluate(commit) == []
+
+
+def test_drift_state_is_partitioned_by_worktree(tmp_path):
+    from dataclasses import replace
+
+    from agentlint.models import HookEvent
+
+    rule, ctx, state = _drift_state(tmp_path)
+    other = tmp_path / "other"
+    other.mkdir()
+    other_context = replace(
+        ctx(HookEvent.POST_TOOL_USE, "Edit", {"file_path": str(other / "app.py")}),
+        project_dir=str(other),
+    )
+    assert rule.evaluate(other_context) == []
+    assert state["edited_files"] == [str(other / "app.py")]
+    # Returning to the first worktree restores its untested edits.
+    commit = ctx(HookEvent.PRE_TOOL_USE, "Bash", {"command": "git commit -m x"})
+    assert rule.evaluate(commit)

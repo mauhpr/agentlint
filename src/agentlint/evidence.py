@@ -174,6 +174,8 @@ def write_receipt(
         raise ValueError(f"unknown receipt kind '{kind}'")
     directory = receipts_dir()
     directory.mkdir(parents=True, exist_ok=True)
+    from agentlint.session import _session_key
+
     receipt = {
         "v": 1,
         "kind": kind,
@@ -183,6 +185,7 @@ def write_receipt(
         "git_sha": git_head(repo),
         "created_at": datetime.now(UTC).isoformat(),
         "producer": producer,
+        "session_id": _session_key(),
     }
     target = directory / f"{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}.json"
     tmp = target.with_suffix(".tmp")
@@ -209,6 +212,7 @@ def find_receipts(
     extra_dirs: list[str] | None = None,
     max_age: object = None,
     now: float | None = None,
+    session_id: str | None = None,
 ) -> list[dict]:
     """Valid receipts for this repo, newest first. Mismatched HEADs are excluded."""
     now = now or time.time()
@@ -233,6 +237,7 @@ def find_receipts(
                 or data.get("kind") not in KINDS
                 or (kind and data["kind"] != kind)
                 or data.get("repo") != repo_path
+                or (session_id is not None and data.get("session_id") != session_id)
                 or created < oldest
                 or (since is not None and created < since)
                 or (data.get("git_sha") and head and data["git_sha"] != head)

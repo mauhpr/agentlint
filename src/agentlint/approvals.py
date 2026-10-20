@@ -30,6 +30,7 @@ ACTION_CLASSES = {
     "package-publish": "Publish a package to a registry",
     "production-access": "Run commands against production targets",
     "model-spend": "Spend model/API budget beyond the configured limit",
+    "fixture-copy": "Copy one hash-bound local file into a repository fixture directory",
 }
 
 # Built-in rules that a typed approval may relax, and the class each requires.
@@ -47,10 +48,12 @@ RULE_ACTION_CLASS = {
     "production-guard": "production-access",
     "token-budget": "model-spend",
     "token-burn-against-team-budget": "model-spend",
+    "no-bash-file-write": "fixture-copy",
 }
 
 MAX_TTL = timedelta(hours=24)
 DEFAULT_TTL = timedelta(hours=1)
+MAX_FIXTURE_BYTES = 5_000_000
 _TTL_RE = re.compile(r"^(\d+)([mhd])$")
 
 
@@ -85,6 +88,41 @@ def _literal(command: str) -> list[str] | None:
     if any(char in command for char in ";|&<>()"):
         return None
     return simple_words(command) or None
+
+
+def _fixture_copy_scope(repository: str, operation: str | None) -> dict:
+    """Bound one literal cp to regular files inside this worktree and a source hash."""
+    words = _literal(operation) if operation else None
+    if not words or len(words) != 3 or words[0] not in {"cp", "/bin/cp", "/usr/bin/cp"}:
+        raise ValueError(
+            "fixture-copy requires --operation 'cp /absolute/source /absolute/fixtures/target'"
+        )
+    root = Path(repository).resolve()
+    paths = [Path(word) for word in words[1:]]
+    if not all(path.is_absolute() and not path.is_symlink() for path in paths):
+        raise ValueError("fixture-copy paths must be absolute and must not be symlinks")
+    source, destination = (path.resolve() for path in paths)
+    if not all(path.is_relative_to(root) and path != root for path in (source, destination)):
+        raise ValueError(
+            "fixture-copy source and destination must stay inside the approved worktree"
+        )
+    if not {"fixtures", "testdata"}.intersection(destination.relative_to(root).parts[:-1]):
+        raise ValueError("fixture-copy destination must be in a fixtures/ or testdata/ directory")
+    if not source.is_file() or not destination.parent.is_dir() or destination.is_dir():
+        raise ValueError(
+            "fixture-copy requires a regular source and an existing destination directory"
+        )
+    with source.open("rb") as file:
+        data = file.read(MAX_FIXTURE_BYTES + 1)
+    if len(data) > MAX_FIXTURE_BYTES:
+        raise ValueError("fixture-copy source exceeds the 5 MB limit")
+    digest = hashlib.sha256(data).hexdigest()
+    if destination.exists():
+        if not destination.is_file() or destination.stat().st_size > MAX_FIXTURE_BYTES:
+            raise ValueError("fixture-copy cannot overwrite a different destination")
+        if hashlib.sha256(destination.read_bytes()).hexdigest() != digest:
+            raise ValueError("fixture-copy cannot overwrite a different destination")
+    return {"source": str(source), "destination": str(destination), "source_sha256": digest}
 
 
 def _append(path: Path, record: dict) -> None:
@@ -134,6 +172,9 @@ def create_grant(
         raise ValueError("TTL must be greater than zero and at most 24h")
     if operation is not None and _literal(operation) is None:
         raise ValueError("--operation must be a literal simple command")
+    copy_scope = (
+        _fixture_copy_scope(repository, operation) if action_class == "fixture-copy" else None
+    )
     now = now or datetime.now(UTC)
     grant = {
         "type": "grant",
@@ -145,6 +186,8 @@ def create_grant(
         "created_at": now.isoformat(),
         "expires_at": (now + ttl).isoformat(),
     }
+    if copy_scope:
+        grant["fixture_copy"] = copy_scope
     _append(approvals_path(), grant)
     return grant
 
@@ -196,6 +239,12 @@ def matching_grant(rule_id: str, *, repository: str, command: str | None) -> dic
             not command or _literal(command) is None or _literal(command) != _literal(operation)
         ):
             continue
+        if action_class == "fixture-copy":
+            try:
+                if _fixture_copy_scope(repository, command) != grant.get("fixture_copy"):
+                    continue
+            except (ValueError, OSError):
+                continue
         return grant
     return None
 
@@ -210,6 +259,8 @@ def audit_use(grant: dict, *, rule_id: str, repository: str, command: str | None
         "repository": str(Path(repository).resolve()),
         "operation_sha256": hashlib.sha256((command or "").encode()).hexdigest(),
     }
+    if grant.get("action_class") == "fixture-copy":
+        record["fixture_copy"] = grant["fixture_copy"]
     try:
         _append(_audit_path(), record)
     except OSError:
