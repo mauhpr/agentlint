@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import PurePath
+
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _WRITE_TOOLS = {"Write", "Edit"}
@@ -26,7 +29,21 @@ class MaxFileSize(Rule):
         if content is None:
             return []
 
-        limit = context.config.get("max-file-size", {}).get("limit", _DEFAULT_LIMIT)
+        # JSON is structured data: pretty-printing a receipt must not turn it
+        # into an oversized code module. Other rules still inspect its content.
+        rule_config = context.config.get(self.id, {})
+        if (
+            rule_config.get("exempt_json_data", True)
+            and PurePath(context.file_path or "").suffix.lower() == ".json"
+        ):
+            try:
+                json.loads(content)
+            except (ValueError, RecursionError):
+                pass
+            else:
+                return []
+
+        limit = rule_config.get("limit", _DEFAULT_LIMIT)
         line_count = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
 
         if line_count > limit:

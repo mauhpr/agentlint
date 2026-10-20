@@ -16,9 +16,10 @@ agent is about to publish the work, which is the natural decision point.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
-from pathlib import PurePath
+from pathlib import Path, PurePath
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
@@ -70,6 +71,30 @@ class DriftDetector(Rule):
 
     def evaluate(self, context: RuleContext) -> list[Violation]:
         state = context.session_state
+        from agentlint.session import _session_key, workspace_dir
+
+        directory = context.working_directory
+        if context.tool_name in _WRITE_TOOLS and context.file_path:
+            directory = str(Path(directory or context.project_dir, context.file_path).parent)
+        worktree = workspace_dir(context.project_dir, directory)
+        session_id = _session_key()
+        scope = hashlib.sha256(f"{session_id}\0{worktree}".encode()).hexdigest()
+        keys = (
+            "edited_files",
+            "last_test_run",
+            "last_edit_ts",
+            "_drift_warned",
+            "_drift_warned_at_commit",
+        )
+        previous = state.get("_drift_scope")
+        if previous != scope:
+            scopes = state.setdefault("_drift_scopes", {})
+            if previous is not None:
+                scopes[previous] = {key: state[key] for key in keys if key in state}
+            for key in keys:
+                state.pop(key, None)
+            state.update(scopes.pop(scope, {}))
+            state["_drift_scope"] = scope
         rule_config = context.config.get("drift-detector", {})
         threshold = rule_config.get("threshold", _DEFAULT_THRESHOLD)
         extensions = set(rule_config.get("extensions", list(_DEFAULT_CODE_EXTENSIONS)))
@@ -98,21 +123,26 @@ class DriftDetector(Rule):
                 # A passing (or completed) test receipt newer than the last edit,
                 # possibly written by another tool, satisfies this check.
                 if find_receipts(
-                    context.project_dir,
+                    worktree,
                     kind="test-run",
                     since=state.get("last_edit_ts"),
                     extra_dirs=extra,
                     max_age=max_age,
+                    session_id=session_id,
                 ):
                     return []
                 state["_drift_warned_at_commit"] = True
                 latest = find_receipts(
-                    context.project_dir, kind="test-run", extra_dirs=extra, max_age=max_age
+                    worktree,
+                    kind="test-run",
+                    extra_dirs=extra,
+                    max_age=max_age,
+                    session_id=session_id,
                 )
                 evidence = (
                     f" Latest evidence predates these edits — {describe(latest[0])}."
                     if latest
-                    else " No test evidence found for this repository."
+                    else " No test evidence found for this repository, worktree and session."
                 )
                 return [
                     Violation(
@@ -152,9 +182,9 @@ class DriftDetector(Rule):
             file_path = context.file_path or context.tool_input.get("file_path", "")
             if file_path and PurePath(file_path).suffix in extensions:
                 edited.add(file_path)
+                state["last_test_run"] = False
+                state["last_edit_ts"] = time.time()
             state["edited_files"] = list(edited)
-            state["last_test_run"] = False
-            state["last_edit_ts"] = time.time()
 
         files_edited = len(state.get("edited_files", []))
         last_test_run = state.get("last_test_run", True)

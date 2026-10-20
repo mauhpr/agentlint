@@ -25,6 +25,22 @@ def _post_ctx(file_path: str, content: str) -> RuleContext:
 class TestMaxFileSize:
     rule = MaxFileSize()
 
+    def test_pretty_json_evidence_is_not_a_large_code_module(self):
+        import json
+
+        ctx = _post_ctx("deliverables/test-receipt.json", json.dumps(list(range(600)), indent=2))
+        assert self.rule.evaluate(ctx) == []
+
+    def test_json_extension_does_not_exempt_invalid_json(self):
+        assert self.rule.evaluate(_post_ctx("receipt.json", "not json\n" * 600))
+
+    def test_json_data_exemption_can_be_disabled(self):
+        import json
+
+        ctx = _post_ctx("receipt.json", json.dumps(list(range(600)), indent=2))
+        ctx.config = {"max-file-size": {"exempt_json_data": False}}
+        assert self.rule.evaluate(ctx)
+
     def test_warns_large_file(self):
         content = "\n".join(f"line {i}" for i in range(600))
         ctx = _post_ctx("big_module.py", content)

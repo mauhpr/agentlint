@@ -25,6 +25,31 @@ def _ctx(tool_name: str, tool_input: dict, config: dict | None = None) -> RuleCo
 class TestNoBashFileWrite:
     rule = NoBashFileWrite()
 
+    def test_literal_cat_heredoc_is_stdin_not_a_file_write(self):
+        command = "cat <<'EOF'\nDocumentation: cp source target; echo x > file\nEOF"
+        assert self.rule.evaluate(_ctx("Bash", {"command": command})) == []
+
+    def test_read_only_python_heredoc_is_not_a_file_write(self):
+        command = "python3 - <<'PY'\nfrom pathlib import Path\nprint(Path('input').read_text())\nPY"
+        assert self.rule.evaluate(_ctx("Bash", {"command": command})) == []
+
+    def test_python_heredoc_write_remains_blocked(self):
+        command = "python3 - <<'PY'\nfrom pathlib import Path\nPath('input').write_text('data')\nPY"
+        result = self.rule.evaluate(_ctx("Bash", {"command": command}))
+        assert result and "heredoc" in result[0].message
+
+    def test_unsupported_python_heredoc_stays_conservative(self):
+        command = "python3 -u - <<PY\nopen('target', 'w')\nPY"
+        assert self.rule.evaluate(_ctx("Bash", {"command": command}))
+
+    def test_test_logs_in_private_tmp_are_allowed(self):
+        command = "uv run pytest -q 2>&1 | tee /private/tmp/test-evidence.log"
+        assert self.rule.evaluate(_ctx("Bash", {"command": command})) == []
+
+    def test_heredoc_with_trailing_operations_has_no_read_only_exception(self):
+        command = "cat <<'EOF'\nread-only text\nEOF\necho changed > maintained.py"
+        assert self.rule.evaluate(_ctx("Bash", {"command": command}))
+
     # --- Detection ---
 
     def test_blocks_cat_redirect(self):

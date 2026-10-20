@@ -613,6 +613,50 @@ class TestCliIntegrationGlobalDefaults:
 
 
 class TestFilterDiffViolations:
+    def test_unchanged_noqa_finding_does_not_leave_a_summary_warning(self):
+        before = "from package import exported  # noqa: F401\nvalue = 1\n"
+        after = before.replace("value = 1", "value = 2")
+        output = "app.py:1:21: F401 unused import\nFound 1 error.\n[*] 1 fixable with --fix."
+        assert _filter_diff_violations(output, before, after) == ""
+
+    def test_unlocated_tool_error_is_not_hidden_with_an_unchanged_finding(self):
+        output = (
+            "app.py:1: F401 unused import\nFound 1 error.\nerror: unable to read tool configuration"
+        )
+        result = _filter_diff_violations(output, "old\nvalue=1\n", "old\nvalue=2\n")
+        assert "unable to read tool configuration" in result
+        assert "F401" not in result
+
+    def test_configuration_error_line_number_is_not_a_source_diagnostic(self):
+        output = "app.py:1: F401 unused import\nerror: invalid configuration at line 1"
+        result = _filter_diff_violations(output, "old\nvalue=1\n", "old\nvalue=2\n")
+        assert "invalid configuration" in result
+
+    def test_stderr_tool_error_survives_filtered_stdout(self, monkeypatch):
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                a[0],
+                2,
+                stdout="app.py:1: F401 unused import\nFound 1 error.",
+                stderr="error: unable to load configuration",
+            ),
+        )
+        context = _make_context(
+            config={
+                "cli-integration": {
+                    "diff_only": True,
+                    "commands": [{"name": "ruff", "command": "ruff check {file.path}"}],
+                }
+            }
+        )
+        context.file_content_before = "old\nvalue=1\n"
+        context.file_content = "old\nvalue=2\n"
+        [violation] = CliIntegration().evaluate(context)
+        assert "unable to load configuration" in violation.message
+        assert "F401" not in violation.message
+
     def test_new_file_shows_all(self):
         output = "app.py:1: E501\napp.py:2: E502"
         result = _filter_diff_violations(output, None, "line1\nline2\n")

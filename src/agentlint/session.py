@@ -18,6 +18,15 @@ def _cache_dir() -> Path:
     return Path(os.environ.get("AGENTLINT_CACHE_DIR", "~/.cache/agentlint/sessions")).expanduser()
 
 
+def workspace_dir(project_dir: str, working_directory: str | None = None) -> str:
+    """Find the actual worktree without collapsing linked trees to their common repo."""
+    directory = Path(working_directory or project_dir).resolve()
+    for candidate in (directory, *directory.parents):
+        if (candidate / ".git").exists():
+            return str(candidate)
+    return str(Path(project_dir).resolve())
+
+
 def _session_key() -> str:
     """Derive a session key from the environment.
 
@@ -28,6 +37,7 @@ def _session_key() -> str:
         os.environ.get("AGENTLINT_SESSION_ID")
         or os.environ.get("CLAUDE_SESSION_ID")
         or os.environ.get("CURSOR_SESSION_ID")
+        or os.environ.get("CODEX_SESSION_ID")
         or os.environ.get("OPENAI_SESSION_ID")
         or f"pid-{os.getppid()}"
     )

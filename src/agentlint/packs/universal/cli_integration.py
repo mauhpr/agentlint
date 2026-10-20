@@ -49,22 +49,34 @@ def _filter_diff_violations(
         if tag in ("replace", "insert"):
             changed_lines.update(range(j1 + 1, j2 + 1))  # 1-indexed
 
-    if not changed_lines:
-        return ""  # no changes — suppress all output
-
     import re
 
     filtered = []
+    located = kept = False
     for line in output.splitlines():
+        if re.match(r"\s*(?:error:|fatal:|Traceback\b)", line, re.IGNORECASE):
+            filtered.append(line)
+            continue
         match = re.search(r":(\d+)(?:[:\s]|$)|line\s+(\d+)", line)
         if match:
+            located = True
             lineno = int(match.group(1) or match.group(2))
             if lineno in changed_lines:
+                kept = True
                 filtered.append(line)
         else:
             # Non-line-specific output (headers, summaries) — keep
             filtered.append(line)
 
+    if located and not kept:
+        # Drop known summaries of removed findings, retaining unlocated errors
+        # and output formats we cannot safely classify as summaries.
+        summary = re.compile(
+            r"^\s*(?:Found\s+\d+\s+(?:errors?|warnings?)\b|"
+            r"\[\*\]\s+\d+\s+fixable\b|Summary:\s*\d+\s+(?:errors?|warnings?)\b)",
+            re.IGNORECASE,
+        )
+        filtered = [line for line in filtered if not summary.match(line)]
     return "\n".join(filtered)
 
 
@@ -147,7 +159,11 @@ class CliIntegration(Rule):
             # auto-fix mode: run silently, only warn on actual failure
             if mode == "auto-fix":
                 if result.returncode != 0:
-                    output = (result.stdout or result.stderr or "").strip()
+                    output = "\n".join(
+                        part.strip()
+                        for part in (result.stdout, result.stderr)
+                        if part and part.strip()
+                    )
                     if output and len(output) > max_output:
                         output = output[:max_output] + "..."
                     violations.append(
@@ -164,7 +180,9 @@ class CliIntegration(Rule):
                 continue
 
             if result.returncode != 0:
-                output = (result.stdout or result.stderr or "").strip()
+                output = "\n".join(
+                    part.strip() for part in (result.stdout, result.stderr) if part and part.strip()
+                )
 
                 # diff_only: filter to changed lines only
                 if diff_only:
