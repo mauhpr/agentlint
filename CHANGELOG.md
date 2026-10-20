@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.10.0 (2026-10-20) — Precise Verification Guardrails
 
 ### Fixed
 
