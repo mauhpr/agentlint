@@ -204,6 +204,7 @@ class Operation:
     # Exact source text of this operation, so unquoted `~`, globs and quoting
     # keep their original meaning for pattern-based rules.
     source: str = ""
+    separator: str = ""  # Shell operator after this command, not part of its arguments.
 
     @property
     def binary(self) -> str:
@@ -498,6 +499,7 @@ def split_operations(command: str) -> list[Operation] | None:
                 tuple(redirects),
                 _classify(list(words), list(redirects)),
                 command[span[0] : span[1]],
+                separator,
             )
         )
         return True
@@ -542,3 +544,96 @@ def active_operations(command: str) -> list[Operation] | None:
     if operations is None:
         return None
     return [op for op in operations if op.kind not in {"display", "read"}]
+
+
+def executable_words(words: list[str]) -> list[str] | None:
+    """Unwrap literal launchers without interpreting their payloads."""
+    words = words[:]
+    while words:
+        while words and _ASSIGNMENT.fullmatch(words[0]):
+            words.pop(0)
+        words = unwrap_simple_command(words)
+        if not words:
+            return None
+        binary = words[0].rsplit("/", 1)[-1]
+        if binary not in {
+            "uv",
+            "poetry",
+            "pipenv",
+            "pdm",
+            "rye",
+            "hatch",
+            "npx",
+            "bunx",
+            "pnpm",
+            "yarn",
+            "bun",
+        }:
+            return words
+        if binary in {"npx", "bunx"}:
+            words = words[1:]
+        elif words[1:2] == ["run"] or (
+            binary in {"pnpm", "yarn", "bun"} and words[1:2] == ["exec"]
+        ):
+            words = words[2:]
+        else:
+            return None
+        while words and words[0].startswith("-"):
+            option = words.pop(0)
+            name, equals, _ = option.partition("=")
+            if name in {
+                "--python",
+                "-p",
+                "--with",
+                "--extra",
+                "--group",
+                "--project",
+                "--directory",
+                "--env-file",
+            }:
+                if not equals:
+                    if not words:
+                        return None
+                    words.pop(0)
+            elif option not in {
+                "--frozen",
+                "--locked",
+                "--no-project",
+                "--no-sync",
+                "--offline",
+                "--isolated",
+                "--",
+            }:
+                return None
+    return None
+
+
+def executable_operations(command: str, binaries: set[str]) -> list[Operation] | None:
+    """Select actual executable commands, keeping opaque execution conservative.
+
+    An unrelated program's literal arguments are data. Shell/interpreter bodies,
+    substitutions and unsupported wrappers still require raw-text inspection.
+    """
+    operations = split_operations(command)
+    if operations is None:
+        return None
+    selected = []
+    for operation in operations:
+        words = executable_words(list(operation.words))
+        if not words:
+            return None
+        binary = words[0].rsplit("/", 1)[-1]
+        if binary in binaries:
+            selected.append(operation)
+        elif any(word.rsplit("/", 1)[-1] in binaries for word in words[1:]):
+            # Unknown launchers may execute a following command. Literal
+            # metadata such as "terraform apply" is one argument, not two.
+            return None
+        elif binary in _EXEC_SINKS or re.fullmatch(r"python(?:[23](?:\.\d+)?)?", binary):
+            # A script filename is data, while -c/-m or stdin can carry code.
+            if re.fullmatch(r"python(?:[23](?:\.\d+)?)?", binary) and (
+                len(words) > 1 and not words[1].startswith("-")
+            ):
+                continue
+            return None
+    return selected

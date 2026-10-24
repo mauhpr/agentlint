@@ -67,6 +67,54 @@ def test_unparseable_falls_back_to_legacy_heuristic():
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        "pytest -q | tail -20",
+        "pytest -q 2>&1 | tee /tmp/tests.log",
+        "pytest -q; echo done",
+        "pytest -q || echo ignored",
+    ],
+)
+def test_masked_shell_status_does_not_create_passing_test_evidence(tmp_path, command):
+    _hook(tmp_path, "PostToolUse", command, {"exit_code": 0})
+    assert list(receipts_dir().glob("*.json")) == []
+
+
+@pytest.mark.parametrize(
+    "command, reliable",
+    [
+        ("pytest -q", True),
+        ("pytest -q > /tmp/test.log 2>&1", True),
+        ("set -o pipefail && pytest -q | tail -20", True),
+        ("set -euo pipefail && uv run pytest -q | tee /tmp/test.log", True),
+        ("set -o pipefail && set +o pipefail && pytest | tail", False),
+        ("set -o pipefail | cat && pytest | tail", False),
+        ("set ignored pipefail && pytest | tail", False),
+        ("pytest & wait", False),
+        ("true || pytest", False),
+        ("pytest $(git diff --name-only)", False),
+        ("echo data | pytest", False),
+        ("source options.sh && pytest", False),
+        ("pytest && set +o pipefail && echo done", False),
+        ("echo done", False),
+        ("", False),
+    ],
+)
+def test_test_status_proof_handles_shell_control_flow(command, reliable):
+    from agentlint.evidence import test_result_is_reliable
+
+    assert test_result_is_reliable(command) is reliable
+
+
+def test_pipefail_test_log_produces_receipt(tmp_path):
+    _hook(
+        tmp_path, "PostToolUse", "set -o pipefail && pytest | tee /tmp/test.log", {"exit_code": 0}
+    )
+    [path] = receipts_dir().glob("*.json")
+    assert json.loads(path.read_text())["exit_code"] == 0
+
+
+@pytest.mark.parametrize(
     ("response", "failed", "expected"),
     [
         ({"exit_code": 0}, False, "passed"),

@@ -110,6 +110,47 @@ def find_test_command(command: str) -> str | None:
     return None
 
 
+def test_result_is_reliable(command: str) -> bool:
+    """Whether the shell's exit status can stand for the recognized test run.
+
+    Recognizing a runner is weaker than observing its result. Background jobs,
+    failure recovery, and later independent commands can hide failure. Pipelines
+    qualify only after a literal, successful `set -o pipefail &&` in this call.
+    """
+    operations = split_operations(command)
+    if not operations or any(op.separator in {"&", "||"} for op in operations):
+        return False
+    pipefail = False
+    test_index = None
+    for index, op in enumerate(operations):
+        words = list(op.words)
+        if op.binary in {"eval", "source", "."}:
+            return False
+        if op.binary == "set" and len(words) == 3 and words[2] == "pipefail":
+            flag = words[1]
+            if flag.startswith("+") and "o" in flag:
+                pipefail = False
+            elif flag.startswith("-") and flag.endswith("o"):
+                pipefail = op.separator == "&&"
+        if _is_test_words(words):
+            test_index = index
+            break
+    if test_index is None:
+        return False
+    if test_index and operations[test_index - 1].separator == "|":
+        return False
+    for index in range(test_index, len(operations)):
+        separator = operations[index].separator
+        if separator == "|" and not pipefail:
+            return False
+        if index < len(operations) - 1 and separator not in {"&&", "|"}:
+            return False
+        # A later set could disable pipefail before a later pipeline.
+        if index > test_index and operations[index].binary == "set":
+            return False
+    return True
+
+
 def exit_status(tool_response: object) -> int | None:
     """Extract an exit status from a hook payload's tool response, if present."""
     if not isinstance(tool_response, dict):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
+from agentlint.utils.shell import executable_operations, executable_words
 
 _BASH_TOOLS = {"Bash"}
 _FILE_TOOLS = {"Write", "Edit", "MultiEdit"}
@@ -15,6 +16,7 @@ _SCHEDULER_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bcrontab\s+-[er]\b", re.I), "crontab modification"),
     (re.compile(r"\bcrontab\s+(?!-)[^\s]", re.I), "crontab file install"),
     (re.compile(r"\becho\b.*\|\s*crontab\b", re.I), "crontab pipe injection"),
+    (re.compile(r"\bcrontab\s*(?:-)?\s*$", re.I), "crontab stdin install"),
     # Systemd.
     (
         re.compile(r"\bsystemctl\s+(?:enable|disable|mask|unmask|edit)\b", re.I),
@@ -66,13 +68,38 @@ class SystemSchedulerGuard(Rule):
             command: str = context.command or ""
             if not command:
                 return []
+            operations = executable_operations(
+                command, {"crontab", "systemctl", "launchctl", "at", "batch"}
+            )
+            candidates = (
+                [command]
+                if operations is None
+                else [
+                    " ".join([words[0].rsplit("/", 1)[-1], *words[1:]])
+                    for op in operations
+                    if (words := executable_words(list(op.words)))
+                ]
+            )
             for pattern, label in _SCHEDULER_PATTERNS:
-                if pattern.search(command):
+                matched = next(
+                    (
+                        match
+                        for text in candidates
+                        if (
+                            match := (
+                                pattern.search(text) if operations is None else pattern.match(text)
+                            )
+                        )
+                    ),
+                    None,
+                )
+                if matched:
                     return [
                         Violation(
                             rule_id=self.id,
                             message=f"Scheduler mutation detected: {label}",
                             severity=self.severity,
+                            operation=matched.group(0),
                             suggestion=(
                                 "Scheduled tasks established by an agent persist after the session ends. "
                                 "Verify this is intentional and the schedule is correct before proceeding."

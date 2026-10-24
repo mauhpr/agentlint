@@ -37,7 +37,7 @@ Core safety and hygiene rules for any stack. Always active.
 | [`drift-detector`](#drift-detector) | WARNING | PreToolUse, PostToolUse | Warns when many edits happen without running tests |
 | [`file-scope`](#file-scope) | ERROR | PreToolUse | Restricts file access based on allow/deny glob patterns |
 | [`git-checkpoint`](#git-checkpoint) | INFO | PreToolUse, Stop | Creates a git safety checkpoint before destructive operations |
-| [`max-file-size`](#max-file-size) | WARNING | PostToolUse | Warns when a file exceeds a configurable line-count limit after Write/Edit |
+| [`max-file-size`](#max-file-size) | WARNING | PreToolUse, PostToolUse | Warns before Write/Edit exceeds a line-count limit, with post-write fallback |
 | [`no-compromised-dependency`](#no-compromised-dependency) | ERROR | PreToolUse | Blocks install of packages on the AgentChute cloud-curated compromised-packages deny list. Self-degrades to no-op when AgentChute is not configured |
 | [`no-debug-artifacts`](#no-debug-artifacts) | WARNING | Stop | Detects leftover debug statements (console.log, print, debugger, breakpoint) |
 | [`no-destructive-commands`](#no-destructive-commands) | WARNING | PreToolUse | Warns on destructive commands like rm -rf, DROP TABLE, git reset --hard |

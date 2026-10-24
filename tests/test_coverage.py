@@ -288,3 +288,60 @@ def test_status_next_step_for_unobserved_hooks(tmp_path, home, monkeypatch):
     (tmp_path / "agentlint.yml").write_text("packs: [universal]\n")
     out = CliRunner().invoke(main, ["status", "--project-dir", str(tmp_path)]).output
     assert "Next: hooks for codex are configured but not yet observed" in out
+
+
+@pytest.mark.parametrize("age,other_project", [(25 * 3600, False), (1, True)])
+def test_old_or_other_project_heartbeat_is_not_healthy_coverage(
+    tmp_path, home, monkeypatch, age, other_project
+):
+    import time
+
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    _write(home / ".claude" / "settings.json", _codex_hooks("/opt/agentlint-wrapper.py"))
+    (tmp_path / "agentlint.yml").write_text("packs: [universal]\n")
+    record_heartbeat(
+        "claude",
+        event="PreToolUse",
+        tool="Bash",
+        project_dir=str(tmp_path / "other") if other_project else str(tmp_path),
+        version="x",
+    )
+    beat_path = Path(os.environ["AGENTLINT_HEARTBEAT_DIR"]) / "claude.json"
+    beat = json.loads(beat_path.read_text())
+    beat["ts"] = time.time() - age
+    beat_path.write_text(json.dumps(beat))
+    result = CliRunner().invoke(main, ["status", "--project-dir", str(tmp_path)])
+    assert "! claude" in result.output
+    assert "All primary checks look healthy" not in result.output
+    data = json.loads(
+        CliRunner().invoke(main, ["status", "--project-dir", str(tmp_path), "--json"]).output
+    )
+    assert data["agents"]["claude"]["observation_warning"]
+
+
+def test_large_disabled_cloud_backlog_is_an_alert_without_deleting_events(tmp_path):
+    qdir = Path(os.environ["AGENTLINT_AGENTCHUTE_QUEUE_DIR"])
+    qdir.mkdir(parents=True)
+    payload = json.dumps({"event_id": "1", "queued_at": 1.0, "event": {}}) + "\n"
+    (qdir / "queue.jsonl").write_text(payload * 1001)
+    result = CliRunner().invoke(main, ["status", "--project-dir", str(tmp_path)])
+    assert "AgentChute: off" in result.output
+    assert "! Retained queue backlog" in result.output
+    assert "discard-pending" in result.output
+    assert (qdir / "queue.jsonl").read_text() == payload * 1001
+
+
+@pytest.mark.parametrize("observed", [False, True])
+def test_claude_healthy_marker_requires_an_observed_hook_in_this_project(
+    tmp_path, home, monkeypatch, observed
+):
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    _write(home / ".claude" / "settings.json", _codex_hooks("agentlint check --event PreToolUse"))
+    (tmp_path / "agentlint.yml").write_text("packs: [universal]\n")
+    if observed:
+        record_heartbeat(
+            "claude", event="PreToolUse", tool="Bash", project_dir=str(tmp_path), version="x"
+        )
+    out = CliRunner().invoke(main, ["status", "--project-dir", str(tmp_path)]).output
+    assert ("✓ claude" in out) is observed
+    assert ("All primary checks look healthy" in out) is observed

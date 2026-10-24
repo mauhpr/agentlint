@@ -558,9 +558,16 @@ def _evaluate_tool_context(context, config, rules):
                 file_cache = session_state.setdefault("file_cache", {})
                 file_cache[file_path] = file_content_before
 
-        # For Write, the new content is in tool_input
-        content = tool_input.get("content", "")
-        if content:
+        # Preview only a deterministic native edit. Ambiguous edits retain the
+        # post-tool check; the hook must not guess which occurrence will change.
+        content = tool_input.get("content")
+        if content is None and context.tool_name == "Edit" and file_content_before is not None:
+            old, new = tool_input.get("old_string"), tool_input.get("new_string")
+            if isinstance(old, str) and old and isinstance(new, str):
+                count = file_content_before.count(old)
+                if count == 1 or (count > 0 and tool_input.get("replace_all") is True):
+                    content = file_content_before.replace(old, new)
+        if isinstance(content, str):
             context = replace(
                 context,
                 file_content=content,
@@ -632,10 +639,16 @@ def _record_test_evidence(context) -> None:
     ):
         return
     try:
-        from agentlint.evidence import exit_status, find_test_command, outcome, write_receipt
+        from agentlint.evidence import (
+            exit_status,
+            find_test_command,
+            outcome,
+            test_result_is_reliable,
+            write_receipt,
+        )
 
         command = find_test_command(context.command or "")
-        if not command:
+        if not command or not test_result_is_reliable(context.command or ""):
             return
         result = outcome(
             failed_event=context.event == HookEvent.POST_TOOL_USE_FAILURE,
@@ -2163,6 +2176,7 @@ def _cloud_health(config) -> dict:
     enabled = bool(get_enabled_value(config))
     if not enabled:
         notes = []
+        alerts = []
         if queue["pending"]:
             age = queue.get("oldest_pending_age_s")
             notes.append(
@@ -2170,6 +2184,12 @@ def _cloud_health(config) -> dict:
                 + (f" (oldest {_format_seconds(age)})" if age is not None else "")
                 + "; they are not being sent. Remove them with "
                 "'agentlint queue discard-pending' if no longer needed."
+            )
+        if queue["pending"] >= 1000:
+            alerts.append(
+                f"Retained queue backlog: {queue['pending']} undelivered events while cloud is off. "
+                "Review 'agentlint queue inspect'; use 'agentlint queue discard-pending' "
+                "only if these events are no longer needed."
             )
         return {
             "enabled": False,
@@ -2179,6 +2199,7 @@ def _cloud_health(config) -> dict:
             "state": "off",
             "problems": [],
             "notes": notes,
+            "alerts": alerts,
         }
     degraded = []
     if queue["pending"] and queue.get("last_outcome") not in (None, "ok"):
@@ -2204,6 +2225,7 @@ def _cloud_health(config) -> dict:
         "state": "degraded" if degraded else "healthy",
         "problems": degraded,
         "notes": [],
+        "alerts": [],
     }
 
 
@@ -2271,7 +2293,12 @@ def status(project_dir: str | None, as_json: bool):
                     "version": ver,
                     "project_dir": project_dir,
                     "agents": {
-                        p: {**c.to_dict(), "detected": p in detected} for p, c in coverage.items()
+                        p: {
+                            **c.to_dict(),
+                            "detected": p in detected,
+                            "observation_warning": c.observation_warning(project_dir),
+                        }
+                        for p, c in coverage.items()
                     },
                     "policy": {**policy, "active_rules": len(rules)},
                     "cloud": cloud,
@@ -2292,13 +2319,18 @@ def status(project_dir: str | None, as_json: bool):
         state = cov.state
         marker = (
             "✓"
-            if state in {"installed", "wrapper"} and cov.observed_age() is not None
+            if state in {"installed", "wrapper"} and not cov.observation_warning(project_dir)
             else "!"
-            if state == "stale" or (state in {"installed", "wrapper"} and cov.enabled is False)
+            if state == "stale" or cov.observation_warning(project_dir)
             else "○"
         )
         detected_note = " (detected)" if platform in detected else ""
         click.echo(f"  {marker} {platform:<8}{detected_note} {describe(cov, project_dir)}")
+        warning = cov.observation_warning(project_dir)
+        if warning:
+            click.echo(
+                f"    ! {warning}. Check hook trust/reload; make a tool call here, then re-run status."
+            )
     if coverage["codex"].state in {"installed", "wrapper"}:
         click.echo("    Codex hook trust is confirmed in Codex's /hooks review, not by AgentLint.")
 
@@ -2316,11 +2348,12 @@ def status(project_dir: str | None, as_json: bool):
     )
     if config.required_rules:
         click.echo(f"  Required: {', '.join(config.required_rules)}")
+    click.echo("  Pre-tool enforcement: effective errors block; warnings and info advise.")
     if config.exceptions:
         click.echo(f"  Exceptions: {len(config.exceptions)} active (exact-command, expiring)")
     for drift in policy["drift"]:
         click.echo(
-            f"  ! Drift: '{drift['pack']}' pack is not enabled, but the repository contains "
+            f"  ! Drift: '{drift['pack']}' pack is not enabled, but the repository {project_dir} contains "
             f"{', '.join(drift['evidence'])}"
         )
     if config.projects:
@@ -2362,6 +2395,8 @@ def status(project_dir: str | None, as_json: bool):
         click.echo(f"  ! {problem}")
     for note in cloud["notes"]:
         click.echo(f"  - {note}")
+    for alert in cloud.get("alerts", []):
+        click.echo(f"  ! {alert}")
     click.echo("Still enforced locally:")
     for line in local:
         click.echo(f"  - {line}")
@@ -2379,6 +2414,11 @@ def status(project_dir: str | None, as_json: bool):
         for p in detected
         if coverage[p].state in {"installed", "wrapper"} and coverage[p].observed_age() is None
     ]
+    coverage_warnings = [
+        p
+        for p, cov in coverage.items()
+        if cov.state in {"installed", "wrapper"} and cov.observation_warning(project_dir)
+    ]
     if needs_fix:
         click.echo("Next: agentlint doctor --fix")
     elif unobserved:
@@ -2386,6 +2426,12 @@ def status(project_dir: str | None, as_json: bool):
             f"Next: hooks for {', '.join(unobserved)} are configured but not yet observed; "
             "make one tool call in that agent, then re-run status."
         )
+    elif coverage_warnings:
+        click.echo(
+            f"Next: verify hook coverage for {', '.join(coverage_warnings)} in this project."
+        )
+    elif cloud.get("alerts"):
+        click.echo("Next: review the retained queue backlog above.")
     elif cloud["state"] == "degraded":
         click.echo("Next: AgentChute delivery is degraded; local protections above still apply.")
     else:
@@ -2534,6 +2580,8 @@ def doctor(project_dir: str | None, fix: bool, online: bool):
         issues.append("AgentChute: could not read queue/policy health")
     for note in (cloud or {}).get("notes", []):
         notes.append(f"AgentChute: {note}")
+    for alert in (cloud or {}).get("alerts", []):
+        issues.append(f"AgentChute: {alert}")
     if cloud and cloud["enabled"]:
         queue = cloud["queue"]
         summary = f"{queue['pending']} pending"
@@ -2554,7 +2602,7 @@ def doctor(project_dir: str | None, fix: bool, online: bool):
 
     for drift in detect_drift(config, project_dir):
         issues.append(
-            f"Pack drift: '{drift['pack']}' is not enabled but the repository contains "
+            f"Pack drift: '{drift['pack']}' is not enabled but the repository {project_dir} contains "
             f"{', '.join(drift['evidence'])}. Add it (or a projects: mapping), or list it "
             "under drift_ignore_packs if intentional."
         )

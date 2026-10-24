@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
+from agentlint.utils.shell import executable_operations, executable_words
 
 _BASH_TOOLS = {"Bash"}
 
@@ -85,18 +86,42 @@ class CloudInfraMutation(Rule):
         if not command:
             return []
 
+        operations = executable_operations(command, {"gcloud", "aws", "az"})
+        candidates = (
+            [command]
+            if operations is None
+            else [
+                " ".join([words[0].rsplit("/", 1)[-1], *words[1:]])
+                for op in operations
+                if (words := executable_words(list(op.words)))
+            ]
+        )
+
         rule_config = context.config.get(self.id, {})
         allowed_ops: list[str] = rule_config.get("allowed_ops", [])
 
         for pattern, label in _CLOUD_MUTATION_OPS:
             if label in allowed_ops:
                 continue
-            if pattern.search(command):
+            match = next(
+                (
+                    match
+                    for text in candidates
+                    if (
+                        match := (
+                            pattern.search(text) if operations is None else pattern.match(text)
+                        )
+                    )
+                ),
+                None,
+            )
+            if match:
                 return [
                     Violation(
                         rule_id=self.id,
                         message=f"Cloud infrastructure mutation with wide blast radius: {label}",
                         severity=self.severity,
+                        operation=match.group(0),
                         suggestion=(
                             "Review the blast radius before running this command — it may affect all users "
                             "of shared infrastructure. Approve manually or add to "

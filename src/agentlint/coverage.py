@@ -89,6 +89,21 @@ class PlatformCoverage:
             "last_seen_age_seconds": self.observed_age(),
         }
 
+    def observation_warning(self, project_dir: str) -> str | None:
+        """Configuration and another project's heartbeat do not prove coverage here."""
+        if self.state not in {"installed", "wrapper"}:
+            return None
+        if self.enabled is False:
+            return "hooks are disabled"
+        age = self.observed_age()
+        if age is None:
+            return "configured but not yet observed"
+        if age > STALE_HEARTBEAT_SECONDS:
+            return f"last observed {format_age(age)}; coverage is stale"
+        if self.heartbeat.get("project") != project_fingerprint(project_dir):
+            return "not observed in this project; last event belongs to another project"
+        return None
+
 
 def hook_path(platform: str, scope: str, project_dir: str) -> Path | None:
     entry = _PATH_FUNCS.get(platform)
