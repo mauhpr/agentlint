@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.10.1 (2026-10-24) — Command Intent and Verification Health
 
 ### Fixed
 
