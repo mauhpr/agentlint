@@ -206,7 +206,13 @@ class Engine:
                     and type(rule).__module__.startswith("agentlint.packs.")
                     and not getattr(rule, "locked", False)
                 )
-                checked = mutation_context if projected_rule else context
+                # Account history includes cloud reads; its own executable-aware
+                # selector separates real cloud flags from unrelated CLI data.
+                checked = (
+                    mutation_context
+                    if projected_rule and rule.id != "cross-account-guard"
+                    else context
+                )
                 if rule.id in required:
                     checked = replace(
                         checked,

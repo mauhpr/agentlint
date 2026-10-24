@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
+from agentlint.utils.shell import executable_operations, executable_words
 
 _BASH_TOOLS = {"Bash"}
 
@@ -54,36 +55,72 @@ class CrossAccountGuard(Rule):
 
         violations: list[Violation] = []
 
-        project = _extract_gcloud_project(command)
-        if project:
-            seen = ca.setdefault("seen_gcloud_projects", [])
-            if seen and project not in seen:
-                violations.append(
-                    Violation(
-                        rule_id=self.id,
-                        message=f"GCloud project switch detected: {seen[-1]} → {project}",
-                        severity=self.severity,
-                        suggestion="Verify this project switch is intentional. Previous project: "
-                        + seen[-1],
-                    )
+        operations = executable_operations(command, {"aws", "gcloud"})
+        targets: list[tuple[str, str]] = []
+        if operations is None:
+            # Opaque execution contexts retain conservative recognition.
+            targets = [
+                (kind, value)
+                for kind, value in (
+                    (
+                        "gcloud",
+                        _extract_gcloud_project(command)
+                        if re.search(r"\bgcloud\b", command)
+                        else None,
+                    ),
+                    (
+                        "aws",
+                        _extract_aws_profile(command) if re.search(r"\baws\b", command) else None,
+                    ),
                 )
-            if project not in seen:
-                seen.append(project)
+                if value
+            ]
+        else:
+            for operation in operations:
+                words = executable_words(list(operation.words)) or []
+                prefix = list(operation.words[: len(operation.words) - len(words)]) if words else []
+                env_profile = next(
+                    (
+                        w.partition("=")[2].lower()
+                        for w in reversed(prefix)
+                        if w.startswith("AWS_PROFILE=")
+                    ),
+                    None,
+                )
+                if not words:
+                    continue
+                binary = words[0].rsplit("/", 1)[-1]
+                flag = "--project" if binary == "gcloud" else "--profile"
+                value = _flag_value(words[1:], flag)
+                if binary == "aws":
+                    value = value or env_profile
+                if value:
+                    targets.append((binary, value))
 
-        profile = _extract_aws_profile(command)
-        if profile:
-            seen = ca.setdefault("seen_aws_profiles", [])
-            if seen and profile not in seen:
+        for binary, value in targets:
+            key = "seen_gcloud_projects" if binary == "gcloud" else "seen_aws_profiles"
+            label = "GCloud project" if binary == "gcloud" else "AWS profile"
+            seen = ca.setdefault(key, [])
+            if seen and value not in seen:
                 violations.append(
                     Violation(
                         rule_id=self.id,
-                        message=f"AWS profile switch detected: {seen[-1]} → {profile}",
+                        message=f"{label} switch detected: {seen[-1]} → {value}",
                         severity=self.severity,
-                        suggestion="Verify this profile switch is intentional. Previous profile: "
-                        + seen[-1],
+                        operation=f"{binary} account selector",
+                        suggestion=f"Verify this switch is intentional. Previous {label.lower()}: {seen[-1]}",
                     )
                 )
-            if profile not in seen:
-                seen.append(profile)
+            if value not in seen:
+                seen.append(value)
 
         return violations
+
+
+def _flag_value(words: list[str], flag: str) -> str | None:
+    for index, word in enumerate(words):
+        if word.startswith(flag + "="):
+            return word[len(flag) + 1 :].lower() or None
+        if word == flag and index + 1 < len(words):
+            return words[index + 1].lower() or None
+    return None

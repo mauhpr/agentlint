@@ -16,9 +16,9 @@ class MaxFileSize(Rule):
     """Warn when a written/edited file exceeds a line-count threshold."""
 
     id = "max-file-size"
-    description = "Warns when a file exceeds a configurable line-count limit after Write/Edit"
+    description = "Warns before Write/Edit exceeds a line-count limit, with post-write fallback"
     severity = Severity.WARNING
-    events = [HookEvent.POST_TOOL_USE]
+    events = [HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE]
     pack = "universal"
 
     def evaluate(self, context: RuleContext) -> list[Violation]:

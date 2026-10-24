@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Match scheduler commands, cloud account selectors and infrastructure previews
+  against actual executables and arguments rather than local workflow flags or
+  quoted status text. Preserve checks through supported literal launchers and
+  conservative fallback for opaque execution.
+- Recognize requirements installs after virtualenv/options flags, including
+  quoted paths, without exempting a later ad-hoc install in a command list.
+- Stop showing healthy hook coverage for missing, stale, disabled or
+  other-project observations. Include observation warnings in status JSON,
+  identify the repository in pack drift, and state pre-tool enforcement behavior.
+- Alert on at least 1,000 retained queue events when cloud delivery is disabled;
+  leave retention and deletion under human control.
+- Check deterministic Write/Edit line-limit crossings before execution, with
+  post-tool fallback and the existing warning severity by default.
+- Do not record passing test evidence or clear drift when a pipeline, detached
+  job, failure-recovery operator or later independent command can hide failure.
+  Piped tests require a successful explicit pipefail setup in the same call.
+
 ## v2.10.0 (2026-10-20) — Precise Verification Guardrails
 
 ### Fixed

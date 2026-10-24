@@ -59,6 +59,17 @@ configured each rule, required rules and exception count.
 
 ## Degraded cloud operation
 
+Status marks a configured hook with `!` when its heartbeat is missing, older
+than 24 hours, from another project, or its hooks feature is disabled. A recent
+heartbeat in another project does not prove coverage in the selected project.
+`status --json` exposes this as `agents.<agent>.observation_warning`. This is
+observation evidence, not proof that every call in a particular session ran
+through the hook. Check trust and reload the agent, make one tool call in the
+selected project, and re-run status before relying on coverage.
+
+Status also states whether effective pre-tool errors block and warnings advise.
+Pack drift names the selected repository alongside the relative evidence paths.
+
 `status` and `doctor` show the AgentChute delivery state as `healthy`, `off` or
 `degraded`, with pending count, the age of the oldest undelivered event,
 consecutive failures, the next retry time, and the last HTTP status. HTTP 429
@@ -66,6 +77,50 @@ and 503 responses honour `Retry-After` (seconds or HTTP date, at most one hour).
 More than 10,000 undelivered events or a 50 MB queue file produce a warning;
 events are never discarded automatically (`agentlint queue discard-pending`
 remains an explicit action).
+
+When AgentChute is off, a retained queue of at least 1,000 pending events is
+shown as a separate alert in status and an issue in doctor. Inspect the queue
+before deciding whether to retain or discard it. AgentLint never discards it
+automatically.
+
+## Verification and file writes
+
+`max-file-size` previews Write content and deterministic Edit replacements
+before the tool runs, keeping the post-tool check for results it could not
+preview. It remains a warning in standard mode; strict mode turns it into a
+pre-tool error. Existing oversized files remain exempt from threshold-crossing
+warnings, and valid JSON data remains exempt by default.
+
+Requirements installs such as `uv pip install --python .docs-venv/bin/python -r
+requirements-docs.txt` are recognized even when options appear before `-r` or
+`--requirement`. Each parsed shell operation is checked separately, so a later
+ad-hoc install is still reported.
+
+A shell's final exit status does not always describe its test runner. AgentLint
+does not create test receipts or clear test drift for background jobs, failure
+recovery with `||`, or independent commands following tests. Piped tests require
+an explicit successful pipefail setup in the same call:
+
+```sh
+set -o pipefail && uv run pytest -q 2>&1 | tee /private/tmp/tests.log
+```
+
+Direct output redirection also preserves the test exit status. Unsupported shell
+syntax can still be recognized as a test command, but cannot supply reliable
+test-result evidence.
+
+## Policy denials and execution failures
+
+A policy denial names an AgentLint rule and its correction. A patch inspection
+failure means the proposed patch could not be interpreted safely; fix its order,
+syntax, anchors or project boundary before retrying. Neither result is a test
+failure.
+
+An interpreter, dependency, cache-permission or sandbox error comes from the
+tool's execution environment. Keep that error and exit status when reporting
+the result; do not infer that the code failed its tests or that verification
+passed. Use the harness's supported approval/retry mechanism for sandbox
+restrictions. AgentLint does not grant OS permissions or implement that retry.
 
 Both commands list what is **still enforced locally**: pack rules, required
 workspace rules and the cached organization policy (or an explicit statement

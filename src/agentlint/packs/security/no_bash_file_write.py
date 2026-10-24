@@ -395,7 +395,7 @@ class NoBashFileWrite(Rule):
                         operation=label,
                         suggestion=(
                             "Use apply_patch (Codex) or Write/Edit for maintained files. "
-                            "For local test logs, use `pytest -q 2>&1 | tee /private/tmp/tests.log`. "
+                            "For local test logs, use `set -o pipefail && pytest -q 2>&1 | tee /private/tmp/tests.log`. "
                             "For a literal stdin heredoc, quote its delimiter and omit output redirects."
                         ),
                     )

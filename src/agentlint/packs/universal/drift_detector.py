@@ -163,11 +163,12 @@ class DriftDetector(Rule):
         # POST_TOOL_USE: existing mid-session behaviour, unchanged.
         # Track test runs from Bash commands.
         if context.tool_name in _BASH_TOOLS:
-            from agentlint.evidence import find_test_command, outcome
+            from agentlint.evidence import find_test_command, outcome, test_result_is_reliable
 
             command = context.command or ""
             if (
                 find_test_command(command)
+                and test_result_is_reliable(command)
                 and outcome(failed_event=False, tool_response=context.tool_response) != "failed"
             ):
                 state["edited_files"] = []
