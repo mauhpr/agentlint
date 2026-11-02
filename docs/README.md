@@ -9,6 +9,8 @@ hide:
 
 <p class="agentlint-eyebrow">LOCAL GUARDRAILS FOR AI CODING AGENTS</p>
 
+<a id="catch-risky-actionskeep-useful-work-moving"></a>
+
 # Catch risky actions.<br><em>Keep your agent moving.</em>
 
 <p class="agentlint-lede">Check proposed file changes and shell commands while your agent works. Block detected secret writes, flag risky operations, and send useful feedback straight back to the agent.</p>

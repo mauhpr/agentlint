@@ -6,6 +6,7 @@ AgentLint checks proposed file changes and shell commands locally. It blocks det
 
 [![PyPI](https://img.shields.io/pypi/v/agentlint)](https://pypi.org/project/agentlint/)
 [![CI](https://github.com/mauhpr/agentlint/actions/workflows/ci.yml/badge.svg)](https://github.com/mauhpr/agentlint/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/mauhpr/agentlint/branch/main/graph/badge.svg)](https://codecov.io/gh/mauhpr/agentlint)
 [![Downloads](https://api.pepy.tech/badge/agentlint)](https://pepy.tech/projects/agentlint)
 [![GitHub stars](https://img.shields.io/github/stars/mauhpr/agentlint)](https://github.com/mauhpr/agentlint/stargazers)
 [![Python](https://img.shields.io/pypi/pyversions/agentlint)](https://pypi.org/project/agentlint/)
@@ -37,6 +38,8 @@ api_key = os.environ["SERVICE_API_KEY"]
 ```
 
 The credential finding is resolved. The revised action is checked against the active policy, and any other findings still apply.
+
+https://github.com/user-attachments/assets/ae9a6b72-8bf7-4b73-abe3-7f0f3b483d3b
 
 [Watch the 53-second product overview](https://mauhpr.github.io/agentlint/media/agentlint-demo.mp4). The demonstration evaluates synthetic proposed actions as data; it does not execute dangerous commands.
 
@@ -92,6 +95,21 @@ Some rules run after a tool call or at session end and cannot prevent an action 
 
 **Integration matters.** Native hooks inspect the tools their host reports. The [OpenAI Agents SDK adapter](https://mauhpr.github.io/agentlint/agents/openai-agents/) must be attached to supported tools. The [MCP server](https://mauhpr.github.io/agentlint/agents/mcp-hosts/) provides on-demand checks and is advisory. See [coverage and limitations](https://mauhpr.github.io/agentlint/coverage/) before relying on an integration.
 
+AgentLint includes 77 built-in rules in 8 packs:
+
+| Pack | Rules | Examples |
+|------|-------|----------|
+| universal | 24 | secrets, `.env` writes, force-push, destructive commands, CI/CD edits, package publishing, test weakening |
+| quality | 7 | oversized diffs, removed error handling, dead imports, commit message format |
+| python | 6 | SQL built with f-strings, unsafe shell calls, bare `except`, risky migrations |
+| frontend | 8 | missing alt text and labels, focus styles, touch targets |
+| react | 3 | unhandled loading/error states, empty states |
+| seo | 4 | page metadata, Open Graph, semantic HTML |
+| security | 7 | shell file-write restrictions and network exfiltration patterns *(opt-in)* |
+| autopilot | 18 | production targets, cloud deletions, IAM/firewall changes, infrastructure previews *(opt-in, experimental)* |
+
+The [rule catalogue](https://mauhpr.github.io/agentlint/rules/) lists each rule's event, severity, and configuration.
+
 <a id="configure"></a>
 
 ## Make it fit your project
@@ -125,6 +143,7 @@ An explicit `packs` list replaces stack detection. The `universal` and `quality`
 agentlint check-patch change.patch       # preview a Codex patch without applying it
 agentlint ci --diff origin/main...HEAD   # check the pull request's file changes
 agentlint evidence                      # inspect verification receipts
+agentlint uninstall claude              # remove Claude Code's native hooks
 ```
 
 CI checks file changes; it does not reconstruct or audit every shell command the agent ran. [CI setup](https://mauhpr.github.io/agentlint/ci/) · [CLI reference](https://mauhpr.github.io/agentlint/cli/)
