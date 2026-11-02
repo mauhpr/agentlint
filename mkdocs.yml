@@ -23,6 +23,7 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.copy
+    - navigation.indexes
 
 plugins:
   - search
@@ -45,6 +46,7 @@ extra_css:
 
 exclude_docs: |
   /overrides/
+  /plans/
 
 validation:
   nav:
@@ -57,6 +59,7 @@ validation:
 nav:
   - Home: README.md
   - Quickstart: quickstart.md
+  - Coverage and limitations: coverage.md
   - Agent setup:
       - Claude Code: agents/claude.md
       - Codex: agents/codex.md
@@ -68,7 +71,12 @@ nav:
       - OpenAI Agents SDK: agents/openai-agents.md
       - MCP hosts: agents/mcp-hosts.md
       - Generic integration: agents/generic.md
-  - Using AgentLint:
+  - Task guides:
+      - Protect main: guides/protect-main.md
+      - Fix a false positive: guides/fix-a-false-positive.md
+      - Run linters and formatters: guides/run-linters.md
+      - Share required rules: guides/shared-policy.md
+  - Reference:
       - Rules: rules.md
       - Configuration: configuration.md
       - Approvals and evidence: approvals-and-evidence.md

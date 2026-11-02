@@ -1,6 +1,12 @@
+---
+description: Follow a coding-agent tool call through AgentLint's adapters, configuration, rule engine, and response formatters.
+---
+
 # AgentLint Architecture
 
 AgentLint is a local-first guardrail engine for AI coding agents. The core package is agent-agnostic: adapters translate each tool's hook or guardrail payload into one normalized event shape, then the same rule engine evaluates it.
+
+Read this page when extending the package or tracing how a tool call becomes a finding. To install AgentLint, start with the [quickstart](quickstart.md). To understand which actions can be blocked, read [Coverage and limits](coverage.md).
 
 ## System Map
 
@@ -30,7 +36,7 @@ flowchart TB
   Detect --> Grok[Grok]
   Detect --> OpenAI[OpenAI Agents SDK]
   Detect --> MCP[MCP hosts]
-  Detect --> Generic[Generic HTTP]
+  Detect --> Generic[Generic JSON / Python]
   Claude --> Normalized[RuleContext]
   Cursor --> Normalized
   Codex --> Normalized

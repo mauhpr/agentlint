@@ -1,6 +1,12 @@
+---
+description: Attach AgentLint to supported OpenAI Agents SDK function tools using tool input guardrails.
+---
+
 # OpenAI Agents SDK
 
 The OpenAI Agents SDK has no hook files. You call AgentLint from a tool input guardrail in your own code, using `OpenAIAgentsAdapter.evaluate_tool_call()`.
+
+This is an application integration: attach the guardrail to each supported tool you want checked. It does not automatically inspect every tool exposed by the SDK. An ERROR rejects a guarded call and returns the finding to the model; tools outside that guardrail pipeline remain outside AgentLint's coverage. See [Coverage and limits](../coverage.md).
 
 ## Install
 
@@ -12,6 +18,8 @@ agentlint init          # writes agentlint.yml
 `agentlint setup openai` writes no files; it prints the snippet below.
 
 Attach AgentLint to each function tool with a tool input guardrail:
+
+The following is a wiring example: replace the tool bodies with your application's implementations. The guardrail checks the proposed arguments before those bodies run.
 
 ```python
 from agents import Agent, Runner
@@ -55,17 +63,23 @@ its [guardrails documentation](https://openai.github.io/openai-agents-python/gua
 `as_guardrail()` from earlier versions returned a plain dict the SDK can't use
 and is deprecated.
 
-`reject_content` skips the tool call and returns the AgentLint reasons to the model instead. Guardrail APIs belong to the SDK; check its [guardrails documentation](https://openai.github.io/openai-agents-python/guardrails/) for your installed version.
-
 ## Verify
 
-Call the adapter directly:
+Call the adapter directly with a proposed environment-file write. This evaluates data; it does not write a file or call an LLM:
 
-```bash
-python -c 'from agentlint.adapters.openai_agents import OpenAIAgentsAdapter as A; print(A().evaluate_tool_call("Bash", {"command": "rm -rf /"}))'
+```python
+from agentlint.adapters.openai_agents import OpenAIAgentsAdapter
+
+result = OpenAIAgentsAdapter().evaluate_tool_call(
+    "Write",
+    {"file_path": ".env", "content": "# proposed local settings\n"},
+)
+print(result["tripwire_triggered"])
 ```
 
-`tripwire_triggered` should be `True`. `agentlint status` does not cover this integration; it only reports hook-based agents.
+With the default universal rules, this prints `True` because `no-env-commit` blocks the target path. Changing the target to `.env.example` avoids that rule. Other configured rules still apply.
+
+This confirms the adapter's evaluation, not your SDK wiring. Also exercise a call through your guarded function tool and confirm its body is skipped for an ERROR result. `agentlint status` does not cover this integration; it only reports hook-based agents.
 
 ## What is checked
 

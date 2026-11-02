@@ -1,13 +1,25 @@
 # Approvals and evidence
 
-Two ways to tell AgentLint what a person has decided and what has been
-verified, without turning rules off.
+Approvals record what a person has allowed. Evidence records what a tool has
+verified. They answer different questions, and a passing test never grants
+permission to perform a blocked action.
+
+| You need to record | Use | Effect |
+|---|---|---|
+| A person allows an action class temporarily | An approval | Matching built-in rules can warn instead of block |
+| One reviewed command is allowed for one rule | A configuration [exception](configuration.md#exceptions) | The exact matching finding is excepted until expiry |
+| Tests, review, or deployment verification completed | An evidence receipt | Visible verification context; never unblocks an ERROR |
+
+For everyday rule tuning, start with [Fix a false positive](guides/fix-a-false-positive.md).
 
 ## Approvals
 
 An approval lets a person allow one **class of action** in one repository for a
 limited time. While it's active, rules in that class report a warning that cites
 the approval instead of blocking.
+
+Run grants from your own interactive terminal after reviewing the operation.
+Check `agentlint approve list` first so an existing grant can be reused.
 
 ```bash
 agentlint approve grant git-push-protected --reason "hotfix 4.2.1" --ttl 30m
@@ -82,9 +94,10 @@ which repository, at which commit.
 When an agent finishes a recognized test command — `pytest`, `python -m pytest`,
 `uv run pytest`, `make test`, `npm`/`pnpm`/`yarn test`, `vitest`, `jest`,
 `go test`, `cargo test` — AgentLint writes a `test-run` receipt. Redirected runs
-(`uv run pytest -q > log 2>&1`, `| tee log`) count. `echo pytest` does not, and
-a run the agent reports as failed doesn't produce a receipt. Some agents don't
-report exit codes; those receipts say "completed, result not reported".
+(`uv run pytest -q > log 2>&1`) count. Piped logs count when pipefail is set
+successfully in the same shell call, as shown below. `echo pytest` does not,
+and a run the agent reports as failed doesn't produce a receipt. Some agents
+don't report exit codes; those receipts say "completed, result not reported".
 
 `drift-detector` uses receipts: a fresh one for the current commit, worktree and
 session, newer than the last edit, satisfies "run the tests before committing".
@@ -99,7 +112,7 @@ files does not advance the last code-edit timestamp.
 The file-write guard already permits scratch log destinations:
 
 ```bash
-uv run pytest -q 2>&1 | tee /private/tmp/test-evidence.log
+set -o pipefail && uv run pytest -q 2>&1 | tee /private/tmp/test-evidence.log
 ```
 
 A standalone `cat <<'EOF'` with one quoted delimiter is stdin data, not a

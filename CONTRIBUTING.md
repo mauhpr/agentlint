@@ -121,6 +121,18 @@ User docs live in [`docs/`](docs/README.md). `tests/test_docs.py` enforces:
 Update the docs in the same PR as the behavior change, and add an entry to
 `CHANGELOG.md`.
 
+Choose the right home for the change:
+
+- The root README explains the product and routes a first-time user to setup. Use absolute published URLs there so links work on GitHub and PyPI.
+- `docs/quickstart.md` takes a user through installation, observation, a first check, and a useful correction.
+- `docs/guides/` solves one concrete task. Include prerequisites, the change to make, the expected outcome, and a link to the owning reference.
+- `docs/coverage.md` owns the overview of integration and enforcement boundaries. Each agent page owns its precise tool matchers and response protocol.
+- `docs/rules.md` owns rule behavior. Preserve generated blocks and existing rule anchors; add examples and explain defaults outside generated sections.
+
+For a rule example, state the pack, event and default severity, show what triggers it, and show a correction or legitimate alternative. Distinguish warnings from blocks and post-tool feedback from prevention. Use synthetic data, never real credentials. Do not add host-version, speed, or detection guarantees without evidence.
+
+Add new user-facing pages to `mkdocs.yml` and `docs/llms.txt`. Plans under `docs/plans/` are excluded from the public site. Keep `docs/cli.md` generated; task walkthroughs belong in guides rather than edits to generated help text.
+
 ### Preview the documentation site
 
 The [documentation site](https://mauhpr.github.io/agentlint/) uses MkDocs Material.

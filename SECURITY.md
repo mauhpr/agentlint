@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 2.9.x   | Yes       |
-| < 2.9   | No        |
+| 2.10.x  | Yes       |
+| < 2.10  | No        |
 
 Security fixes are released as patch versions of the latest minor release.
 Upgrade with `agentlint update`.

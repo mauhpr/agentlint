@@ -1,6 +1,12 @@
+---
+description: Install AgentLint's Grok CLI hooks and verify that matching tool calls reach the local engine.
+---
+
 # Grok CLI
 
 AgentLint runs as Grok CLI command hooks, in the same format as Claude Code, that call `agentlint check --adapter grok`.
+
+Matching pre-tool hooks can deny an action on ERROR findings; post-tool hooks report what has already happened. Verify observation after setup and check the matchers below for the reported tool names. See [Coverage and limits](../coverage.md) and the [quickstart](../quickstart.md).
 
 ## Install
 

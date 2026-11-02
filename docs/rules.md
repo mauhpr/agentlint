@@ -1,12 +1,29 @@
+---
+description: Explore AgentLint's built-in rules, default severities, triggering examples, corrections, and coverage limits.
+---
+
 # Rules
 
-AgentLint ships 77 built-in rules in 8 packs. Every rule has a severity:
+AgentLint ships 77 built-in rules in 8 packs. Start with a rule ID from a finding, or choose the behavior you want to check:
+
+| Protect against | Start here | Default behavior |
+|-----------------|------------|------------------|
+| Credentials in source | [`no-secrets`](#no-secrets), [`no-env-commit`](#no-env-commit) | Block detected patterns and protected environment-file writes |
+| Rewriting shared Git history | [`no-force-push`](#no-force-push) | Block plain force pushes explicitly targeting `main` or `master`; other variants differ |
+| Accidental data loss | [`no-destructive-commands`](#no-destructive-commands) | Warn on common destructive commands; block listed catastrophic patterns |
+| Unreviewed pipeline changes | [`cicd-pipeline-guard`](#cicd-pipeline-guard) | Block matching pipeline-file edits |
+| Weakened tests or growing files | [`no-test-weakening`](#no-test-weakening), [`max-file-size`](#max-file-size) | Warn |
+| Infrastructure operations | [`production-guard`](#production-guard), [`cloud-resource-deletion`](#cloud-resource-deletion), [`dry-run-required`](#dry-run-required) | Opt-in, experimental `autopilot` pack |
+
+Every rule has a severity:
 
 - **ERROR** blocks the action before it runs (PreToolUse) or is reported as a failure.
 - **WARNING** is fed back to the agent as advice; the action proceeds.
 - **INFO** appears in the session report.
 
 Some rules emit more than one severity depending on what they find; their sections say so. `severity: strict` in `agentlint.yml` promotes warnings to errors, and `relaxed` demotes them to info.
+
+These are rule defaults. Blocking requires a matching pre-execution hook or a tool guardrail that honors the result. Post-tool findings arrive after execution, and MCP checks are advisory. See [Coverage and limits](coverage.md).
 
 To turn a rule off or tune it, see [Configuration](configuration.md#rules). To exempt one exact command for a limited time, see [exceptions](configuration.md#exceptions); to approve a class of action, see [approvals](approvals-and-evidence.md).
 
@@ -59,7 +76,19 @@ Core safety and hygiene rules for any stack. Always active.
 
 ### `cicd-pipeline-guard`
 
-Blocks modifications to CI/CD pipeline files (`.github/workflows/`, `.gitlab-ci.yml`, `Jenkinsfile`, etc.) without a session-level confirmation key. Prevents accidental pipeline changes during autonomous sessions.
+Blocks matching file-tool modifications to CI/CD pipeline files (`.github/workflows/`, `.gitlab-ci.yml`, `Jenkinsfile`, etc.). A pipeline edit can change what runs with your repository's CI credentials, so this check asks for a separate review.
+
+**Example:** an agent proposes an `Edit` to `.github/workflows/release.yml`. Under standard severity, the pre-tool finding is an ERROR and the matching hook denies the edit:
+
+```text
+[cicd-pipeline-guard] Modifying CI/CD pipeline file: .github/workflows/release.yml
+```
+
+For an intentional change, a person can issue a short-lived [`cicd-edit` approval](approvals-and-evidence.md#approvals). Keep unrelated code changes separate from the workflow edit. Custom integrations can also supply `session_state.approved_cicd_files`; this is an integration API, not a chat approval.
+
+**Scope:** matching Dockerfiles and Compose files produce a WARNING instead. The rule inspects reported file-tool paths; shell file writes need the optional [`no-bash-file-write`](#no-bash-file-write) rule as an additional check.
+
+**Config option:** `allowed_files` accepts glob patterns for files that may be edited without this rule firing. Treat those entries as ongoing policy exceptions.
 
 ### `cli-integration`
 
@@ -220,9 +249,19 @@ rules:
 
 Warns when a file crosses the line-count threshold. Only fires when a file **grows past** the limit — editing a pre-existing large file does not trigger. Shows `+N over` in the message with an actionable suggestion.
 
+**Example:** expanding a 490-line source file to 512 lines with the default 500-line limit yields a WARNING:
+
+```text
+[max-file-size] File has 512 lines (limit: 500, +12 over)
+  -> Remove 12 lines or split into smaller modules.
+```
+
+The action proceeds in standard mode. Split a distinct responsibility into another module, or set a project-specific limit when that is the better convention. Pre-tool checks can warn on proposed content; post-tool checks provide a fallback when resulting content is available. Neither is a byte-size limit.
+
 **Config options:**
 - `limit` — Maximum lines (default: `500`)
 - `allow_paths` — Skip this rule for matching files (e.g., `["**/hybrid_parser.py"]`)
+- `exempt_json_data` — Exempt `.json` files whose content parses as valid JSON (default: `true`). Set `false` to count their lines too. Other rules still inspect JSON content.
 
 ### `no-compromised-dependency`
 
@@ -243,6 +282,16 @@ Skips test files.
 *PreToolUse, WARNING/ERROR*
 
 Warns on destructive shell commands. Some patterns escalate to ERROR severity:
+
+**Example:** this proposed command receives a WARNING in standard mode; it is not automatically denied:
+
+```bash
+git reset --hard HEAD~1
+```
+
+The finding suggests `git stash` as an alternative. Preserve changes with a stash or use the repository's normal review workflow before deciding whether to discard work. For stricter project policy, `severity: strict` promotes warnings from ordinary rules. [Required workspace rules](configuration.md#workspace-policy) retain their native severity: requiring a warning rule does not turn it into a blocker.
+
+The examples in this section describe proposed commands. Do not execute destructive examples to test an installation; use the [quickstart](quickstart.md) or `agentlint test`.
 
 **WARNING:**
 - `rm -rf` (except safe build-artifact targets like `node_modules`, `dist`,
@@ -273,9 +322,41 @@ Warns on destructive shell commands. Some patterns escalate to ERROR severity:
 
 Blocks writing `.env`, `.env.local`, `.env.production`, and similar credential files. Also detects Bash commands that write to `.env` files (e.g. `echo "SECRET=val" > .env`, `cp .env.example .env`, `tee .env`, `sed -i ... .env`).
 
+**Example:** a proposed `Write` to `.env.local` produces an ERROR based on the target path, even if the proposed content contains no recognizable credential. Have the agent document the required variables in a template instead:
+
+```dotenv
+# .env.example
+SERVICE_API_KEY=
+```
+
+Paths ending in `.example`, `.template`, or `.sample` are exempt from this rule. A template containing an actual credential can still trigger `no-secrets`. Despite the rule's historical name, it checks writes; it does not scan Git's index or replace secret scanning in CI.
+
 ### `no-force-push`
 
-Blocks `git push --force` or `git push -f` to `main` or `master` branches.
+Blocks `git push --force` or `git push -f` explicitly targeting `main` or `master` branches.
+
+**Example:** the following proposed command produces an ERROR under standard severity:
+
+```bash
+git push --force origin main
+```
+
+Push normal changes to a feature branch and open a pull request instead:
+
+```bash
+git push -u origin feature/my-change
+```
+
+The exact variant matters:
+
+| Proposed push | Standard-severity finding |
+|---------------|---------------------------|
+| Plain force push explicitly targeting `main` or `master` | ERROR |
+| `--force-with-lease` explicitly targeting `main` or `master` | WARNING |
+| Plain force push without an explicit protected branch | WARNING |
+| `--force-with-lease` without an explicit protected branch | INFO |
+
+This is command-pattern inspection, not a query of Git's upstream configuration. Use server-side branch protection as well. A person can authorize an intentional operation with a scoped [`git-push-protected` approval](approvals-and-evidence.md#approvals), unless the rule is required by workspace or organization policy.
 
 ### `no-nvd-critical-cve-install`
 
@@ -290,6 +371,18 @@ Warns on direct `git push` to `main` or `master` branches (excluding force pushe
 ### `no-secrets`
 
 Blocks writes containing API keys, tokens, or passwords.
+
+**Example:** an agent proposes a `Write` to `client.py` assigning a non-placeholder literal credential to `api_key`. A detected secret assignment produces an ERROR and recommends environment variables. Correct the proposed source so the credential value stays outside it:
+
+```python
+import os
+
+api_key = os.environ["SERVICE_API_KEY"]
+```
+
+The environment lookup avoids the literal-assignment pattern; it does not create or validate the environment variable. Other findings can still apply to the file.
+
+The rule scans proposed `Write`/`Edit` content and reported shell commands for recognizable patterns. It is not a complete credential inventory, a runtime data-flow analysis, or proof that a file is safe to publish. Use a dedicated secret scanner in CI too.
 
 Detects patterns:
 - Stripe keys (`sk_live_`, `sk_test_`)
@@ -308,6 +401,7 @@ Detects patterns:
 
 **Config options:**
 - `extra_prefixes` — Additional token prefixes to detect (e.g. `["myco_secret_"]`)
+- `allow_paths` — Skip this rule for matching files, such as a narrowly scoped directory of synthetic fixtures. Review these paths as policy exceptions.
 
 ### `no-skip-hooks`
 
@@ -315,7 +409,25 @@ Warns when git commands use `--no-verify` or `--no-gpg-sign` flags to skip safet
 
 ### `no-test-weakening`
 
-Detects patterns that weaken test suites when writing to test files:
+Warns about patterns that weaken test suites when writing to recognized test paths. In standard mode this is advisory; strict mode promotes the warning to an ERROR.
+
+**Example:** replacing a meaningful test body with this proposed content triggers a warning:
+
+```python
+def test_total():
+    assert True
+```
+
+Keep an assertion against your application's behavior. Here `calculate_total` represents the project's own implementation:
+
+```python
+def test_total():
+    assert calculate_total([2, 3]) == 5
+```
+
+For a known unresolved defect, a reasoned `@pytest.mark.xfail(reason="issue-123")` avoids the missing-reason finding. A reason does not establish that the expected failure is justified; reviewers still decide that.
+
+Detects:
 - Skip markers (`@pytest.mark.skip`, `@unittest.skip`, `it.skip()`, `describe.skip()`)
 - Trivially passing assertions (`assert True`, `assertTrue(True)`, `expect(true).toBe(true)`)
 - Commented-out assertions (`# assert ...`, `// expect(...)`)
@@ -505,6 +617,20 @@ best-effort checks rather than crashing.
 
 Blocks SQL queries built via string interpolation (f-strings, `.format()`, `%` operator, concatenation).
 
+**Example:** in a reported write to a non-test Python file, this f-string matches the rule and produces an ERROR:
+
+```python
+query = f"SELECT * FROM users WHERE name = '{name}'"
+```
+
+Bind values through the database driver instead. For Python's `sqlite3` interface:
+
+```python
+cursor.execute("SELECT * FROM users WHERE name = ?", (name,))
+```
+
+Use your driver's parameter syntax. This rule uses text patterns; it does not determine whether an input is attacker-controlled or whether every SQL construction is safe. It skips test paths, `.sql` files, and comment lines.
+
 **Config options:**
 - `extra_keywords` — Additional SQL keywords to detect beyond `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE`
 
@@ -690,6 +816,20 @@ tools instead. Detects: `cat >`, `echo >`, `tee`, `sed -i`, `cp`, `mv`,
 `perl -pi`, `awk >`, `dd of=`, `python -c ... open(...).write()`, and
 heredocs.
 
+**Activation:** this ERROR rule belongs to the opt-in `security` pack. Add `security` to the packs you have chosen; for a project using only the core and security packs:
+
+```yaml
+packs: [security]
+```
+
+**Example:** a proposed shell command that overwrites a source file is denied:
+
+```bash
+printf 'ready\n' > app.py
+```
+
+Have the agent propose the source change through its native file-edit tool so file-oriented rules can inspect it. For a tool that legitimately writes logs or generated output, prefer a narrow `allow_paths` pattern to disabling the rule. The scratch-path and recognized-CLI exemptions below still apply; this rule is not a filesystem sandbox.
+
 For a simple, literal `python -c CODE` command, Python syntax is inspected
 without executing code or importing modules. `Path(...)` construction,
 `read_text()` / `read_bytes()`, and `open()` with its default mode or a literal
@@ -787,7 +927,7 @@ Opt-in and **experimental**: guardrails for agents that operate cloud and infras
 | [`system-scheduler-guard`](#system-scheduler-guard) | WARNING | PreToolUse | Warns on crontab, systemctl enable/disable, launchctl, and scheduler file writes |
 <!-- END GENERATED: pack-autopilot -->
 
-Claude Code subagents do not trigger the parent session's hooks; the autopilot pack's `subagent-safety-briefing` and `subagent-transcript-audit` rules partly compensate. See [Subagent safety](subagent-safety.md).
+The `subagent-safety-briefing` and `subagent-transcript-audit` rules add a notice and retrospective audit for supported Claude Code events. They do not establish whether a child tool call received a pre-execution check. See [Subagent safety](subagent-safety.md) for current hook behavior and verification limits.
 
 ### `bash-rate-limiter`
 
@@ -813,7 +953,17 @@ Warns when creating paid cloud resources (VMs, IPs, databases, clusters).
 
 ### `cloud-resource-deletion`
 
-Blocks AWS/GCP/Azure resource deletion commands unless a session-level confirmation key has been set.
+Blocks recognized AWS/GCP/Azure resource deletion commands. This ERROR rule is in the opt-in, experimental `autopilot` pack; it is not enabled by a default installation.
+
+**Example:** with `autopilot` active, a proposed deletion of a Cloud Run service matches the guard:
+
+```bash
+gcloud run services delete example-service --region us-central1
+```
+
+Inspect the resource and its dependencies before deciding on a deletion. For an intentional operation, a person can grant a short-lived [`cloud-delete` approval](approvals-and-evidence.md#approvals), optionally bound to the exact command. Custom integrations can also supply `session_state.confirmed_cloud_deletions` operation keys.
+
+Only listed command forms are detected. Keep cloud IAM restrictions and provider-side safeguards in place; delegating deletion to another program can escape pattern inspection.
 
 **Config options:**
 - `allowed_ops` — List of allowed deletion operations (bypass guard)
@@ -837,7 +987,15 @@ Blocks privileged Docker containers (ERROR); warns on volume deletion and force-
 
 ### `dry-run-required`
 
-Requires `--dry-run` or `--check` flags for terraform, kubectl, ansible, and helm apply/install/upgrade commands.
+Checks recognized infrastructure apply commands for preview flags or a preceding preview in the same parsed command. This ERROR rule requires the opt-in, experimental `autopilot` pack.
+
+**Example:** a proposed `kubectl apply -f deployment.yaml` produces an ERROR without a dry-run flag. Preview its changes instead:
+
+```bash
+kubectl apply --dry-run=client -f deployment.yaml
+```
+
+The parser recognizes `--check` for Ansible, dry-run forms for Kubernetes and Helm, and preceding `terraform plan` or `pulumi preview` operations within the same parsed command. It does not prove that a preview was reviewed, that it succeeded, or that a later apply uses an unchanged plan. A preview from a separate earlier tool call is not a verification receipt for this rule.
 
 **Config options:**
 - `bypass_tools` — List of tools that bypass the dry-run requirement
@@ -861,9 +1019,22 @@ Warns on `apt`/`dpkg`/`yum`/`dnf`/`pacman` usage inside chroot environments.
 
 Blocks commands targeting production environments (database connections, cloud CLI with production project/host patterns).
 
+**Activation:** opt-in, experimental `autopilot` pack; default finding is ERROR.
+
+**Example:** an attempted mutating command with an AWS profile whose name starts with `prod` matches the production-target pattern:
+
+```bash
+aws s3api create-bucket --bucket example-bucket --profile production
+```
+
+Use the intended development account for development work, or have a person review and scope a [`production-access` approval](approvals-and-evidence.md#approvals). An `allowed_projects` or `allowed_hosts` entry is an ongoing exception to this rule, not evidence that the target is safe.
+
+This guard infers production from names in the command; it does not discover your cloud inventory. Recognized read-only cloud and PostgreSQL inspections are exempt. Matching staging/test context downgrades a finding to WARNING unless the rule's `strict_mode` is enabled.
+
 **Config options:**
 - `allowed_projects` — Cloud project names that are allowed (bypass guard)
 - `allowed_hosts` — Database hostnames that are allowed
+- `strict_mode` — Keep matching staging/test contexts at ERROR rather than downgrading them (default: `false`)
 
 ### `remote-boot-partition-guard`
 

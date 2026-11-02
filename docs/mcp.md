@@ -1,6 +1,10 @@
+---
+description: Preview file content, commands, and patches through AgentLint's advisory MCP tools before acting.
+---
+
 # MCP server
 
-`agentlint-mcp` exposes the AgentLint rule engine over the [Model Context Protocol](https://modelcontextprotocol.io) (stdio transport). An agent can check content, a patch or an event before acting, fix every finding in one pass, and avoid repeated hook blocks.
+`agentlint-mcp` exposes the AgentLint rule engine over the [Model Context Protocol](https://modelcontextprotocol.io) (stdio transport). An agent can check proposed content, a patch, or an event, then revise its next action using the returned findings.
 
 Install and host configuration (Claude Code, Claude Desktop, Cursor, Gemini CLI, Codex): [MCP hosts](agents/mcp-hosts.md).
 
@@ -10,6 +14,8 @@ Install and host configuration (Claude Code, Claude Desktop, Cursor, Gemini CLI,
 - **MCP** advises. The agent calls it when it chooses to.
 
 Use both: MCP to pre-check, hooks as the safety net. MCP checks and hook checks run independently; a clean MCP result does not stop a hook from blocking if the content, tool or event differs.
+
+For a first check, use the data-only example in [MCP hosts](agents/mcp-hosts.md#verify). For the full enforcement boundary, read [Coverage and limits](coverage.md).
 
 ## Project and session
 
@@ -153,7 +159,7 @@ ERROR-severity findings are never suppressed: the id is stored, but the engine i
 
 ## Recipes
 
-**Pre-check a write.** Call `check_content(content=code, file_path="src/app.py")`, fix every finding, re-check, then write. The PreToolUse hook passes on the first try.
+**Pre-check a write.** Call `check_content(content=code, file_path="src/app.py")`, address its findings, then re-check the proposal. The native hook still evaluates the actual action independently; its input, session state, or active policy can produce additional findings.
 
 **Pre-check a command.** `check_content(content="docker rm -f $(docker ps -aq)", file_path="", tool_name="Bash")`.
 

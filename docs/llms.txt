@@ -5,6 +5,7 @@
 ## Getting started
 - [Overview](https://mauhpr.github.io/agentlint/)
 - [Quickstart](https://mauhpr.github.io/agentlint/quickstart/)
+- [Coverage and security boundary](https://mauhpr.github.io/agentlint/coverage/)
 - [Integrations](https://mauhpr.github.io/agentlint/#agents)
 
 ## Native agent guides
@@ -12,12 +13,33 @@
 - [Codex](https://mauhpr.github.io/agentlint/agents/codex/)
 - [Cursor](https://mauhpr.github.io/agentlint/agents/cursor/)
 - [Gemini CLI](https://mauhpr.github.io/agentlint/agents/gemini/)
+- [Continue](https://mauhpr.github.io/agentlint/agents/continue/)
+- [Kimi Code CLI](https://mauhpr.github.io/agentlint/agents/kimi/)
+- [Grok CLI](https://mauhpr.github.io/agentlint/agents/grok/)
+
+## Other integrations
+- [OpenAI Agents SDK](https://mauhpr.github.io/agentlint/agents/openai-agents/) — attach guardrails to supported tools
+- [MCP hosts](https://mauhpr.github.io/agentlint/agents/mcp-hosts/) — advisory, on-demand checks
+- [Generic integration](https://mauhpr.github.io/agentlint/agents/generic/) — callers enforce returned decisions
+
+## Task guides
+- [Protect main](https://mauhpr.github.io/agentlint/guides/protect-main/)
+- [Fix a false positive](https://mauhpr.github.io/agentlint/guides/fix-a-false-positive/)
+- [Run linters and formatters](https://mauhpr.github.io/agentlint/guides/run-linters/)
+- [Share required rules](https://mauhpr.github.io/agentlint/guides/shared-policy/)
 
 ## Reference
 - [Rules](https://mauhpr.github.io/agentlint/rules/)
 - [Configuration](https://mauhpr.github.io/agentlint/configuration/)
+- [Approvals and evidence](https://mauhpr.github.io/agentlint/approvals-and-evidence/)
 - [Diagnostics](https://mauhpr.github.io/agentlint/diagnostics/)
 - [CI](https://mauhpr.github.io/agentlint/ci/)
 - [CLI](https://mauhpr.github.io/agentlint/cli/)
 - [Optional cloud and privacy](https://mauhpr.github.io/agentlint/agentchute/)
+
+## Extending AgentLint
+- [Custom rules](https://mauhpr.github.io/agentlint/custom-rules/)
+- [Custom adapters](https://mauhpr.github.io/agentlint/custom-adapters/)
+- [Architecture](https://mauhpr.github.io/agentlint/architecture/)
+- [Subagent safety](https://mauhpr.github.io/agentlint/subagent-safety/)
 - [Source](https://github.com/mauhpr/agentlint)

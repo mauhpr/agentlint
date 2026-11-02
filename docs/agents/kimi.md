@@ -1,6 +1,12 @@
+---
+description: Connect Kimi Code CLI to AgentLint with TOML hooks and verify the installation before relying on it.
+---
+
 # Kimi Code CLI
 
 AgentLint runs as Kimi Code CLI hooks, written as `[[hooks]]` entries in Kimi's TOML config, that call `agentlint check --adapter kimi`.
+
+Matching pre-tool hooks can deny shell and file actions on ERROR findings; post-tool findings arrive after execution. Preview setup before changing a config that uses complex TOML: see the preservation limits under [Configuration notes](#configuration-notes). For the broader boundary, read [Coverage and limits](../coverage.md); for a first check and correction, use the [quickstart](../quickstart.md).
 
 ## Install
 

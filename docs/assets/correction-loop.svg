@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 440" role="img" aria-labelledby="title desc">
+  <title id="title">A blocked mistake becomes a useful correction</title>
+  <desc id="desc">An agent proposes a file write. AgentLint detects a credential and denies the action with feedback. The agent revises the proposal to read from the environment, and AgentLint checks it again.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M1 1 6 4 1 7" fill="none" stroke="#617368" stroke-width="1.5"/></marker>
+  </defs>
+  <rect width="1080" height="440" rx="16" fill="#f4f1e9"/>
+  <g font-family="Helvetica Neue,Helvetica,Arial,sans-serif">
+    <text x="40" y="45" font-size="12" letter-spacing="2" fill="#526357">THE AGENTLINT CORRECTION LOOP</text>
+    <text x="40" y="91" font-size="32" font-weight="600" fill="#20382b">A mistake. A reason. A better next step.</text>
+    <g transform="translate(40 128)">
+      <rect width="304" height="240" rx="8" fill="#fffdf8" stroke="#d8ddd4"/>
+      <text x="22" y="34" font-size="12" fill="#59675d">01 / PROPOSE</text>
+      <text x="22" y="78" font-size="21" font-weight="600" fill="#20382b">Write config.py</text>
+      <text x="22" y="111" font-size="16" fill="#59675d">A credential is in the proposal.</text>
+      <line x1="22" x2="282" y1="139" y2="139" stroke="#e3e5dc"/>
+      <text x="22" y="174" font-size="15" fill="#20382b">A supported pre-tool hook</text>
+      <text x="22" y="199" font-size="15" fill="#20382b">sends the action for inspection.</text>
+    </g>
+    <path d="M350 244 H366" fill="none" stroke="#617368" stroke-width="2" marker-end="url(#arrow)"/>
+    <g transform="translate(388 128)">
+      <rect width="304" height="240" rx="8" fill="#20382b"/>
+      <text x="22" y="34" font-size="12" fill="#c4d3c6">02 / CHECK</text>
+      <text x="22" y="78" font-size="21" font-weight="600" fill="#fffdf8">Blocked: no-secrets</text>
+      <text x="22" y="111" font-size="16" fill="#d8e1d7">The write does not run.</text>
+      <line x1="22" x2="282" y1="139" y2="139" stroke="#526357"/>
+      <text x="22" y="174" font-size="15" fill="#fffdf8">Use environment variables</text>
+      <text x="22" y="199" font-size="15" fill="#fffdf8">instead of hard-coded secrets.</text>
+    </g>
+    <path d="M698 244 H714" fill="none" stroke="#617368" stroke-width="2" marker-end="url(#arrow)"/>
+    <g transform="translate(736 128)">
+      <rect width="304" height="240" rx="8" fill="#fffdf8" stroke="#d8ddd4"/>
+      <text x="22" y="34" font-size="12" fill="#59675d">03 / REVISE</text>
+      <text x="22" y="78" font-size="20" font-weight="600" fill="#20382b">Read from the environment</text>
+      <text x="22" y="111" font-size="16" fill="#59675d">The agent revises its proposal.</text>
+      <line x1="22" x2="282" y1="139" y2="139" stroke="#e3e5dc"/>
+      <text x="22" y="174" font-size="15" fill="#20382b">AgentLint checks it again.</text>
+      <text x="22" y="199" font-size="15" fill="#20382b">Other active rules still apply.</text>
+    </g>
+    <text x="40" y="409" font-size="13" fill="#59675d">Illustration · standard severity · supported pre-tool integration · local evaluation</text>
+  </g>
+</svg>

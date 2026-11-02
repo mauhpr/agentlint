@@ -1,6 +1,14 @@
+---
+description: Connect AgentLint to Codex hooks, trust the integration, and verify shell and apply_patch checks.
+---
+
 # Codex CLI
 
 AgentLint runs as Codex native command hooks that check `Bash` commands and every file touched by `apply_patch`.
+
+Use this integration when you want checks to run automatically on matching Codex tool calls. ERROR findings can deny a proposed command or patch; post-tool feedback arrives after the action. Hook installation, feature enablement, and trust are separate steps: complete all three below before treating the integration as active. See [Coverage and limits](../coverage.md) for the boundary.
+
+New to AgentLint? The [quickstart](../quickstart.md) shows a complete first check and correction. This page covers Codex's activation steps and protocol details.
 
 ## Install
 

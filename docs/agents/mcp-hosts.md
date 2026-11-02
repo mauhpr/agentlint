@@ -1,8 +1,14 @@
+---
+description: Configure AgentLint's advisory MCP server in your host and verify a data-only rule check.
+---
+
 # MCP hosts
 
 AgentLint ships an MCP server, `agentlint-mcp` (stdio transport), that lets any MCP host check content, patches and events before acting. This page covers host configuration only; tools and resources are documented in [MCP](../mcp.md).
 
 The MCP server is advisory: the agent decides when to call it. For enforcement, also install the agent's hooks (see the other pages in this folder).
+
+Use MCP to ask for a check before a real edit, inspect available rules, or preview a patch. A host connection does not turn these checks into automatic interception. See [Coverage and limits](../coverage.md).
 
 ## Install
 
@@ -66,7 +72,19 @@ Replace the command and arguments in any of the JSON examples:
 
 ## Verify
 
-Ask the agent to call the `list_rules` tool, or to run `check_content` on `API_KEY = "sk_live_abc123def456ghi789"` with `file_path` `config.py`. It should return a `no-secrets` violation. Most hosts also list connected servers and their tools (for example, `/mcp` in Claude Code).
+Ask the agent to call `list_rules`, then evaluate a proposed environment-file write:
+
+```json
+{
+  "content": "# proposed local settings\n",
+  "file_path": ".env",
+  "tool_name": "Write"
+}
+```
+
+Send those arguments to `check_content`. With the default universal rules, it returns a `no-env-commit` ERROR. Changing `file_path` to `.env.example` avoids that rule. This checks data without writing either file; other configured rules still apply.
+
+Most hosts also list connected servers and their tools (for example, `/mcp` in Claude Code).
 
 `agentlint status` does not report MCP connections; it only covers hook-based agents.
 
