@@ -35,7 +35,7 @@ Merge the relevant command into `agentlint.yml`:
 ```yaml
 rules:
   cli-integration:
-    timeout: 15
+    timeout: 3
     severity: warning
     diff_only: true
     commands:
@@ -47,6 +47,9 @@ rules:
 `cli-integration` belongs to the default `universal` pack. No extra AgentLint package is required.
 The default tool filter is `Write` and `Edit`; the integration adapter maps supported native file tools to those names.
 Commands run from the project directory, and AgentLint shell-escapes placeholder values such as `{file.path}`.
+
+Keep the total check time below the host's post-tool hook timeout. Claude Code's native setup and marketplace plugin configure a 10-second `PostToolUse` timeout; the 3-second per-command limit above leaves room for AgentLint to start, run other rules, and return feedback.
+Matching commands run sequentially, so budget their combined time, including any formatter. Set an explicit timeout for each added command or retain the rule-level timeout when replacing the Ruff entry below. For slower checks, increase the host hook timeout as well as the command timeout, or run the checks separately in CI. If the host terminates the hook first, the agent may receive no linter findings.
 
 For ESLint, replace the command entry:
 

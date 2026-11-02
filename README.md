@@ -16,6 +16,8 @@ AgentLint checks proposed file changes and shell commands locally. It blocks det
 
 *Illustration with a supported pre-tool hook and standard policy. AgentLint evaluates the revised proposal again; it does not rewrite your code itself.*
 
+<a id="what-a-block-looks-like"></a>
+
 ## See the difference
 
 A coding agent proposes putting a credential in `config.py`. The `no-secrets` rule denies the write and returns a reason:
@@ -36,6 +38,8 @@ api_key = os.environ["SERVICE_API_KEY"]
 The credential finding is resolved. The revised action is checked against the active policy, and any other findings still apply.
 
 [Watch the 53-second product overview](https://mauhpr.github.io/agentlint/media/agentlint-demo.mp4). The demonstration evaluates synthetic proposed actions as data; it does not execute dangerous commands.
+
+<a id="install"></a>
 
 ## Get started
 
@@ -69,6 +73,8 @@ Look for a recent **observed** hook call from this project. A configuration file
 
 The [five-minute quickstart](https://mauhpr.github.io/agentlint/quickstart/) completes the first check and correction. Claude Code users can alternatively install the [marketplace plugin](https://github.com/mauhpr/agentlint-plugin); use the plugin or native setup to avoid duplicate hooks.
 
+<a id="what-it-checks"></a>
+
 ## What blocks, what warns
 
 With standard severity and the relevant pre-tool hook:
@@ -84,6 +90,8 @@ With standard severity and the relevant pre-tool hook:
 Some rules run after a tool call or at session end and cannot prevent an action that has already happened. Severity settings, approvals, exemptions, and the circuit breaker affect decisions. The [rule reference](https://mauhpr.github.io/agentlint/rules/) documents the exact behavior.
 
 **Integration matters.** Native hooks inspect the tools their host reports. The [OpenAI Agents SDK adapter](https://mauhpr.github.io/agentlint/agents/openai-agents/) must be attached to supported tools. The [MCP server](https://mauhpr.github.io/agentlint/agents/mcp-hosts/) provides on-demand checks and is advisory. See [coverage and limitations](https://mauhpr.github.io/agentlint/coverage/) before relying on an integration.
+
+<a id="configure"></a>
 
 ## Make it fit your project
 
@@ -107,6 +115,9 @@ An explicit `packs` list replaces stack detection. The `universal` and `quality`
 | Apply a shared policy across repositories | [Share required rules](https://mauhpr.github.io/agentlint/guides/shared-policy/) |
 | Enforce a convention specific to your codebase | [Write a custom rule](https://mauhpr.github.io/agentlint/custom-rules/) |
 
+<a id="day-to-day-commands"></a>
+<a id="more"></a>
+
 ## Use the same checks beyond the agent
 
 ```bash
@@ -117,15 +128,21 @@ agentlint evidence                      # inspect verification receipts
 
 CI checks file changes; it does not reconstruct or audit every shell command the agent ran. [CI setup](https://mauhpr.github.io/agentlint/ci/) · [CLI reference](https://mauhpr.github.io/agentlint/cli/)
 
+<a id="faq"></a>
+
 ## Local by default
 
 Hook checks run locally. You do not need an account or a network connection for the offline rules. Optional [AgentChute](https://mauhpr.github.io/agentlint/agentchute/) adds threat feeds, team policy, and visibility; feed-backed rules need that data. Cloud event delivery is opt-in and sends redacted summaries rather than file contents or full commands.
 
 AgentLint uses rules and heuristics. It can miss risky behavior, flag legitimate work, and be bypassed by a process with broad access. Keep code review, tests, CI, and least-privilege credentials in place. [Security model](https://mauhpr.github.io/agentlint/coverage/#security-boundary) · [Report a vulnerability](https://github.com/mauhpr/agentlint/security/advisories/new)
 
+<a id="contributing"></a>
+
 ## Contribute
 
 Start with [CONTRIBUTING.md](https://github.com/mauhpr/agentlint/blob/main/CONTRIBUTING.md). A regression case for a false positive or a missed detection is a useful first contribution. AgentLint includes 77 built-in rules in 8 packs; the [catalogue](https://mauhpr.github.io/agentlint/rules/) is generated in part from the code and checked in CI.
+
+<a id="license"></a>
 
 [Changelog](https://github.com/mauhpr/agentlint/blob/main/CHANGELOG.md) · [Issues](https://github.com/mauhpr/agentlint/issues) · [Security policy](https://github.com/mauhpr/agentlint/blob/main/SECURITY.md) · [MIT license](https://github.com/mauhpr/agentlint/blob/main/LICENSE)
 
