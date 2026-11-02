@@ -131,7 +131,7 @@ Choose the right home for the change:
 
 For a rule example, state the pack, event and default severity, show what triggers it, and show a correction or legitimate alternative. Distinguish warnings from blocks and post-tool feedback from prevention. Use synthetic data, never real credentials. Do not add host-version, speed, or detection guarantees without evidence.
 
-Add new user-facing pages to `mkdocs.yml` and `docs/llms.txt`. Plans under `docs/plans/` are excluded from the public site. Keep `docs/cli.md` generated; task walkthroughs belong in guides rather than edits to generated help text.
+Add new user-facing pages to `mkdocs.yml` and `docs/llms.txt`. Keep planning artifacts out of version control; `docs/plans/` is ignored and excluded from the public site. Keep `docs/cli.md` generated; task walkthroughs belong in guides rather than edits to generated help text.
 
 ### Preview the documentation site
 

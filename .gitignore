@@ -25,3 +25,6 @@ htmlcov/
 .smart-coding-cache/
 coverage.xml
 site/
+
+# Local planning artifacts are not part of the repository.
+/docs/plans/
