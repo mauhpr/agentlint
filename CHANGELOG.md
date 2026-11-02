@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+
+- Rework the README, documentation homepage, and quickstart around a proposed action, actionable feedback, and a corrected proposal.
+- Add integration coverage and task guides for branch protection, false positives, external linters, and shared policy.
+- Expand rule examples and clarify default warnings, blocking checks, optional packs, SDK/MCP boundaries, and subagent coverage.
+- Update supported-version information, package documentation links, and documentation contributor guidance.
+
 ## v2.10.1 (2026-10-24) — Command Intent and Verification Health
 
 ### Fixed

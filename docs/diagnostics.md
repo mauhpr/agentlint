@@ -1,37 +1,39 @@
+---
+description: Confirm AgentLint is receiving hooks, diagnose missing protection, preview patches, and inspect effective policy or cloud delivery.
+---
+
 # Hook and policy diagnostics
 
-`agentlint policy status` shows the cached policy version, active cached rule IDs,
-whether those rules are enforced, credential presence, and whether AgentChute
-connectivity has been checked. Add `--online` to make a read-only connection
-probe. A missing key stops refresh and event delivery but does not silently
-disable valid cached rules. Cache changes apply on the next hook invocation;
-restart the coding agent after changing environment variables it inherited.
+Start with the local question: **is AgentLint receiving tool calls in this project?**
+From the project root, run:
 
-To reproduce a hook result and save a minimized diagnostic bundle, pipe the
-original hook input to `agentlint check` with `--diagnostic-bundle`:
-
-```sh
-agentlint check --event PostToolUse --adapter codex \
-  --diagnostic-bundle /tmp/agentlint-diagnostic.json < hook-input.json
+```bash
+agentlint status
+agentlint doctor
 ```
 
-The bundle contains adapter and AgentLint versions, event and tool type, input
-field names, a redacted command operation and input hash, evaluated and fired rule IDs, and
-the Codex output validation result. It omits raw command arguments, prompts,
-file contents, paths, rule messages and credentials. Review the file before
-sharing it. Diagnostic files are written with owner-only permissions.
+`status` shows hook configuration, observation, and effective policy.
+`doctor` diagnoses common problems and is read-only by default.
+Installation alone does not prove protection: restart the agent, trust hooks
+where the agent requires it, make one tool call, and check for a recent
+observation in the selected project.
 
-New session recordings and AgentChute event summaries likewise omit raw Bash
-arguments, prompt text, file paths, search queries, URLs and task descriptions.
-Existing recordings made by older versions are **not** rewritten. Review or
-delete old files with `agentlint recordings list` and `agentlint recordings clear`.
+## Find the next step
 
-Read-only cloud detection accepts only simple allowlisted `gcloud` and `aws`
-inspection forms, including literal `env NAME=value` wrappers. PostgreSQL
-inspection through `psql -c` or a repository-local `psql -f` file is exempted
-from production targeting only when the script explicitly starts with
-`BEGIN READ ONLY`, contains only SELECT/SHOW/EXPLAIN SELECT statements, and
-ends with COMMIT or ROLLBACK. Unknown syntax remains checked.
+| Symptom | Check |
+|---|---|
+| Agent is not configured | Run its [setup guide](README.md#agents), then restart or reload it |
+| Configured but never observed | Review hook trust, the installed binary path, and the event matcher |
+| Observation is old or from another project | Make a tool call in this project and check `status` again |
+| Hook points to a removed virtual environment | Read `doctor`, then use `agentlint doctor --fix` to repair |
+| A legitimate edit is blocked | Read the rule and policy source, then [choose a narrow adjustment](guides/fix-a-false-positive.md) |
+| A linter finding appears after the write | This is post-tool feedback; it cannot undo the write |
+| MCP is connected but actions are not blocked | MCP checks are advisory; install native hooks for enforcement |
+
+`doctor --fix` changes configuration to repair supported problems; review its
+diagnosis before using it. For a different project, pass `--project-dir /path/to/repo`
+to either command. SDK and MCP integrations have their own verification steps;
+`status` reports hook-based agents.
 
 ## Coverage: configured, enabled, observed
 
@@ -57,8 +59,6 @@ wrapper already covers the platform. `status --json` emits the same data,
 including the effective policy layers (workspace, repository), the file that
 configured each rule, required rules and exception count.
 
-## Degraded cloud operation
-
 Status marks a configured hook with `!` when its heartbeat is missing, older
 than 24 hours, from another project, or its hooks feature is disabled. A recent
 heartbeat in another project does not prove coverage in the selected project.
@@ -69,6 +69,22 @@ selected project, and re-run status before relying on coverage.
 
 Status also states whether effective pre-tool errors block and warnings advise.
 Pack drift names the selected repository alongside the relative evidence paths.
+
+## Degraded cloud operation
+
+If you use the optional AgentChute service, inspect its cached policy first:
+
+```bash
+agentlint policy status
+agentlint policy explain
+```
+
+`policy status` shows the cached policy version, active cached rule IDs,
+whether those rules are enforced, credential presence, and whether connectivity
+has been checked. Add `--online` for a read-only connection probe.
+A missing key stops refresh and event delivery but does not silently disable
+valid cached rules. Cache changes apply on the next hook invocation; restart
+the agent after changing environment variables it inherited.
 
 `status` and `doctor` show the AgentChute delivery state as `healthy`, `off` or
 `degraded`, with pending count, the age of the oldest undelivered event,
@@ -122,10 +138,10 @@ the result; do not infer that the code failed its tests or that verification
 passed. Use the harness's supported approval/retry mechanism for sandbox
 restrictions. AgentLint does not grant OS permissions or implement that retry.
 
-Both commands list what is **still enforced locally**: pack rules, required
-workspace rules and the cached organization policy (or an explicit statement
-that no organization rules are cached). `doctor` is read-only by default; it
-refreshes the cloud policy only with `--online` or `--fix`.
+`status` and `doctor` list what is **still enforced locally**: pack rules,
+required workspace rules and the cached organization policy (or an explicit
+statement that no organization rules are cached). `doctor` is read-only by
+default; it refreshes the cloud policy only with `--online` or `--fix`.
 
 ## Patch previews
 
@@ -140,3 +156,37 @@ agentlint check-patch change.patch --project-dir . [--cwd subdir] [--json]
 
 It exits 1 when the patch would be denied. The MCP server exposes the same
 check as `check_patch`.
+
+## Diagnostic bundles
+
+To reproduce a hook result and save a minimized diagnostic bundle, pipe the
+original hook input to `agentlint check` with `--diagnostic-bundle`:
+
+```sh
+agentlint check --event PostToolUse --adapter codex \
+  --diagnostic-bundle /tmp/agentlint-diagnostic.json < hook-input.json
+```
+
+The bundle contains adapter and AgentLint versions, event and tool type, input
+field names, a redacted command operation and input hash, evaluated and fired
+rule IDs, and the Codex output validation result. It omits raw command
+arguments, prompts, file contents, paths, rule messages and credentials.
+Review the file before sharing it. Diagnostic files are written with
+owner-only permissions.
+
+New session recordings and AgentChute event summaries likewise omit raw Bash
+arguments, prompt text, file paths, search queries, URLs and task descriptions.
+Existing recordings made by older versions are **not** rewritten. Review or
+delete old files with `agentlint recordings list` and `agentlint recordings clear`.
+
+## Read-only infrastructure checks
+
+Read-only cloud detection accepts only simple allowlisted `gcloud` and `aws`
+inspection forms, including literal `env NAME=value` wrappers. PostgreSQL
+inspection through `psql -c` or a repository-local `psql -f` file is exempted
+from production targeting only when the script explicitly starts with
+`BEGIN READ ONLY`, contains only SELECT/SHOW/EXPLAIN SELECT statements, and
+ends with COMMIT or ROLLBACK. Unknown syntax remains checked.
+
+See [Configuration](configuration.md#shell-commands) for shell interpretation,
+or [Fix a false positive](guides/fix-a-false-positive.md) for a narrow adjustment.

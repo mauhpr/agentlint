@@ -44,7 +44,7 @@ Homepage = "https://github.com/mauhpr/agentlint"
 Repository = "https://github.com/mauhpr/agentlint"
 Issues = "https://github.com/mauhpr/agentlint/issues"
 Changelog = "https://github.com/mauhpr/agentlint/blob/main/CHANGELOG.md"
-Documentation = "https://github.com/mauhpr/agentlint/tree/main/docs"
+Documentation = "https://mauhpr.github.io/agentlint/"
 
 [project.scripts]
 agentlint = "agentlint.cli:main"

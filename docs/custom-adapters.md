@@ -1,3 +1,7 @@
+---
+description: Add an AgentLint adapter that translates a new host's events and returns decisions the host can honor.
+---
+
 # Writing a custom adapter
 
 An adapter connects one coding agent to AgentLint. This page is for contributors
@@ -6,10 +10,12 @@ AgentLint from your own tool without changing AgentLint, the
 [generic adapter](agents/generic.md) or the [MCP server](mcp.md) is usually
 enough.
 
-AgentLint 2.9.0 ships 10 adapters: `claude`, `cursor`, `codex`, `gemini`,
+AgentLint ships 10 adapters: `claude`, `cursor`, `codex`, `gemini`,
 `continue`, `kimi`, `grok`, `openai`, `mcp` and `generic`. They live in
 `src/agentlint/adapters/`. Read one of the hook-based ones (`gemini.py` is
 short) before starting.
+
+An adapter must preserve both directions of the contract: translate the tool input accurately, then return a decision the host actually honors. Use [Coverage and limits](coverage.md) to distinguish enforcement from advisory checks. The [architecture](architecture.md) explains the shared engine; this guide covers the integration points and tests for adding an adapter.
 
 ## What an adapter does
 
@@ -39,7 +45,7 @@ All abstract members:
 ### How `agentlint check` uses an adapter
 
 Hook-based agents run `agentlint check --adapter <name> --event <NativeEvent>`
-and send JSON on stdin. In 2.9.0 the `check` command:
+and send JSON on stdin. The `check` command:
 
 - calls `translate_event()` on the `--event` value. If that raises `ValueError`,
   it falls back to `AgentEvent.from_string()`, so generic values such as

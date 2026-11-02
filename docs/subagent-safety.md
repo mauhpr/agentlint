@@ -1,3 +1,7 @@
+---
+description: Verify Claude Code subagent hook coverage and understand AgentLint's supplemental briefings and retrospective audits.
+---
+
 # Subagent safety (Claude Code)
 
 > This page applies to **Claude Code only**. Subagents, `SubagentStart` /
@@ -7,18 +11,20 @@
 > in [docs/README.md](README.md).
 >
 > Hook behaviour for subagents depends on your Claude Code version. Check the
-> Claude Code hooks documentation for the version you run, and use
-> `agentlint status` to confirm which hook events reach AgentLint.
+> [Claude Code subagent documentation](https://code.claude.com/docs/en/sub-agents#define-hooks-for-subagents)
+> for the version you run, and use `agentlint status` to inspect observed hook events.
+
+Start with [Claude Code setup](agents/claude.md), then verify your subagent workflow separately. A check observed in the parent session does not establish that a particular child tool call was checked. The [coverage guide](coverage.md) explains what observation can and cannot prove.
 
 ## The limitation
 
-Claude Code's hook system fires on the **parent session only**. When a subagent is spawned (via the Agent tool), the subagent's Bash, Write, and Edit calls **do not trigger the parent's PreToolUse hooks**. This means AgentLint's blocking rules (no-secrets, production-guard, etc.) do not protect subagent actions in real time.
+Current Claude Code documentation says session-wide settings and plugin hooks also run for subagent tool calls. Frontmatter hooks add checks scoped to an individual agent. The older claim that parent hooks never run inside subagents does not describe the current documented behavior.
 
-This is a Claude Code architectural property, not an AgentLint bug. Each subagent runs in an isolated context with its own hook system.
+Actual AgentLint coverage still depends on the host version, trusted hook configuration, tool matchers, and events received. Do not use a lifecycle event such as `SubagentStart` as evidence that every later Bash or file action was intercepted.
 
 ## What AgentLint does
 
-AgentLint uses three mechanisms to address the subagent safety gap. The first
+AgentLint provides supplemental subagent mechanisms. The first
 two are rules in the `autopilot` pack, which is opt-in and experimental; add
 `autopilot` to `packs:` to enable them (see [`subagent-safety-briefing`](rules.md#subagent-safety-briefing) and
 [`subagent-transcript-audit`](rules.md#subagent-transcript-audit)).
@@ -31,7 +37,9 @@ When a subagent spawns, the `subagent-safety-briefing` rule injects a safety not
 - It should avoid destructive infrastructure commands without explicit user confirmation
 - Its actions will be audited on completion
 
-This is advisory — the subagent can still do anything, but it's aware of the constraints.
+The briefing is advisory. It does not deny actions; host permissions and matching tool hooks apply separately.
+
+The notice in AgentLint 2.10.1 retains conservative wording about missing real-time monitoring. It is a static rule message, not a runtime measurement of the host's hook coverage. Verify the installed hooks rather than treating that sentence as a coverage diagnosis.
 
 **What the subagent receives:**
 
@@ -46,7 +54,7 @@ will be audited on completion.
 
 ### 2. Post-hoc transcript audit (SubagentStop)
 
-When a subagent completes, the `subagent-transcript-audit` rule reads the subagent's JSONL transcript and scans all Bash commands for dangerous patterns:
+When a subagent completes, the `subagent-transcript-audit` rule reads an available JSONL transcript and checks Bash commands extracted from supported entries for dangerous patterns:
 
 - Destructive operations (rm -rf, DROP TABLE/DATABASE, terraform destroy)
 - Cloud resource deletion (AWS, GCP, Azure)
@@ -56,11 +64,11 @@ When a subagent completes, the `subagent-transcript-audit` rule reads the subage
 
 Findings appear as WARNING violations and are included in the session Stop report.
 
-**Important:** This is detective, not preventive. The actions have already happened. WARNING severity is honest about this limitation.
+The audit runs after execution and cannot prevent the recorded actions. Its WARNING severity reflects that timing.
 
 ### 3. AgentLint's own agents are protected
 
-The Claude Code plugin's agent definitions ([mauhpr/agentlint-plugin](https://github.com/mauhpr/agentlint-plugin): `agents/doctor.md`, `agents/fix.md`, `agents/security-audit.md`) include `PreToolUse` frontmatter hooks that run AgentLint's blocking rules inside the subagent context. This gives real-time blocking protection specifically for AgentLint's own subagents.
+The Claude Code plugin's agent definitions ([mauhpr/agentlint-plugin](https://github.com/mauhpr/agentlint-plugin): `agents/doctor.md`, `agents/fix.md`, `agents/security-audit.md`) include `PreToolUse` frontmatter hooks for their own tool calls. These are additional configured checks, alongside applicable session-wide hooks. They depend on the resolver working and the host accepting and running the hook definitions.
 
 ## Protecting your own subagents
 
@@ -94,10 +102,11 @@ hooks:
 
 ## Known limitations
 
-- **Built-in agents** (Explore, Plan, etc.) have no `.md` files — you cannot add frontmatter hooks to them. Safety briefing + transcript audit is the only protection.
-- **Third-party plugin agents** — same limitation. You cannot modify agents from plugins you don't control.
+- **Host behavior changes** — current session-wide hook behavior does not establish coverage in older Claude Code installations. Verify the version and the workflow you run.
+- **Built-in and third-party agents** — you may not control their frontmatter. Applicable session-wide hooks can still run; do not assume that a briefing or transcript audit is their only possible check.
+- **Frontmatter trust** — Claude Code can skip hooks in untrusted project agent definitions. Follow the host's trust instructions before relying on them.
 - **Transcript audit is post-hoc** — by the time the audit runs, the subagent's actions have already taken effect. WARNING severity reflects this honestly.
-- **Transcript format** — the JSONL structure may vary across Claude Code versions. The parser handles common formats defensively.
+- **Transcript availability** — auditing requires a readable transcript path from the host. Transcripts over 1 MiB are skipped, as are individual JSONL lines over 100,000 characters. Supported transcript shapes are scanned for Bash tool commands; a clean result is not proof that every action was examined.
 
 ## Session report
 

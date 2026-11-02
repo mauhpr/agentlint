@@ -1,6 +1,12 @@
+---
+description: Connect AgentLint to Claude Code hooks, verify observed tool calls, and understand blocking and advisory feedback.
+---
+
 # Claude Code
 
 AgentLint runs as a set of Claude Code command hooks that call `agentlint check` on tool calls, prompts and subagent events.
+
+Use this integration for automatic checks on matching reported tool calls. Pre-tool ERROR findings can deny an action; post-tool feedback arrives after execution. The [quickstart](../quickstart.md) shows a complete first check and correction; [Coverage and limits](../coverage.md) describes the enforcement boundary.
 
 ## Install
 
@@ -12,6 +18,8 @@ agentlint setup claude --global   # user:    ~/.claude/settings.json
 Setup merges AgentLint entries into the `hooks` key of the settings file and leaves your other hooks alone. Each hook command uses the absolute path of the `agentlint` binary found at install time. If the project has no `agentlint.yml`, setup also creates one. Use `--dry-run` to print the result without writing.
 
 Restart Claude Code in the project so it loads the new hooks.
+
+If you installed the [marketplace plugin](https://github.com/mauhpr/agentlint-plugin), use its hooks instead of also running `setup claude`. Installing both checks the same calls twice.
 
 ## Verify
 
@@ -42,7 +50,7 @@ How results reach Claude Code:
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
-      "permissionDecisionReason": "[no-secrets] Possible secret token detected (prefix 'sk_live_')\n  File: config.py\n  ..."
+      "permissionDecisionReason": "[no-env-commit] Writing to env file is blocked: .env"
     }
   }
   ```
@@ -58,7 +66,7 @@ How results reach Claude Code:
 - Project directory: `--project-dir`, then `AGENTLINT_PROJECT_DIR`, then `CLAUDE_PROJECT_DIR` (set by Claude Code), then the current directory.
 - Session state key: `AGENTLINT_SESSION_ID`, then `CLAUDE_SESSION_ID`, then the parent process ID.
 - The installed hooks do not pass `--adapter`; with no other agent's environment variables present, `agentlint check` uses the Claude adapter.
-- Whether a subagent's tool calls trigger the session's hooks depends on your Claude Code version; see [Subagent safety](../subagent-safety.md) for what AgentLint does about it.
+- Current Claude Code documentation describes session-wide hooks applying inside subagents. Verify your installed version and actual child workflow; a parent heartbeat alone does not establish child coverage. See [Subagent safety](../subagent-safety.md).
 
 ## Uninstall
 

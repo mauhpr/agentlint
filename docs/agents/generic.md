@@ -1,6 +1,12 @@
+---
+description: Integrate AgentLint through JSON on stdin or Python, then enforce its decisions in your own tool runner.
+---
+
 # Generic integration
 
 For an agent framework without a dedicated adapter, pipe a JSON description of each tool call to `agentlint check --adapter generic` and act on the JSON result, or call the rule engine from Python.
+
+Your runner owns enforcement: evaluate the proposed call first, refuse it when the result blocks, and execute only an allowed action. Sending data to AgentLint alone does not intercept a tool or prevent it from running. See [Coverage and limits](../coverage.md).
 
 ## Install
 
@@ -13,13 +19,15 @@ agentlint init          # writes agentlint.yml
 
 ## Verify
 
+Evaluate a proposed write to a protected environment file. This sends JSON data to AgentLint; it does not write the file:
+
 ```bash
-echo '{"tool_name": "Bash", "tool_input": {"command": "git push --force origin main"}}' \
+echo '{"tool_name": "Write", "tool_input": {"file_path": ".env", "content": "# proposed local settings"}}' \
   | agentlint check --adapter generic --event pre_tool_use --project-dir .
 echo "exit=$?"
 ```
 
-You should see `{"blocked": true, "violations": [...]}` and `exit=1`.
+With the default universal rules, you should see `{"blocked": true, "violations": [...]}` and `exit=1` because `no-env-commit` rejects the target path. Change the target to `.env.example` to avoid that rule; other configured rules still apply. Also verify that your runner skips its real write function for the blocked result.
 
 ## What is checked
 
@@ -48,20 +56,18 @@ You should see `{"blocked": true, "violations": [...]}` and `exit=1`.
     "blocked": true,
     "violations": [
       {
-        "rule_id": "no-secrets",
-        "message": "Possible secret token detected (prefix 'sk_live_')",
+        "rule_id": "no-env-commit",
+        "message": "Writing to env file is blocked: .env",
         "severity": "error",
-        "file_path": "config.py",
+        "file_path": ".env",
         "line": null,
-        "suggestion": "Use environment variables instead of hard-coded secrets.",
-        "operation": "Write",
-        "policy_source": "built-in universal pack; built-in defaults (no policy file)"
+        "suggestion": "Use .env.example for templates; keep real .env out of version control."
       }
     ]
   }
   ```
 
-  `operation` and `policy_source` appear only when known.
+  Additional `operation` and `policy_source` fields identify the reported action and active configuration layers when known. Their values depend on the invocation and project policy.
 - Exit 1 when any finding has `severity: "error"` (your integration should refuse the action); exit 0 for warnings and info only.
 - Exit 2 with a message on stderr for an invalid `agentlint.yml`.
 

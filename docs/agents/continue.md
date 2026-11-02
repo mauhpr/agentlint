@@ -1,6 +1,12 @@
+---
+description: Connect Continue to AgentLint, verify observed hook calls, and troubleshoot matching tool checks.
+---
+
 # Continue
 
 AgentLint runs as Continue command hooks in `.continue/settings.json`, using the same hook protocol as Claude Code.
+
+Matching pre-tool hooks can deny an action on ERROR findings. Post-tool hooks provide feedback after execution. Verify the actual hook calls in your installation rather than assuming that a saved config means checks are running. See [Coverage and limits](../coverage.md); the [quickstart](../quickstart.md) walks through a first check and correction.
 
 ## Install
 

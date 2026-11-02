@@ -1,8 +1,16 @@
+---
+description: Write, activate, and test a Python rule for your repository's conventions using AgentLint's shared rule engine.
+---
+
 # Custom rules
 
 You can add project-specific rules written in Python. Custom rules use the same
 `Rule` interface as the built-in rules and run in the same engine, for every
 supported agent.
+
+Use a custom rule for a convention specific to your repository, such as keeping database imports out of route handlers. First check whether a [built-in rule](rules.md) with different [configuration](configuration.md) already covers it. If an existing linter can perform the check, [run that linter after edits](guides/run-linters.md) instead of reimplementing it.
+
+The first example below advises after a write. The [blocking example](#a-blocking-rule) runs before a tool call. That event choice determines what the rule can prevent; see [Coverage and limits](coverage.md).
 
 ## Quick start
 
@@ -60,6 +68,20 @@ supported agent.
    agentlint list-rules --pack myproject
    agentlint doctor
    ```
+
+5. Try the convention through your agent's normal file-edit tool. In a route such as `app/routes/users.py`, a proposed import from the database layer produces a post-tool warning:
+
+   ```python
+   from database import session
+   ```
+
+   The warning explains that routes should use the repository layer. Correct the import to the equivalent operation in your application's repository module, for example:
+
+   ```python
+   from repositories.users import list_users
+   ```
+
+   This example rule recognizes one import string; it does not analyze Python's import graph. Its `POST_TOOL_USE` event means the first edit has already happened when the agent receives the warning. Choose `PRE_TOOL_USE` and inspect proposed content when the policy must prevent an edit.
 
 Rules whose `pack` is not in `packs:` are loaded but skipped. `agentlint doctor`
 reports these orphaned packs.

@@ -4,25 +4,31 @@ AgentLint reads `agentlint.yml` (or `agentlint.yaml`, `.agentlint.yml`) from the
 project root. `agentlint init` writes one with detected defaults. Without a file,
 AgentLint runs with built-in defaults.
 
+Start with stack detection and change only the rules that need tuning:
+
 ```yaml
-# agentlint.yml — a typical starting point
-severity: standard          # strict | standard | relaxed
-packs: [python, security]   # universal + quality are always added
+# agentlint.yml
+stack: auto
+severity: standard
 
 rules:
   max-file-size:
     limit: 400
-  no-destructive-commands:
-    allow_operations:
-      - { binary: rm, args_prefix: ["-rf", "build"] }
 ```
 
-Every rule and its options are listed in [Rules](rules.md). Commands are in the
-[CLI reference](cli.md).
+Subsequent checks load configuration again; ordinary policy edits do not require
+reinstalling hooks. Run `agentlint status` to see the project and policy layers
+in effect, then `agentlint doctor` to check for common mistakes.
+
+For a complete task, use [Fix a false positive](guides/fix-a-false-positive.md),
+[Protect main](guides/protect-main.md), [Run linters](guides/run-linters.md), or
+[Share a policy](guides/shared-policy.md). This page is the configuration reference;
+[Rules](rules.md) explains rule-specific behavior and options.
 
 ## Packs
 
-Rules are grouped into packs. `universal` and `quality` are always active.
+Rules are grouped into packs. `universal` and `quality` are enabled by default;
+`exclude_packs` can deliberately remove them.
 
 | Key | Effect |
 |-----|--------|
@@ -35,6 +41,11 @@ Stack detection enables `python` for `pyproject.toml`/`setup.py`, `frontend` for
 `package.json`, `react` when React is a dependency, and `seo` for SSR/SSG
 frameworks. An `AGENTS.md` can add packs too (see [AGENTS.md](#agentsmd-import)).
 `security` and `autopilot` are always opt-in.
+
+An explicit pack list is a choice to replace stack detection, not to extend it.
+For example, `packs: [python, security]` enables those packs plus the core packs,
+but does not automatically add frontend checks when the project also contains
+JavaScript. List all intended packs or use per-directory mappings below.
 
 Custom packs work the same way: name the pack in `packs:` and point
 `custom_rules_dir` at your rule files. See [Custom rules](custom-rules.md).
@@ -61,8 +72,11 @@ drift.
 | `strict` | WARNING becomes ERROR, INFO becomes WARNING. |
 | `relaxed` | WARNING becomes INFO. |
 
-Only ERROR findings block. Warnings and info are returned to the agent as
-advice, on every platform.
+An ERROR can block a proposed action when the integration provides a pre-tool
+enforcement hook. Post-tool findings cannot undo an action, and MCP checks are
+advisory. Warnings and info provide feedback; see the [integration guides](README.md#agents)
+for each agent's delivery mechanism. Required workspace and organization rules
+retain their own severity rather than following this setting.
 
 ## Rules
 
@@ -237,14 +251,19 @@ workspace:
   required_rules: [no-secrets, no-env-commit, no-force-push, cloud-resource-deletion]
 ```
 
-Required rules stay enabled and blocking even if a repository disables them,
-relaxes severity, ignores paths or uses inline ignores; a failure while
-evaluating one also blocks. Per-rule path exemptions still apply, so review them
-as policy decisions. A missing, invalid or shadowed workspace file fails closed.
-This is local policy, not a tamper-proof sandbox.
+Required rules stay enabled and retain their native severity even if a repository
+disables them, changes severity mode, or uses global or inline ignores. An ERROR
+remains blocking on a supported pre-tool hook; requiring a WARNING rule does not
+promote it to ERROR. A failure while evaluating a required rule also blocks.
+Per-rule path exemptions still apply, so review them as policy decisions.
+A missing, invalid or shadowed workspace file fails closed for a project inside
+its directory. This is local policy, not a tamper-proof sandbox.
 
 `agentlint status` shows the layers in effect, and each denial names the layer
 that made the rule active.
+
+For setup, composition examples, and verification across repositories, follow
+[Share a policy across repositories](guides/shared-policy.md).
 
 ## Monorepos
 

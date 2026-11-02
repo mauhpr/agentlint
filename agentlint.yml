@@ -17,6 +17,13 @@ rules:
       - "**/README.md"
       - "CHANGELOG.md"
       - "**/CHANGELOG.md"
+      # Documentation pages containing synthetic detection examples.
+      - "docs/rules.md"
+      - "docs/agents/generic.md"
+      - "docs/agents/claude.md"
+      - "docs/agents/mcp-hosts.md"
+      - "docs/quickstart.md"
+      - "docs/mcp.md"
       - "tests/**"
       - "**/tests/**"
       - "src/agentlint/packs/security/no_leaked_secret_pattern.py"

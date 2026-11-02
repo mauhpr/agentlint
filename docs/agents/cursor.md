@@ -1,6 +1,14 @@
+---
+description: Install AgentLint's Cursor hooks and distinguish pre-execution decisions from post-edit feedback.
+---
+
 # Cursor
 
 AgentLint runs as Cursor hooks (`hooks.json`) that call `agentlint check --adapter cursor` on tool calls, shell commands, file edits, prompts and subagents.
+
+Pre-execution hooks can deny matching tool calls on ERROR findings. `afterFileEdit` feedback arrives after the file has changed; it cannot undo the edit. The configured hook matchers below define which calls AgentLint receives. See [Coverage and limits](../coverage.md).
+
+Follow the [quickstart](../quickstart.md) for a first check and correction, then use this page to confirm Cursor's hook coverage.
 
 ## Install
 

@@ -1,6 +1,12 @@
+---
+description: Install and verify AgentLint's Gemini CLI hooks for reported shell commands and file changes.
+---
+
 # Gemini CLI
 
 AgentLint runs as Gemini CLI command hooks in `settings.json` that call `agentlint check --adapter gemini`.
+
+The `BeforeTool` hook can deny matching shell and file actions on ERROR findings. `AfterTool` feedback is retrospective. Restart Gemini and confirm an observed hook call after setup; a settings file alone does not prove enforcement. See [Coverage and limits](../coverage.md) and the [quickstart](../quickstart.md).
 
 ## Install
 

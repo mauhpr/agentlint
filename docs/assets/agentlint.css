@@ -65,10 +65,24 @@ html { scroll-padding-top: 5rem; }
 .agentlint-path { padding: 1.4rem; border: 1px solid #eaeaea; border-radius: 8px; background: #fffdf8; }
 .md-typeset .agentlint-path h3 { margin-top: 0; }
 .agentlint-path p:last-child { margin-bottom: 0; }
+.agentlint-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin: 1.5rem 0; }
+.agentlint-step { min-width: 0; padding: 1.15rem; border: 1px solid #d8ddd4; border-radius: 6px; background: #fffdf8; }
+.agentlint-step-number { display: block; color: #59675d; font-size: .58rem; font-weight: 650; letter-spacing: .1em; }
+.md-typeset .agentlint-step h3 { margin: 1rem 0 .65rem; font-size: .88rem; line-height: 1.35; }
+.md-typeset .agentlint-step p { font-size: .75rem; line-height: 1.6; margin-bottom: 0; }
+.agentlint-step--decision { background: #20382b; border-color: #20382b; color: #fffdf8; }
+.agentlint-step--decision .agentlint-step-number { color: #c4d3c6; }
+.md-typeset .agentlint-step--decision h3 { color: #fffdf8; }
+.agentlint-step--decision code { color: #fffdf8; background: #3b5142; }
 .md-typeset .agentlint-boundary { padding: 1.2rem 0; border-top: 1px solid #eaeaea; border-bottom: 1px solid #eaeaea; color: #59675d; }
 
 @media (max-width: 76.1875em) {
   .md-nav--primary .md-nav__title[for="__drawer"] { background: #f4f1e9; color: #20382b; }
+}
+@media (max-width: 760px) {
+  .agentlint-flow { grid-template-columns: 1fr; }
+  .agentlint-step { padding: 1rem 1.2rem; }
+  .md-typeset .agentlint-step h3 { margin-top: .6rem; }
 }
 @media (max-width: 600px) {
   .md-main__inner { margin-top: 1.25rem; }

@@ -1,3 +1,7 @@
+---
+description: Understand AgentLint's optional cloud feeds, team policy, redacted event summaries, and offline behavior.
+---
+
 # AgentChute (optional cloud)
 
 AgentLint works fully offline. AgentChute is an optional hosted service that
@@ -12,6 +16,8 @@ adds two things for teams:
   machine (organization rules can't be disabled or excepted locally).
 
 Nothing is sent unless you opt in with a team key.
+
+You can finish the [quickstart](quickstart.md), tune local policy, and use native hooks without an account. Choose AgentChute when you need its feeds or shared team visibility. Enabling the local `security` or `autopilot` packs does not by itself enable AgentChute; [local and cloud coverage](coverage.md) are separate choices.
 
 ## Enable
 
