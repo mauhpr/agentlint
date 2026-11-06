@@ -52,7 +52,7 @@ _CURSOR_TOOL_MAP: dict[str, NormalizedTool] = {
 
 def _build_hooks(cmd: str) -> dict:
     """Build the Cursor hooks.json configuration."""
-    return {
+    config = {
         "version": 1,
         "hooks": {
             "preToolUse": [
@@ -115,6 +115,23 @@ def _build_hooks(cmd: str) -> dict:
             ],
         },
     }
+
+    for native, canonical in [("sessionStart", "check"), ("postToolUseFailure", "observe")]:
+        config["hooks"][native] = [
+            {
+                "_agentlint": "v2",
+                "command": f"{cmd} {canonical} --event {native} --adapter cursor",
+                "timeout": 5,
+            }
+        ]
+    config["hooks"]["postToolUse"].append(
+        {
+            "_agentlint": "v2",
+            "command": f"{cmd} observe --event postToolUse --adapter cursor",
+            "timeout": 5,
+        }
+    )
+    return config
 
 
 def _hooks_path(scope: str, project_dir: str | None = None) -> Path:

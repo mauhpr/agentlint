@@ -96,6 +96,8 @@ class TestHooksPath:
 
 class TestBuildHooks:
     EXPECTED_EVENTS = {
+        "SessionStart",
+        "PostToolUseFailure",
         "PreToolUse",
         "PostToolUse",
         "UserPromptSubmit",

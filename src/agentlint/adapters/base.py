@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import suppress
 from typing import Any
 
 from agentlint.formats.base import OutputFormatter
@@ -75,3 +76,39 @@ class AgentAdapter(ABC):
         scope: str = "project",
     ) -> None:
         """Remove AgentLint hooks from the agent's configuration."""
+
+    def observe_activity(
+        self,
+        event: AgentEvent | str,
+        raw_payload: dict,
+        project_dir: str | None = None,
+        *,
+        blocked_rules: tuple[str, ...] = (),
+    ) -> None:
+        """Observe host-reported lifecycle metadata; never approve or execute a tool."""
+        from agentlint.activity import observe
+        from agentlint.adapters.normalize import activity_payload
+        from agentlint.models import to_hook_event
+
+        if isinstance(event, str):
+            with suppress(ValueError):
+                event = self.translate_event(event)
+        observe(
+            activity_payload(self, raw_payload),
+            event=to_hook_event(event).value,
+            project_dir=project_dir or self.resolve_project_dir(),
+            platform=self.platform_name,
+            blocked_rules=blocked_rules,
+        )
+
+    def activity_status(
+        self, project_dir: str | None = None, *, session_id: str | None = None
+    ) -> dict:
+        """Read local lifecycle observations for this adapter without changing host state."""
+        from agentlint.activity import snapshot
+
+        return snapshot(
+            project_dir or self.resolve_project_dir(),
+            session_id=session_id,
+            platform=self.platform_name,
+        )

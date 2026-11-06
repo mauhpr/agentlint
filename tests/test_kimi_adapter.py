@@ -122,6 +122,8 @@ class TestBuildHooks:
             "SubagentStop",
             "Notification",
             "Stop",
+            "SessionStart",
+            "PostToolUseFailure",
         }
 
     def test_embeds_adapter_flag(self) -> None:

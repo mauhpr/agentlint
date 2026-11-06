@@ -4,6 +4,8 @@ description: Connect Kimi Code CLI to AgentLint with TOML hooks and verify the i
 
 # Kimi Code CLI
 
+[Host activity status](../diagnostics.md#host-activity-and-pending-approvals) recognizes typed `permission_prompt` notifications and Kimi tool-call IDs. An agent name is a label, not a unique child ID.
+
 AgentLint runs as Kimi Code CLI hooks, written as `[[hooks]]` entries in Kimi's TOML config, that call `agentlint check --adapter kimi`.
 
 Matching pre-tool hooks can deny shell and file actions on ERROR findings; post-tool findings arrive after execution. Preview setup before changing a config that uses complex TOML: see the preservation limits under [Configuration notes](#configuration-notes). For the broader boundary, read [Coverage and limits](../coverage.md); for a first check and correction, use the [quickstart](../quickstart.md).
@@ -35,6 +37,8 @@ The `kimi` line reports configured -> enabled -> observed. Make one tool call in
 | `SubagentStart` | all | `agentlint check --event SubagentStart --adapter kimi` |
 | `SubagentStop` | all | `agentlint check --event SubagentStop --adapter kimi` |
 | `Notification` | all | `agentlint check --event Notification --adapter kimi` |
+| `SessionStart` | all | `agentlint check --event SessionStart --adapter kimi` |
+| `PostToolUse` / `PostToolUseFailure` (passive) | all | `agentlint observe --event <event> --adapter kimi` |
 | `Stop` | all | `agentlint report --adapter kimi` |
 
 Kimi uses the Claude Code output format: a PreToolUse block is exit 0 with `hookSpecificOutput.permissionDecision: "deny"`; PostToolUse findings arrive as `additionalContext` (plus `"decision": "block"` for warnings and errors, and exit 2 for errors); other events with an ERROR exit 2 with a `systemMessage`. See [Claude Code](claude.md#what-is-checked).

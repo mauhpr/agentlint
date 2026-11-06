@@ -9,13 +9,19 @@ from agentlint.models import AgentEvent, Severity, Violation, to_hook_event
 
 
 class ClaudeHookFormatter(OutputFormatter):
-    """Formats violations for the Claude Code hook protocol.
+    """Format Claude-compatible decisions and advisory context."""
 
-    Produces JSON output that Claude Code interprets as:
-    - hookSpecificOutput with permissionDecision="deny" for PreToolUse blocking
-    - hookSpecificOutput with additionalContext for advisory violations
-    - systemMessage for user-visible events (Stop, Notification, etc.)
-    """
+    def add_activity_context(self, output: str | None, event: AgentEvent, message: str) -> str:
+        if event in {AgentEvent.SESSION_START, AgentEvent.USER_PROMPT}:
+            payload = json.loads(output) if output else {}
+            specific = payload.setdefault(
+                "hookSpecificOutput", {"hookEventName": to_hook_event(event).value}
+            )
+            specific["additionalContext"] = "\n".join(
+                filter(None, [specific.get("additionalContext"), message])
+            )
+            return json.dumps(payload)
+        return super().add_activity_context(output, event, message)
 
     def exit_code(self, violations: list[Violation], event: AgentEvent | str = "") -> int:
         """Return exit code for Claude Code hook protocol.

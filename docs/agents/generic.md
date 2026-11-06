@@ -4,6 +4,8 @@ description: Integrate AgentLint through JSON on stdin or Python, then enforce i
 
 # Generic integration
 
+The shared [host activity API](../diagnostics.md#host-activity-and-pending-approvals) accepts normalized lifecycle events. Applications must forward real events and stable session/call identifiers; AgentLint never issues approvals or replays commands.
+
 For an agent framework without a dedicated adapter, pipe a JSON description of each tool call to `agentlint check --adapter generic` and act on the JSON result, or call the rule engine from Python.
 
 Your runner owns enforcement: evaluate the proposed call first, refuse it when the result blocks, and execute only an allowed action. Sending data to AgentLint alone does not intercept a tool or prevent it from running. See [Coverage and limits](../coverage.md).

@@ -4,6 +4,8 @@ description: Configure AgentLint's advisory MCP server in your host and verify a
 
 # MCP hosts
 
+The read-only [`get_activity()` tool](../mcp.md#get_activity) exposes worktree-scoped observations from native hooks or the [shared host activity API](../diagnostics.md#host-activity-and-pending-approvals). MCP cannot automatically observe another tool's approval queue; absent telemetry is unknown.
+
 AgentLint ships an MCP server, `agentlint-mcp` (stdio transport), that lets any MCP host check content, patches and events before acting. This page covers host configuration only; tools and resources are documented in [MCP](../mcp.md).
 
 The MCP server is advisory: the agent decides when to call it. For enforcement, also install the agent's hooks (see the other pages in this folder).

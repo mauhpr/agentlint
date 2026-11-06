@@ -104,6 +104,24 @@ def _build_hooks(cmd: str) -> list[dict]:
             "command": f"{cmd} report --adapter kimi",
             "timeout": 30,
         },
+        {
+            "event": "SessionStart",
+            "_agentlint": "v2",
+            "command": f"{cmd} check --event SessionStart --adapter kimi",
+            "timeout": 5,
+        },
+        {
+            "event": "PostToolUseFailure",
+            "_agentlint": "v2",
+            "command": f"{cmd} observe --event PostToolUseFailure --adapter kimi",
+            "timeout": 5,
+        },
+        {
+            "event": "PostToolUse",
+            "_agentlint": "v2",
+            "command": f"{cmd} observe --event PostToolUse --adapter kimi",
+            "timeout": 5,
+        },
     ]
 
 

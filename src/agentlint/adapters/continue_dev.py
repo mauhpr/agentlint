@@ -64,7 +64,7 @@ _CONTINUE_TOOL_MAP: dict[str, NormalizedTool] = {
 
 def _build_hooks(cmd: str) -> dict:
     """Build the Continue hooks configuration for settings.json."""
-    return {
+    hooks = {
         "PreToolUse": [
             {
                 "matcher": "Bash|Edit|Write",
@@ -152,6 +152,34 @@ def _build_hooks(cmd: str) -> dict:
             }
         ],
     }
+
+    for event in ("PermissionRequest", "SessionStart", "PostToolUseFailure"):
+        command = "check" if event == "SessionStart" else "observe"
+        hooks[event] = [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "_agentlint": "v2",
+                        "command": f"{cmd} {command} --event {event} --adapter continue",
+                        "timeout": 5,
+                    }
+                ]
+            }
+        ]
+    hooks["PostToolUse"].append(
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "_agentlint": "v2",
+                    "command": f"{cmd} observe --event PostToolUse --adapter continue",
+                    "timeout": 5,
+                }
+            ]
+        }
+    )
+    return hooks
 
 
 def _settings_path(scope: str, project_dir: str | None = None) -> Path:

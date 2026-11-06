@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- Observe native approval waits and tool outcomes across all supported adapters,
+  with minimized worktree/session-scoped status and parent resume context.
+  Preserve pending observations, deduplicate invocation events, and report unknown
+  when host state or attribution is unavailable. Passive observers never grant,
+  cancel or replay requests. MCP gains the read-only `get_activity` tool.
+
 - Scope shell-write matches and scratch exemptions to individual operations;
   preserve actual writes while allowing compound `sed`/`rg` reads.
 - Distinguish Python mutations from inconclusive analysis, with source locations

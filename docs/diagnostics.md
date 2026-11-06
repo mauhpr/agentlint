@@ -138,11 +138,72 @@ the result; do not infer that the code failed its tests or that verification
 passed. Use the harness's supported approval/retry mechanism for sandbox
 restrictions. AgentLint does not grant OS permissions or implement that retry.
 
-Native approval waits belong to the host. AgentLint has no parent/child task
-monitor and cannot preserve, cancel or resume those requests. Treat child state
-as unknown unless the host explicitly reports it; a generic “running” label
-does not establish active execution. Keep the original pending request rather
-than interrupting it or creating a duplicate prompt.
+### Host activity and pending approvals
+
+`agentlint status` and `agentlint status --json` show worktree-scoped lifecycle
+observations across every supported adapter. States are last observed with
+timestamps, not a live execution guarantee: `agentlint_blocked`, `awaiting_approval`,
+`host_denied`, `tool_failed`, `running`, `completed`, `cancelled`, or `unknown`.
+A pre-tool call alone means unknown. Notification prose and generic agent
+“running” labels never establish approval or execution state.
+
+| Adapter | Native approval signal | Parent context |
+|---|---|---|
+| Codex | `PermissionRequest` | Startup/resume, prompt, tool result |
+| Claude Code | `PermissionRequest`, typed permission notification | Startup/resume, prompt, tool result |
+| Continue | `PermissionRequest`, if emitted by the installed version | Startup/resume, prompt, tool result |
+| Gemini | `Notification` with `ToolPermission` | Startup/resume, before-agent, tool result |
+| Kimi | `Notification` with `permission_prompt` | Startup/resume, prompt, tool result |
+| Cursor | No documented native approval-wait event | Startup/tool-result context; unknown without explicit integration data |
+| Grok | No typed native approval notification | Top-level context; unknown without explicit integration data |
+| OpenAI Agents SDK, MCP, generic | Application must report normalized events | Shared adapter API, status, MCP `get_activity()` |
+
+After installing the fix, rerun `agentlint setup <adapter>` and reload/trust
+changed hooks as required by the host. Policy checks remain in place. Passive
+observers also cover results outside the policy matcher and never return an
+approval or denial. Native dialogs and execution remain the host's responsibility.
+
+Records contain an action fingerprint and requesting agent/approval owner where
+available. Command values, output, notification text and transcripts are not
+stored. Missing attribution stays unknown. ID-less requests link only to a
+unique unresolved action matching available metadata. Ambiguous or late unmatched
+events remain unknown rather than resurrecting a completed wait.
+
+SQLite transactions preserve concurrent child observations. Parent resume reads
+existing records and advises keeping the original request rather than interrupting
+or resubmitting it. AgentLint preserves observations; it never creates, approves,
+cancels or replays a host request. Actual request survival and exactly-once execution
+belong to the host. Pending/ambiguous approval observations are retained; other
+history is bounded and status JSON reports truncation.
+
+All adapters expose a passive API for hosts without native hooks:
+
+```python
+from agentlint.adapters import get_adapter
+from agentlint.models import AgentEvent
+
+adapter = get_adapter("openai")  # also mcp, generic, or a native adapter
+adapter.observe_activity(
+    AgentEvent.PERMISSION_REQUEST,
+    {
+        "session_id": "parent-session",
+        "agent_id": "child-agent",
+        "tool_use_id": "original-call",
+        "tool_name": "Bash",
+        "tool_input": {"command": "pytest -q"},
+    },
+    project_dir="/workspace/project",
+)
+observed = adapter.activity_status("/workspace/project", session_id="parent-session")
+```
+
+Forward actual host events and eventual results. A guardrail preview or MCP
+content check cannot establish that another tool executed. Native references:
+[Codex](https://learn.chatgpt.com/docs/hooks),
+[Claude Code](https://code.claude.com/docs/en/hooks),
+[Cursor](https://cursor.com/docs/hooks),
+[Gemini](https://geminicli.com/docs/hooks/reference/),
+[Kimi](https://www.kimi-cli.com/en/customization/hooks.html).
 
 For test responses that expose `status: awaiting_approval`, `running`, `unknown`
 or a pending `session_id`, AgentLint does not record completed test evidence or

@@ -137,6 +137,18 @@ def get_session() -> str:
 
 
 @mcp.tool
+def get_activity() -> str:
+    """Read minimized host activity across adapters in this workspace.
+
+    States are last observed, not proof of current execution. Missing host
+    telemetry is unknown. This never approves, retries or cancels a request.
+    """
+    from agentlint.activity import snapshot
+
+    return json.dumps(snapshot(_adapter.resolve_project_dir()))
+
+
+@mcp.tool
 def suppress_rule(rule_id: str) -> str:
     """Suppress a warning rule for the rest of the session.
 

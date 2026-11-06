@@ -58,7 +58,7 @@ _CLAUDE_TOOL_MAP: dict[str, NormalizedTool] = {
 
 def _build_hooks(cmd: str) -> dict:
     """Build the agentlint hooks dict for Claude Code settings.json."""
-    return {
+    hooks = {
         "PreToolUse": [
             {
                 "matcher": "Bash|Edit|Write",
@@ -145,7 +145,59 @@ def _build_hooks(cmd: str) -> dict:
                 ],
             }
         ],
+        "PermissionRequest": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "_agentlint": "v2",
+                        "command": f"{cmd} observe --event PermissionRequest --adapter claude",
+                        "timeout": 5,
+                    }
+                ]
+            }
+        ],
+        "PostToolUseFailure": [
+            {
+                "matcher": "Bash|Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "_agentlint": "v2",
+                        "command": f"{cmd} check --event PostToolUseFailure --adapter claude",
+                        "timeout": 10,
+                    }
+                ],
+            }
+        ],
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "_agentlint": "v2",
+                        "command": f"{cmd} check --event SessionStart --adapter claude",
+                        "timeout": 5,
+                    }
+                ]
+            }
+        ],
     }
+
+    for event in ("PostToolUse", "PostToolUseFailure"):
+        hooks[event].append(
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "_agentlint": "v2",
+                        "command": f"{cmd} observe --event {event} --adapter claude",
+                        "timeout": 5,
+                    }
+                ]
+            }
+        )
+    return hooks
 
 
 def _settings_path(scope: str, project_dir: str | None = None) -> Path:

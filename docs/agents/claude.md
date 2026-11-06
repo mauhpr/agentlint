@@ -4,6 +4,8 @@ description: Connect AgentLint to Claude Code hooks, verify observed tool calls,
 
 # Claude Code
 
+[Host activity status](../diagnostics.md#host-activity-and-pending-approvals) distinguishes native approval waits from rule blocks and tool failures. Rerun setup to install the new observers.
+
 AgentLint runs as a set of Claude Code command hooks that call `agentlint check` on tool calls, prompts and subagent events.
 
 Use this integration for automatic checks on matching reported tool calls. Pre-tool ERROR findings can deny an action; post-tool feedback arrives after execution. The [quickstart](../quickstart.md) shows a complete first check and correction; [Coverage and limits](../coverage.md) describes the enforcement boundary.
@@ -39,6 +41,10 @@ The `claude` line reports configured -> enabled -> observed. "Observed" comes fr
 | `SubagentStart` | all | `agentlint check --event SubagentStart` |
 | `SubagentStop` | all | `agentlint check --event SubagentStop` |
 | `Notification` | all | `agentlint check --event Notification` |
+| `PermissionRequest` | all | `agentlint observe --event PermissionRequest --adapter claude` |
+| `SessionStart` | all | `agentlint check --event SessionStart --adapter claude` |
+| `PostToolUseFailure` | `Bash\|Edit\|Write` | `agentlint check --event PostToolUseFailure --adapter claude` |
+| `PostToolUse` / `PostToolUseFailure` (passive) | all | `agentlint observe --event <event> --adapter claude` |
 | `Stop` | all | `agentlint report` |
 
 How results reach Claude Code:

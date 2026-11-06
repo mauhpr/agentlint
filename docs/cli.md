@@ -29,6 +29,7 @@ Run `agentlint <command> --help` for the same text in your terminal.
 - [`agentlint init`](#agentlint-init) — Initialize AgentLint config in the project.
 - [`agentlint list-rules`](#agentlint-list-rules) — List all available rules.
 - [`agentlint login`](#agentlint-login) — Pair this machine with AgentChute through the dashboard.
+- [`agentlint observe`](#agentlint-observe) — Passively record native lifecycle state.
 - [`agentlint onboard`](#agentlint-onboard) — Guided setup: update, configure AgentChute, install hooks, and smoke test.
 - [`agentlint policy`](#agentlint-policy) — Inspect and refresh cached AgentChute workspace policy.
 - [`agentlint policy explain`](#agentlint-policy-explain) — Explain effective cached policy behavior.
@@ -387,6 +388,20 @@ Options:
   --project-dir TEXT    Project directory
   --manual              Paste a license key instead of using dashboard pairing
   --help                Show this message and exit.
+```
+
+## agentlint observe
+
+```text
+Usage: agentlint observe [OPTIONS]
+
+  Passively record native lifecycle state. Never decide an approval.
+
+Options:
+  --event TEXT        [required]
+  --adapter TEXT      Supported adapter name  [required]
+  --project-dir TEXT  Project directory
+  --help              Show this message and exit.
 ```
 
 ## agentlint onboard

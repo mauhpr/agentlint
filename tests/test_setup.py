@@ -220,6 +220,9 @@ class TestResolveCommand:
 
 class TestBuildHooks:
     EXPECTED_EVENTS = {
+        "PermissionRequest",
+        "PostToolUseFailure",
+        "SessionStart",
         "PreToolUse",
         "PostToolUse",
         "UserPromptSubmit",

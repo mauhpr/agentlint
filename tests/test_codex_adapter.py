@@ -94,6 +94,9 @@ class TestHooksPath:
 
 class TestBuildHooks:
     EXPECTED_EVENTS = {
+        "PermissionRequest",
+        "SubagentStart",
+        "SubagentStop",
         "PreToolUse",
         "PostToolUse",
         "UserPromptSubmit",
@@ -109,6 +112,11 @@ class TestBuildHooks:
         hooks = _build_hooks("agentlint")
         assert hooks["hooks"]["PreToolUse"][0]["matcher"] == "^(Bash|exec_command|apply_patch)$"
         assert hooks["hooks"]["PostToolUse"][0]["matcher"] == "^(Bash|exec_command|apply_patch)$"
+
+    def test_native_approval_hook_is_passive(self):
+        hooks = _build_hooks("agentlint")
+        command = hooks["hooks"]["PermissionRequest"][0]["hooks"][0]["command"]
+        assert command == "agentlint observe --event PermissionRequest --adapter codex"
 
     def test_embeds_adapter_flag(self) -> None:
         hooks = _build_hooks("agentlint")

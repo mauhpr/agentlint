@@ -129,6 +129,8 @@ class TestIsAgentlintEntry:
 
 class TestBuildHooks:
     EXPECTED_EVENTS = {
+        "postToolUseFailure",
+        "sessionStart",
         "preToolUse",
         "postToolUse",
         "beforeShellExecution",

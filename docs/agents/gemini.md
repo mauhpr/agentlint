@@ -4,6 +4,8 @@ description: Install and verify AgentLint's Gemini CLI hooks for reported shell 
 
 # Gemini CLI
 
+[Host activity status](../diagnostics.md#host-activity-and-pending-approvals) recognizes typed `ToolPermission` notifications. Missing action/child identifiers remain unknown.
+
 AgentLint runs as Gemini CLI command hooks in `settings.json` that call `agentlint check --adapter gemini`.
 
 The `BeforeTool` hook can deny matching shell and file actions on ERROR findings. `AfterTool` feedback is retrospective. Restart Gemini and confirm an observed hook call after setup; a settings file alone does not prove enforcement. See [Coverage and limits](../coverage.md) and the [quickstart](../quickstart.md).
@@ -36,6 +38,8 @@ The `gemini` line reports configured -> enabled -> observed. Make one tool call 
 | `BeforeAgent` | all | `agentlint-prompt` | `agentlint check --event BeforeAgent --adapter gemini` |
 | `AfterAgent` | `*` | `agentlint-stop` | `agentlint check --event AfterAgent --adapter gemini` |
 | `SessionStart` | all | `agentlint-start` | `agentlint check --event SessionStart --adapter gemini` |
+| `Notification` | all | `agentlint-activity` | `agentlint observe --event Notification --adapter gemini` |
+| `AfterTool` (passive) | all | `agentlint-activity-result` | `agentlint observe --event AfterTool --adapter gemini` |
 | `PreCompress` | all | `agentlint-compact` | `agentlint check --event PreCompress --adapter gemini` |
 
 AgentLint maps these to its own events: `BeforeTool` is a pre-tool check, `AfterTool` a post-tool check, `BeforeAgent` a prompt check, `AfterAgent` the end-of-turn (Stop) check, and `PreCompress` a pre-compaction check.

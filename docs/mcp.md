@@ -43,7 +43,7 @@ Returns an array of violations; `[]` means clean. An unknown `event` returns `[{
 [
   {
     "rule_id": "no-secrets",
-    "message": "Possible secret token detected (prefix 'sk_live_')",
+    "message": "Secret assignment detected: api_key=...",
     "severity": "error",
     "file_path": "config.py",
     "line": null,
@@ -128,6 +128,14 @@ No parameters. Returns the loaded configuration:
 ```
 
 `packs` is the effective list; `universal` and `quality` are always included unless excluded. See [Configuration](configuration.md).
+
+### `get_activity`
+
+No parameters. Read-only JSON with worktree-scoped host activity across adapters:
+minimized actions/agents, timestamps, correlation quality and unknown states.
+It never approves or repeats a pending request. The host must report lifecycle
+events through native hooks or the shared adapter API; this server cannot observe
+other tools automatically. See [host activity](diagnostics.md#host-activity-and-pending-approvals).
 
 ### `get_session`
 

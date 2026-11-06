@@ -9,20 +9,18 @@ from agentlint.models import AgentEvent, Severity, Violation
 
 
 class CursorHookFormatter(OutputFormatter):
-    """Formats violations for the Cursor hook protocol.
+    """Format Cursor decisions and context on supported lifecycle events."""
 
-    Cursor hooks receive JSON on stdin and emit JSON on stdout.
-    Exit codes:
-    - 0: success, use JSON output
-    - 2: block the action
-    - other: hook failure, action continues
-
-    Blocking output shape:
-        {"permission": "deny", "user_message": "...", "agent_message": "..."}
-
-    Advisory output (postToolUse) shape:
-        {"additional_context": "..."}
-    """
+    def add_activity_context(
+        self, output: str | None, event: AgentEvent, message: str
+    ) -> str | None:
+        if event not in {
+            AgentEvent.SESSION_START,
+            AgentEvent.POST_TOOL_USE,
+            AgentEvent.POST_TOOL_FAILURE,
+        }:
+            return output
+        return super().add_activity_context(output, event, message)
 
     def exit_code(self, violations: list[Violation], event: AgentEvent | str = "") -> int:
         """Return exit code for Cursor hook protocol.
