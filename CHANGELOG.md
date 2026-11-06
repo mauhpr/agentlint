@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v2.11.0 (2026-11-05) — Accurate Diagnostics and Activity Observations
+
+After upgrading, rerun setup for your native integration and reload or trust the
+changed hooks where the host requires it. Activity reports last-observed state;
+missing host telemetry stays unknown. The Claude marketplace plugin needs its
+matching hook update separately; upgrading core alone does not update plugin hooks.
+
 ### Fixed
 
 - Observe native approval waits and tool outcomes across all supported adapters,
