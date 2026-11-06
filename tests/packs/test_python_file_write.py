@@ -205,6 +205,41 @@ def test_empty_wrapper_is_not_a_python_write():
     assert violations("command") == []
 
 
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "> maintained.py",
+        "2> maintained.py",
+        ">> maintained.py",
+        "&> maintained.py",
+        "&>> maintained.py",
+        ">& maintained.py",
+        '> "maintained file.py"',
+    ],
+)
+def test_readonly_python_still_blocks_shell_redirect_writes(suffix):
+    command = "python -c \"from pathlib import Path; print(Path('input').read_text())\" " + suffix
+    assert violations(command)
+
+
+@pytest.mark.parametrize("target", ["/dev/null", "/tmp/check.json", "/private/tmp/check.json"])
+def test_readonly_python_allows_ephemeral_output(target):
+    assert violations(f'python -c "print(1)" > {target}') == []
+
+
+@pytest.mark.parametrize("redirect", ["2>&1", "1>&-", "< input.json"])
+def test_python_descriptor_operations_and_input_are_not_file_writes(redirect):
+    assert violations(f'python -c "print(1)" {redirect}') == []
+
+
+def test_scratch_redirect_does_not_hide_python_write():
+    assert violations("python -c \"open('maintained.py', 'w')\" > /tmp/check.json")
+
+
+def test_cloud_cli_exemption_cannot_hide_shell_redirect():
+    assert violations("gh pr view 85 > maintained.py")
+
+
 def test_later_rg_flags_do_not_turn_sed_read_into_write():
     assert (
         violations(

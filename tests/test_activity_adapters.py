@@ -80,6 +80,24 @@ def test_typed_notifications_report_wait_without_inventing_attribution(tmp_path,
     assert "private-description" not in json.dumps(action)
 
 
+@pytest.mark.parametrize("platform", sorted(_ADAPTER_REGISTRY))
+def test_idless_new_action_does_not_inherit_previous_terminal_state(tmp_path, platform):
+    adapter = get_adapter(platform)
+    raw = payload(tmp_path, tool_use_id=None, turn_id=None)
+    adapter.observe_activity("PreToolUse", raw, str(tmp_path))
+    adapter.observe_activity(
+        "PermissionRequest", {**raw, "approval_owner": "previous-owner"}, str(tmp_path)
+    )
+    adapter.observe_activity(
+        "PostToolUse", {**raw, "tool_response": {"exit_code": 0}}, str(tmp_path)
+    )
+    assert adapter.activity_status(str(tmp_path))["actions"][0]["state"] == "completed"
+    adapter.observe_activity("PreToolUse", raw, str(tmp_path))
+    action = adapter.activity_status(str(tmp_path))["actions"][0]
+    assert action["state"] == "unknown"
+    assert action["approval_owner"] is None and action["approval_observed"] is False
+
+
 def test_grok_never_parses_free_text_notifications_as_approval(tmp_path):
     adapter = get_adapter("grok")
     adapter.observe_activity(

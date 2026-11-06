@@ -191,27 +191,19 @@ def test_claude_installs_passive_approval_and_failure_hooks():
     assert any("observe" in entry["hooks"][0]["command"] for entry in hooks["PostToolUseFailure"])
 
 
-def test_pending_observer_never_approves_and_host_resumes_only_once(tmp_path, hook):
-    executed = []
-    request = {"approved": False}
-
-    def host_request():
+def test_pending_observer_abstains_and_duplicate_events_keep_one_observation(tmp_path, hook):
+    def notify_request():
         response = hook(tmp_path, "PermissionRequest")
         decision = json.loads(response.output) if response.output else {}
         assert "decision" not in decision
         assert "hookSpecificOutput" not in decision
-        assert not executed
 
-    host_request()
+    notify_request()
     for _ in range(2):
         resume = hook(tmp_path, "SessionStart", source="resume", tool_input={})
         assert "do not interrupt or resubmit" in resume.output
-        host_request()
-    request["approved"] = True
-    if request["approved"]:
-        executed.append("original guarded action")
+        notify_request()
     for _ in range(2):
         hook(tmp_path, "PostToolUse", tool_response={"exit_code": 0})
-    assert executed == ["original guarded action"]
     assert len(status(tmp_path)["actions"]) == 1
     assert status(tmp_path)["actions"][0]["state"] == "completed"

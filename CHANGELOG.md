@@ -19,6 +19,8 @@
 - Parse Python imports with the AST, including multiline router imports.
 - Recognize Codex `exec_command` tests, retain pending test states, and explain
   drift accounting with the latest recognized result and counted files.
+- Guard shell output redirects independently of read-only programs, retain edits
+  after explicit failed test responses, and reset stale outcomes for new ID-less actions.
 - Allow literal grant help, recognize resolved macOS temporary paths, and keep
   parent traversal out of scratch exemptions. Expected account sets reduce
   read-only audit noise while preserving mutation checks.

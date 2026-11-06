@@ -332,6 +332,32 @@ def test_drift_warning_explains_last_test_and_counted_files(tmp_path):
     assert "session" in warning.message
 
 
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"status": "failed"},
+        {"status": "cancelled"},
+        {"status": "declined"},
+        {"error": "runtime failure"},
+        {"isError": True},
+        {"exit_code": 0, "status": "failed"},
+        {"exit_code": 1, "status": "running"},
+    ],
+)
+def test_explicit_host_failure_cannot_clear_edits_or_create_completed_test_evidence(
+    tmp_path, response
+):
+    from agentlint.models import HookEvent
+
+    rule, ctx, state = _drift_state(tmp_path)
+    rule.evaluate(ctx(HookEvent.POST_TOOL_USE, "Bash", {"command": "pytest -q"}, response))
+    assert state["edited_files"]
+    assert state["last_test_run"] is False
+    assert state["_drift_last_test"]["result"] == "failed"
+    _hook(tmp_path, "PostToolUse", "pytest -q", response)
+    assert not list(receipts_dir().glob("*.json"))
+
+
 def test_drift_detector_commit_check_reuses_fresh_receipts(tmp_path):
     from agentlint.models import HookEvent
 

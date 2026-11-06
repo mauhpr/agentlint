@@ -167,15 +167,23 @@ def outcome(*, failed_event: bool, tool_response: object) -> str:
     if failed_event:
         return "failed"
     status = exit_status(tool_response)
+    if status is not None and status != 0:
+        return "failed"
+    if isinstance(tool_response, dict):
+        host_status = tool_response.get("status")
+        if (
+            host_status in ("failed", "cancelled", "declined")
+            or tool_response.get("error")
+            or tool_response.get("isError") is True
+        ):
+            return "failed"
+        if host_status in ("awaiting_approval", "running", "unknown"):
+            return host_status
     if status is None:
-        if isinstance(tool_response, dict):
-            host_status = tool_response.get("status")
-            if host_status in ("awaiting_approval", "running", "unknown"):
-                return host_status
-            if tool_response.get("session_id") is not None:
-                return "running"
+        if isinstance(tool_response, dict) and tool_response.get("session_id") is not None:
+            return "running"
         return "completed"
-    return "passed" if status == 0 else "failed"
+    return "passed"
 
 
 def git_head(repo: str) -> str | None:

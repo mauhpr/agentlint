@@ -210,7 +210,11 @@ def observe(
         if previous:
             old = json.loads(previous[0])
             if not agent_event and old["state"] in _TERMINAL:
-                return
+                if invocation_hash or event != "PreToolUse":
+                    return
+                # A new ID-less action can reuse the same fingerprint. Its
+                # pre-hook proves a new observation, not the old outcome/owner.
+                old = {}
             if old.get("approval_observed") and state == "unknown":
                 record["approval_observed"] = True
             if old.get("approval_owner") and not record["approval_owner"]:

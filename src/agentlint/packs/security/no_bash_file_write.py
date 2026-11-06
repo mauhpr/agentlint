@@ -415,13 +415,9 @@ class NoBashFileWrite(Rule):
 
         stripped = strip_string_args(command)
 
-        # Skip known cloud/infra CLI tools — their subcommands (cp, mv)
-        # are not shell file operations
         rule_config = context.config.get(self.id, {}) if context.config else {}
         safe_binaries = set(rule_config.get("safe_binaries", []))
         binary = get_command_binary(command)
-        if binary in KNOWN_CLI_TOOLS or binary in safe_binaries:
-            return []
 
         # Load config.
         allow_patterns: list[str] = get_rule_setting(context.config, self.id, "allow_patterns", [])
@@ -438,6 +434,32 @@ class NoBashFileWrite(Rule):
 
         # Check if the entire command is whitelisted.
         if effective_patterns and _command_allowed(command, effective_patterns):
+            return []
+
+        # The shell opens output files independently of the executable's behavior.
+        # Neither read-only Python nor a trusted CLI exempts those writes.
+        if operations:
+            for operator, target in operations[0].redirects:
+                redirect = operator.lstrip("0123456789")
+                if redirect not in {">", ">>", "&>", "&>>", ">&"}:
+                    continue
+                if redirect == ">&" and (target.isdigit() or target == "-"):
+                    continue
+                if target == "/dev/null" or _path_allowed(target, allow_paths, safe_path_prefixes):
+                    continue
+                return [
+                    Violation(
+                        rule_id=self.id,
+                        message="Bash file write detected via shell output redirect",
+                        severity=self.severity,
+                        file_path=target,
+                        operation="shell output redirect",
+                        suggestion="Use apply_patch (Codex) or Write/Edit for maintained files; redirect scratch output to /tmp/.",
+                    )
+                ]
+
+        # Cloud/infra subcommands (cp, mv) are not local shell file operations.
+        if binary in KNOWN_CLI_TOOLS or binary in safe_binaries:
             return []
 
         violations: list[Violation] = []
