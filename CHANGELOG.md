@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Fixed
+
+- Observe native approval waits and tool outcomes across all supported adapters,
+  with minimized worktree/session-scoped status and parent resume context.
+  Preserve pending observations, deduplicate invocation events, and report unknown
+  when host state or attribution is unavailable. Passive observers never grant,
+  cancel or replay requests. MCP gains the read-only `get_activity` tool.
+
+- Scope shell-write matches and scratch exemptions to individual operations;
+  preserve actual writes while allowing compound `sed`/`rg` reads.
+- Distinguish Python mutations from inconclusive analysis, with source locations
+  and value-redacted expressions; allow literal string replacement and cover
+  JSON, hashing and helper-call inspection.
+- Skip naming advice for deleted files and describe large file deletions explicitly.
+- Parse Python imports with the AST, including multiline router imports.
+- Recognize Codex `exec_command` tests, retain pending test states, and explain
+  drift accounting with the latest recognized result and counted files.
+- Guard shell output redirects independently of read-only programs, retain edits
+  after explicit failed test responses, and reset stale outcomes for new ID-less actions.
+- Allow literal grant help, recognize resolved macOS temporary paths, and keep
+  parent traversal out of scratch exemptions. Expected account sets reduce
+  read-only audit noise while preserving mutation checks.
+
 ### Documentation
 
 - Rework the README, documentation homepage, and quickstart around a proposed action, actionable feedback, and a corrected proposal.

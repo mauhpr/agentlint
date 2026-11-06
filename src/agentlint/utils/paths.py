@@ -10,6 +10,7 @@ re-implement it.
 from __future__ import annotations
 
 import os
+import posixpath
 
 # Default ephemeral/scratch path prefixes recognised as "safe" across rules.
 # - ``/tmp/`` and ``/private/tmp/`` are POSIX scratch.
@@ -18,6 +19,7 @@ SAFE_PATH_PREFIXES: tuple[str, ...] = (
     "/tmp/",
     "/private/tmp/",
     "/var/folders/",
+    "/private/var/folders/",
 )
 
 
@@ -45,6 +47,7 @@ def is_safe_path(path: str, extra_prefixes: list[str] | None = None) -> bool:
     """
     if not path:
         return False
+    path = posixpath.normpath(path)
     candidates: list[str] = list(SAFE_PATH_PREFIXES)
     if extra_prefixes:
         candidates.extend(extra_prefixes)

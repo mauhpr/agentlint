@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+from dataclasses import dataclass, replace
 from fnmatch import fnmatch
 from pathlib import PurePosixPath
 
@@ -65,37 +66,50 @@ _PYTHON_WRITE_TEXT = re.compile(
 )
 
 
-def _python_file_write(command: str) -> bool:
+@dataclass(frozen=True)
+class _PythonFinding:
+    kind: str
+    expression: str
+    line: int | None = None
+    column: int | None = None
+
+
+def _python_finding(command: str) -> _PythonFinding | None:
     """Detect visible writes without treating path construction/reads as writes.
 
     This is a syntax check, not proof that arbitrary imported functions are pure.
     Unknown open modes and dynamic execution remain conservative. Unsupported
     shell syntax keeps the previous text-based detection.
     """
-    from agentlint.utils.shell import simple_words, unwrap_simple_command
+    from agentlint.utils.shell import split_operations, unwrap_simple_command
 
     fallback = bool(_PYTHON_WRITE_TEXT.search(command))
-    parsed = simple_words(command)
-    words = unwrap_simple_command(parsed) if parsed else None
+    operations = split_operations(command)
+    words = (
+        unwrap_simple_command(list(operations[0].words))
+        if operations and len(operations) == 1
+        else None
+    )
+    opaque = _PythonFinding("unknown", "unsupported Python or shell syntax") if fallback else None
     if not words or not _PYTHON_BINARY.fullmatch(PurePosixPath(words[0]).name):
-        return fallback
+        return opaque
     index = 1
     while index < len(words) and words[index] in _PYTHON_FLAGS:
         index += 1
     if index + 1 >= len(words) or words[index] != "-c":
-        return fallback
+        return opaque
     source = words[index + 1]
     if len(source) > 64 * 1024:
-        return fallback
-    return _python_source_file_write(source, fallback=fallback)
+        return opaque
+    return _python_source_finding(source, fallback=fallback)
 
 
-def _python_source_file_write(source: str, *, fallback: bool = True) -> bool:
+def _python_source_finding(source: str, *, fallback: bool = True) -> _PythonFinding | None:
     """Inspect Python source only; never execute it or resolve imports."""
     try:
         tree = ast.parse(source)
     except (SyntaxError, ValueError, RecursionError):
-        return fallback
+        return _PythonFinding("unknown", "unparseable Python source") if fallback else None
 
     aliases: dict[str, str] = {}
     for node in ast.walk(tree):
@@ -115,6 +129,40 @@ def _python_source_file_write(source: str, *, fallback: bool = True) -> bool:
         return ".".join([base, *reversed(attributes)])
 
     called_functions = {id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
+
+    def expression(node: ast.AST, depth: int = 0) -> str:
+        # Preserve the callee, never echo command values or string contents.
+        if depth > 20:
+            return "..."
+        if isinstance(node, ast.Call):
+            return expression(node.func, depth + 1) + "(...)"
+        if isinstance(node, ast.Attribute):
+            return expression(node.value, depth + 1) + "." + node.attr
+        if isinstance(node, ast.Name):
+            return node.id
+        return "..."
+
+    def finding(node: ast.AST, kind: str = "unknown") -> _PythonFinding:
+        return _PythonFinding(kind, expression(node), node.lineno, node.col_offset + 1)
+
+    def string_replace(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Attribute)
+            and node.attr == "replace"
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, (str, bytes))
+        )
+
+    def mutation_kind(node: ast.AST) -> str:
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Call)
+            and name_of(node.value.func)
+            in {"pathlib.Path", "pathlib.PosixPath", "pathlib.WindowsPath"}
+        ):
+            return "write"
+        return "unknown"
+
     for node in ast.walk(tree):
         # An opener or dynamic execution function passed/assigned elsewhere cannot
         # have its eventual arguments checked (save = open; save(path, 'w')).
@@ -125,11 +173,18 @@ def _python_source_file_write(source: str, *, fallback: bool = True) -> bool:
                 else aliases.get(node.id, node.id).rsplit(".", 1)[-1]
             )
             if leaf in _OPAQUE_ACCESS:
-                return True
+                return finding(node)
             if leaf in _QUALIFIED_UNSAFE_LEAVES and name_of(node) in _QUALIFIED_UNSAFE_CALLS:
-                return True
+                kind = (
+                    "unknown"
+                    if id(node) not in called_functions
+                    or leaf
+                    in {"system", "popen", "run", "call", "check_call", "check_output", "Popen"}
+                    else "write"
+                )
+                return finding(node, kind)
             if id(node) not in called_functions and leaf in {"open", *_OPAQUE_CALLS}:
-                return True
+                return finding(node)
         # Calling a string-keyed opener bypasses normal mode inspection. Ordinary
         # data reads such as payload['open'] are not callable builtin lookups.
         if (
@@ -138,37 +193,55 @@ def _python_source_file_write(source: str, *, fallback: bool = True) -> bool:
             and isinstance(node.slice, ast.Constant)
             and node.slice.value in ("open", *_OPAQUE_CALLS)
         ):
-            return True
+            return finding(node)
         # Include method references: save = path.write_text; save(...) writes too.
         if isinstance(node, ast.Attribute) and node.attr in _WRITE_METHODS:
-            return True
+            if string_replace(node):
+                continue
+            return finding(node, mutation_kind(node) if id(node) in called_functions else "unknown")
         if not isinstance(node, ast.Call):
             continue
         name = name_of(node.func)
         leaf = name.rsplit(".", 1)[-1]
         if leaf in _WRITE_METHODS:
-            return True
+            if string_replace(node.func):
+                continue
+            return finding(node, mutation_kind(node.func))
         if leaf in _OPAQUE_CALLS:
-            return True
+            return finding(node)
         if leaf != "open":
             continue
         # builtins/io open take (file, mode); pathlib/handle.open take (mode).
         # os.open uses integer flags, so cannot qualify as a proven read here.
         mode_index = 1 if name in {"open", "builtins.open", "io.open", "os.open"} else 0
         if name == "os.open":
-            return True
+            return finding(node)
         if any(isinstance(arg, ast.Starred) for arg in node.args) or any(
             keyword.arg is None for keyword in node.keywords
         ):
-            return True
+            return finding(node)
         mode = next((kw.value for kw in node.keywords if kw.arg == "mode"), None)
         if mode is None and len(node.args) > mode_index:
             mode = node.args[mode_index]
         if mode is not None and not (
             isinstance(mode, ast.Constant) and mode.value in ("r", "rb", "rt", "br", "tr")
         ):
-            return True
-    return False
+            known_write = (
+                isinstance(mode, ast.Constant)
+                and isinstance(mode.value, str)
+                and any(flag in mode.value for flag in "wax+")
+            )
+            kind = (
+                "write"
+                if known_write
+                and (
+                    name in {"open", "builtins.open", "io.open"}
+                    or mutation_kind(node.func) == "write"
+                )
+                else "unknown"
+            )
+            return finding(node, kind)
+    return None
 
 
 def _literal_heredoc(command: str) -> tuple[str, str] | None:
@@ -302,19 +375,36 @@ class NoBashFileWrite(Rule):
         if not command:
             return []
 
+        # Keep flags, targets and exemptions within their shell operation.
+        from agentlint.utils.shell import split_operations
+
+        operations = split_operations(command)
+        if operations and len(operations) > 1:
+            for operation in operations:
+                violations = self.evaluate(
+                    replace(context, tool_input={**context.tool_input, "command": operation.source})
+                )
+                if violations:
+                    return violations
+            return []
+
         heredoc = _literal_heredoc(command)
         if heredoc:
             binary, source = heredoc
-            if binary == "cat" or (
-                len(source) <= 64 * 1024 and not _python_source_file_write(source)
-            ):
+            finding = (
+                _python_source_finding(source)
+                if binary == "python" and len(source) <= 64 * 1024
+                else None
+            )
+            if binary == "cat" or (len(source) <= 64 * 1024 and finding is None):
                 return []
             return [
                 Violation(
                     rule_id=self.id,
-                    message="Bash file write or opaque operation detected in Python stdin heredoc",
+                    message=self._python_message(finding) + " (Python stdin heredoc)",
                     severity=self.severity,
-                    operation="Python stdin heredoc",
+                    line=finding.line if finding else None,
+                    operation=finding.expression if finding else "oversized Python stdin heredoc",
                     suggestion="Use apply_patch (Codex) or Write/Edit for file changes; keep stdin Python read-only.",
                 )
             ]
@@ -325,13 +415,9 @@ class NoBashFileWrite(Rule):
 
         stripped = strip_string_args(command)
 
-        # Skip known cloud/infra CLI tools — their subcommands (cp, mv)
-        # are not shell file operations
         rule_config = context.config.get(self.id, {}) if context.config else {}
         safe_binaries = set(rule_config.get("safe_binaries", []))
         binary = get_command_binary(command)
-        if binary in KNOWN_CLI_TOOLS or binary in safe_binaries:
-            return []
 
         # Load config.
         allow_patterns: list[str] = get_rule_setting(context.config, self.id, "allow_patterns", [])
@@ -350,12 +436,39 @@ class NoBashFileWrite(Rule):
         if effective_patterns and _command_allowed(command, effective_patterns):
             return []
 
+        # The shell opens output files independently of the executable's behavior.
+        # Neither read-only Python nor a trusted CLI exempts those writes.
+        if operations:
+            for operator, target in operations[0].redirects:
+                redirect = operator.lstrip("0123456789")
+                if redirect not in {">", ">>", "&>", "&>>", ">&"}:
+                    continue
+                if redirect == ">&" and (target.isdigit() or target == "-"):
+                    continue
+                if target == "/dev/null" or _path_allowed(target, allow_paths, safe_path_prefixes):
+                    continue
+                return [
+                    Violation(
+                        rule_id=self.id,
+                        message="Bash file write detected via shell output redirect",
+                        severity=self.severity,
+                        file_path=target,
+                        operation="shell output redirect",
+                        suggestion="Use apply_patch (Codex) or Write/Edit for maintained files; redirect scratch output to /tmp/.",
+                    )
+                ]
+
+        # Cloud/infra subcommands (cp, mv) are not local shell file operations.
+        if binary in KNOWN_CLI_TOOLS or binary in safe_binaries:
+            return []
+
         violations: list[Violation] = []
 
         for pattern, label in _WRITE_PATTERNS:
+            finding = _python_finding(command) if label == "python -c write" else None
             # Python code lives in quoted arguments; inspect syntax, never execute it.
             matched = (
-                _python_file_write(command)
+                finding is not None
                 if label == "python -c write"
                 else bool(pattern.search(stripped))
             )
@@ -389,10 +502,13 @@ class NoBashFileWrite(Rule):
                 violations.append(
                     Violation(
                         rule_id=self.id,
-                        message=f"Bash file write detected via {label}",
+                        message=self._python_message(finding)
+                        if finding
+                        else f"Bash file write detected via {label}",
                         severity=self.severity,
                         file_path=file_path,
-                        operation=label,
+                        line=finding.line if finding else None,
+                        operation=finding.expression if finding else label,
                         suggestion=(
                             "Use apply_patch (Codex) or Write/Edit for maintained files. "
                             "For local test logs, use `set -o pipefail && pytest -q 2>&1 | tee /private/tmp/tests.log`. "
@@ -404,3 +520,15 @@ class NoBashFileWrite(Rule):
                 break
 
         return violations
+
+    @staticmethod
+    def _python_message(finding: _PythonFinding | None) -> str:
+        if finding is None:
+            return "Cannot classify oversized Python source safely"
+        reason = (
+            "Confirmed Python file write"
+            if finding.kind == "write"
+            else "Cannot classify Python operation safely"
+        )
+        location = f" at line {finding.line}, column {finding.column}" if finding.line else ""
+        return f"{reason}{location}: {finding.expression}"

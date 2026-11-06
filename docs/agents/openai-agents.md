@@ -4,6 +4,8 @@ description: Attach AgentLint to supported OpenAI Agents SDK function tools usin
 
 # OpenAI Agents SDK
 
+Use the shared [`observe_activity` / `activity_status` API](../diagnostics.md#host-activity-and-pending-approvals) to forward actual application approval and execution events. Tool-input guardrails alone do not observe native host approval waits or prove execution; absent telemetry remains unknown.
+
 The OpenAI Agents SDK has no hook files. You call AgentLint from a tool input guardrail in your own code, using `OpenAIAgentsAdapter.evaluate_tool_call()`.
 
 This is an application integration: attach the guardrail to each supported tool you want checked. It does not automatically inspect every tool exposed by the SDK. An ERROR rejects a guarded call and returns the finding to the model; tools outside that guardrail pipeline remain outside AgentLint's coverage. See [Coverage and limits](../coverage.md).

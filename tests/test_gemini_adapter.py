@@ -115,6 +115,7 @@ class TestSettingsPath:
 
 class TestBuildHooks:
     EXPECTED_EVENTS = {
+        "Notification",
         "BeforeTool",
         "AfterTool",
         "BeforeAgent",

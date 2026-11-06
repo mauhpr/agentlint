@@ -85,6 +85,7 @@ class DriftDetector(Rule):
             "last_edit_ts",
             "_drift_warned",
             "_drift_warned_at_commit",
+            "_drift_last_test",
         )
         previous = state.get("_drift_scope")
         if previous != scope:
@@ -149,7 +150,7 @@ class DriftDetector(Rule):
                         rule_id=self.id,
                         message=(
                             f"Committing {files_edited} edits without running tests "
-                            "since last test run." + evidence
+                            "since last test run." + evidence + self._accounting(state)
                         ),
                         severity=self.severity,
                         suggestion=(
@@ -166,11 +167,16 @@ class DriftDetector(Rule):
             from agentlint.evidence import find_test_command, outcome, test_result_is_reliable
 
             command = context.command or ""
-            if (
-                find_test_command(command)
-                and test_result_is_reliable(command)
-                and outcome(failed_event=False, tool_response=context.tool_response) != "failed"
-            ):
+            recognized = find_test_command(command)
+            result = outcome(failed_event=False, tool_response=context.tool_response)
+            reliable = test_result_is_reliable(command)
+            if recognized:
+                state["_drift_last_test"] = {
+                    "fingerprint": hashlib.sha256(command.encode()).hexdigest()[:12],
+                    "result": result if reliable else "unknown (shell result not reliable)",
+                    "timestamp": time.time(),
+                }
+            if recognized and reliable and result in {"passed", "completed"}:
                 state["edited_files"] = []
                 state["last_test_run"] = True
                 state["_drift_warned"] = False
@@ -198,10 +204,22 @@ class DriftDetector(Rule):
             return [
                 Violation(
                     rule_id=self.id,
-                    message=f"Edited {files_edited} files without running tests",
+                    message=f"Edited {files_edited} files without running tests"
+                    + self._accounting(state),
                     severity=self.severity,
                     suggestion="Consider running your test suite to catch regressions early.",
                 )
             ]
 
         return []
+
+    @staticmethod
+    def _accounting(state: dict) -> str:
+        last = state.get("_drift_last_test")
+        detail = (
+            f"Last recognized test #{last['fingerprint']}: {last['result']} at {last['timestamp']:.0f}. "
+            if last
+            else "No test run recognized in this session/worktree. "
+        )
+        files = ", ".join(sorted(state.get("edited_files", [])))
+        return f" {detail}Counted files (this session/worktree): {files}."

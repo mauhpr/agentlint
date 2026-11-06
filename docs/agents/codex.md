@@ -4,7 +4,9 @@ description: Connect AgentLint to Codex hooks, trust the integration, and verify
 
 # Codex CLI
 
-AgentLint runs as Codex native command hooks that check `Bash` commands and every file touched by `apply_patch`.
+Native approval waits and child activity are visible in [host activity status](../diagnostics.md#host-activity-and-pending-approvals). Rerun setup and trust the updated hooks after upgrading.
+
+AgentLint runs as Codex native command hooks that check `Bash` and `exec_command` commands and every file touched by `apply_patch`.
 
 Use this integration when you want checks to run automatically on matching Codex tool calls. ERROR findings can deny a proposed command or patch; post-tool feedback arrives after the action. Hook installation, feature enablement, and trust are separate steps: complete all three below before treating the integration as active. See [Coverage and limits](../coverage.md) for the boundary.
 
@@ -48,10 +50,13 @@ Restart Codex from a terminal that has any AgentLint or AgentChute environment v
 
 | Event | Matcher | Command |
 |-------|---------|---------|
-| `PreToolUse` | `^(Bash\|apply_patch)$` | `agentlint check --event PreToolUse --adapter codex` |
-| `PostToolUse` | `^(Bash\|apply_patch)$` | `agentlint check --event PostToolUse --adapter codex` |
+| `PreToolUse` | `^(Bash\|exec_command\|apply_patch)$` | `agentlint check --event PreToolUse --adapter codex` |
+| `PostToolUse` | `^(Bash\|exec_command\|apply_patch)$` | `agentlint check --event PostToolUse --adapter codex` |
 | `UserPromptSubmit` | all | `agentlint check --event UserPromptSubmit --adapter codex` |
 | `SessionStart` | all | `agentlint check --event SessionStart --adapter codex` |
+| `PermissionRequest` | all | `agentlint observe --event PermissionRequest --adapter codex` |
+| `SubagentStart` / `SubagentStop` | all | `agentlint observe --event <event> --adapter codex` |
+| `PostToolUse` (passive) | all | `agentlint observe --event PostToolUse --adapter codex` |
 | `Stop` | all | `agentlint report --adapter codex` |
 
 All hooks have a 30-second timeout. The Codex formatter always exits 0; decisions are carried in JSON:

@@ -39,6 +39,39 @@ class OutputFormatter(ABC):
 
         return self.format(violations, AgentEvent.SUB_AGENT_START)
 
+    def add_activity_context(
+        self, output: str | None, event: AgentEvent, message: str
+    ) -> str | None:
+        """Merge advisory context without replacing any existing policy decision."""
+        import json
+
+        from agentlint.models import Severity
+
+        advisory = self.format([Violation("host-activity", message, Severity.INFO)], event)
+        if not advisory:
+            return output
+        extra = json.loads(advisory)
+        payload = json.loads(output) if output else {}
+        for key in ("systemMessage", "additional_context", "additionalContext"):
+            if extra.get(key):
+                payload[key] = "\n".join(filter(None, [payload.get(key), extra[key]]))
+        if extra.get("hookSpecificOutput"):
+            specific = payload.setdefault("hookSpecificOutput", {})
+            specific.setdefault("hookEventName", extra["hookSpecificOutput"].get("hookEventName"))
+            specific["additionalContext"] = "\n".join(
+                filter(
+                    None,
+                    [
+                        specific.get("additionalContext"),
+                        extra["hookSpecificOutput"].get("additionalContext"),
+                    ],
+                )
+            )
+        if "violations" in extra:
+            payload.setdefault("blocked", False)
+            payload.setdefault("violations", []).extend(extra["violations"])
+        return json.dumps(payload)
+
     @staticmethod
     def _location(v: Violation) -> str | None:
         if not v.file_path:

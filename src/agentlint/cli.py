@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -654,7 +655,7 @@ def _record_test_evidence(context) -> None:
             failed_event=context.event == HookEvent.POST_TOOL_USE_FAILURE,
             tool_response=context.tool_response,
         )
-        if result == "failed":
+        if result not in {"passed", "completed"}:
             return
         from agentlint.session import workspace_dir
 
@@ -853,6 +854,17 @@ def check(
     result, elapsed_ms = _evaluate_tool_call(
         context, config, rules, patch=adapter_obj.platform_name == "codex"
     )
+    try:
+        adapter_obj.observe_activity(
+            agent_event,
+            raw,
+            project_dir,
+            blocked_rules=tuple(
+                v.rule_id for v in result.violations if v.severity == Severity.ERROR
+            ),
+        )
+    except (OSError, ValueError, TypeError, sqlite3.Error):
+        logger.warning("Activity observation unavailable; host state unknown")
     _record_test_evidence(context)
     timing = session_state.setdefault("_hook_timing", {"total_ms": 0.0, "count": 0})
     timing["total_ms"] += elapsed_ms
@@ -950,6 +962,22 @@ def check(
     else:
         output = reporter.format_hook_output(event=agent_event)
     exit_code = reporter.exit_code(event=event)
+    if hook_event in {
+        HookEvent.SESSION_START,
+        HookEvent.USER_PROMPT_SUBMIT,
+        HookEvent.POST_TOOL_USE,
+        HookEvent.POST_TOOL_USE_FAILURE,
+    }:
+        from agentlint.activity import pending_context
+        from agentlint.adapters.normalize import activity_payload
+
+        pending = pending_context(
+            project_dir,
+            activity_payload(adapter_obj, raw).get("session_id"),
+            platform=adapter_obj.platform_name,
+        )
+        if pending:
+            output = formatter.add_activity_context(output, agent_event, pending)
     if adapter_obj.platform_name == "codex" and output_format is None:
         from agentlint.diagnostics import validate_codex_output
 
@@ -2262,6 +2290,44 @@ def _effective_policy(config, project_dir: str) -> dict:
 
 
 @main.command()
+@click.option(
+    "--event",
+    required=True,
+)
+@click.option("--adapter", required=True, help="Supported adapter name")
+@click.option("--project-dir", default=None, help="Project directory")
+def observe(event: str, adapter: str, project_dir: str | None):
+    """Passively record native lifecycle state. Never decide an approval."""
+    try:
+        adapter_obj = get_adapter(adapter)
+        raw = json.loads(sys.stdin.read(2_000_001))
+        if not isinstance(raw, dict):
+            raise ValueError("Expected a hook object")
+        adapter_obj.observe_activity(event, raw, _resolve_project_dir(project_dir))
+        try:
+            translated = adapter_obj.translate_event(event)
+        except ValueError:
+            from agentlint.models import to_agent_event
+
+            translated = to_agent_event(to_hook_event(event))
+        if translated in {AgentEvent.POST_TOOL_USE, AgentEvent.POST_TOOL_FAILURE}:
+            from agentlint.activity import pending_context
+            from agentlint.adapters.normalize import activity_payload
+
+            pending = pending_context(
+                _resolve_project_dir(project_dir),
+                activity_payload(adapter_obj, raw).get("session_id"),
+                platform=adapter,
+            )
+            if pending:
+                click.echo(adapter_obj.formatter.add_activity_context(None, translated, pending))
+    except (OSError, ValueError, TypeError, sqlite3.Error):
+        click.echo("AgentLint: activity observation unavailable; host state unknown", err=True)
+    if event == "SubagentStop":
+        click.echo("{}")
+
+
+@main.command()
 @click.option("--project-dir", default=None, help="Project directory")
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON")
 def status(project_dir: str | None, as_json: bool):
@@ -2285,6 +2351,9 @@ def status(project_dir: str | None, as_json: bool):
     cloud = _cloud_health(config)
     policy = _effective_policy(config, project_dir)
     local = _local_protections(config, rules, cloud["policy"])
+    from agentlint.activity import snapshot
+
+    activity = snapshot(project_dir)
 
     if as_json:
         click.echo(
@@ -2303,6 +2372,7 @@ def status(project_dir: str | None, as_json: bool):
                     "policy": {**policy, "active_rules": len(rules)},
                     "cloud": cloud,
                     "local_protections": local,
+                    "activity": activity,
                 },
                 indent=2,
                 default=str,
@@ -2313,6 +2383,20 @@ def status(project_dir: str | None, as_json: bool):
     click.echo(f"AgentLint v{ver}")
     click.echo(f"Install: {install_kind} ({' '.join(update_cmd)})")
     click.echo(f"Project config: {'ok' if config_ok else 'missing'}")
+
+    click.echo("Host activity (last observed, not a live execution guarantee):")
+    if activity["error"]:
+        click.echo(f"  {activity['error']}")
+    for item in activity["actions"]:
+        click.echo(
+            f"  {item['platform']} {item['state']}: agent={item['agent_id'] or 'unknown'} owner={item['approval_owner'] or 'unknown'} action={('#' + item['action_fingerprint'][:12]) if item['action_fingerprint'] else 'unknown'} observed={item['observed_at']:.0f}"
+        )
+    if not activity["actions"]:
+        click.echo("  unknown — no tool lifecycle observations")
+    for item in activity["agents"]:
+        click.echo(
+            f"  agent={item['agent_id'] or 'unknown'}: {item['state']} (last lifecycle event)"
+        )
 
     click.echo("Coding agents (configured -> enabled -> observed):")
     for platform, cov in coverage.items():

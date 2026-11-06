@@ -385,10 +385,10 @@ The environment lookup avoids the literal-assignment pattern; it does not create
 The rule scans proposed `Write`/`Edit` content and reported shell commands for recognizable patterns. It is not a complete credential inventory, a runtime data-flow analysis, or proof that a file is safe to publish. Use a dedicated secret scanner in CI too.
 
 Detects patterns:
-- Stripe keys (`sk_live_`, `sk_test_`)
-- AWS keys (`AKIA...`)
-- GitHub tokens (`ghp_`, `github_pat_`)
-- Slack tokens (`xoxb-`, `xoxp-`)
+- Stripe keys
+- AWS access keys
+- GitHub tokens
+- Slack tokens
 - Generic API key assignments
 - Bearer tokens and JWTs
 - Password string assignments
@@ -848,13 +848,21 @@ Recognized invocations use `python`, `python2`, `python3`, or versioned names
 such as `python3.13`, optionally with a directory prefix, literal `env` /
 `command` wrappers, and separate `-B`, `-E`, `-I`, `-O`, `-OO`, `-q`, `-s`,
 `-S`, or `-u` flags before `-c`. Other flags, combined flags, attached `-c`
-arguments, shell expansions, compound commands, redirects, invalid Python,
+arguments, shell expansions, invalid Python,
 and source larger than 64 KiB retain conservative text detection. Python
 write destinations are not extracted: an unrelated shell redirect to an
 allowed or scratch path cannot exempt a Python write, and Python writes do
 not receive path exemptions.
 
-Writes targeting **ephemeral/scratch paths** (`/tmp/`, `/var/folders/`,
+Supported shell command lists are inspected one operation at a time: a later
+`rg -i` cannot become an earlier `sed -i`, and a scratch target cannot exempt a
+different operation. Literal Python payloads remain inspectable with redirects.
+JSON inspection, hashing and ordinary helper calls do not count as visible
+writes. Literal string/bytes `.replace()` transforms a value; pathlib `.replace()`
+remains a mutation. Untyped receivers remain conservatively blocked with an
+inconclusive diagnostic. Imported helpers are not executed or certified as pure.
+
+Writes targeting **ephemeral/scratch paths** (`/tmp/`, `/var/folders/`, `/private/var/folders/`,
 `/private/tmp/`) are exempt by default — these are not
 project source files. Cloud CLI binaries (`bq`, `aws`, `kubectl`, ...)
 are also recognized so their `cp`/`mv` subcommands don't fire.
@@ -971,6 +979,11 @@ Only listed command forms are detected. Keep cloud IAM restrictions and provider
 ### `cross-account-guard`
 
 Warns on cloud account/project switches within the same session (e.g., `gcloud config set project`, `aws sts assume-role`).
+
+For an explicit multi-account audit, configure `expected_gcloud_projects` and/or
+`expected_aws_profiles` under this rule. Only narrowly recognized read-only
+inventory commands within that set skip switch warnings. Targets outside the
+set warn even on first use; mutations and opaque commands retain switch checks.
 
 ### `destructive-confirmation-gate`
 

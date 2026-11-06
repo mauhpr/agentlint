@@ -4,6 +4,8 @@ description: Install AgentLint's Cursor hooks and distinguish pre-execution deci
 
 # Cursor
 
+[Host activity status](../diagnostics.md#host-activity-and-pending-approvals) records tool outcomes and child metadata. Cursor has no documented native approval-wait event, so absent state remains unknown. Context uses startup/tool results, not prompt submission.
+
 AgentLint runs as Cursor hooks (`hooks.json`) that call `agentlint check --adapter cursor` on tool calls, shell commands, file edits, prompts and subagents.
 
 Pre-execution hooks can deny matching tool calls on ERROR findings. `afterFileEdit` feedback arrives after the file has changed; it cannot undo the edit. The configured hook matchers below define which calls AgentLint receives. See [Coverage and limits](../coverage.md).
@@ -40,6 +42,9 @@ The `cursor` line reports configured -> enabled -> observed. Make one agent tool
 | `beforeSubmitPrompt` | all | `agentlint check --event beforeSubmitPrompt --adapter cursor` |
 | `subagentStart` | all | `agentlint check --event subagentStart --adapter cursor` |
 | `subagentStop` | all | `agentlint check --event subagentStop --adapter cursor` |
+| `sessionStart` | all | `agentlint check --event sessionStart --adapter cursor` |
+| `postToolUseFailure` | all | `agentlint observe --event postToolUseFailure --adapter cursor` |
+| `postToolUse` (passive) | all | `agentlint observe --event postToolUse --adapter cursor` |
 | `stop` | all | `agentlint report --adapter cursor` |
 
 How results reach Cursor:

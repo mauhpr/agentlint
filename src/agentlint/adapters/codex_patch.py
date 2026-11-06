@@ -80,11 +80,20 @@ class PatchError(ValueError):
                 "Other anchors only skip matches before their anchor line."
             )
         if self.reason == "boundary":
-            return (
+            from agentlint.utils.paths import is_safe_path
+
+            correction = (
                 "AgentLint's selected project is an inspection boundary; OS writable roots "
                 "do not expand it. Keep the patch inside the named project, or have the human "
                 "align the hook's --project-dir with the intended workspace."
             )
+            if self.path and is_safe_path(self.path):
+                correction += (
+                    " For a disposable scratch file, use a shell write to a recognized "
+                    "scratch path (for example, printf to /tmp/diagnostic.txt). "
+                    "Scratch exemptions do not expand apply_patch scope."
+                )
+            return correction
         if self.reason == "read":
             return "Re-read the named input file and check its existence, encoding and read permissions."
         if self.reason in {"missing", "anchor-missing"}:

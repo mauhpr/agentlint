@@ -26,6 +26,9 @@ from agentlint.models import AgentEvent, NormalizedTool, RuleContext, to_hook_ev
 
 # Mapping from Codex native event names to generic AgentEvent
 _CODEX_EVENT_MAP: dict[str, AgentEvent] = {
+    "PermissionRequest": AgentEvent.PERMISSION_REQUEST,
+    "SubagentStart": AgentEvent.SUB_AGENT_START,
+    "SubagentStop": AgentEvent.SUB_AGENT_STOP,
     "PreToolUse": AgentEvent.PRE_TOOL_USE,
     "PostToolUse": AgentEvent.POST_TOOL_USE,
     "PostToolUseFailure": AgentEvent.POST_TOOL_FAILURE,
@@ -40,6 +43,7 @@ _CODEX_EVENT_MAP: dict[str, AgentEvent] = {
 # Mapping from Codex tool names to NormalizedTool
 _CODEX_TOOL_MAP: dict[str, NormalizedTool] = {
     "Bash": NormalizedTool.SHELL,
+    "exec_command": NormalizedTool.SHELL,
     "apply_patch": NormalizedTool.FILE_EDIT,
     "Read": NormalizedTool.FILE_READ,
     "WebSearch": NormalizedTool.WEB_SEARCH,
@@ -53,11 +57,11 @@ def _build_hooks(cmd: str) -> dict:
     Note: Codex uses 30-second timeouts for all events because its hook
     system is experimental and may have higher latency than other platforms.
     """
-    return {
+    hooks = {
         "hooks": {
             "PreToolUse": [
                 {
-                    "matcher": "^(Bash|apply_patch)$",
+                    "matcher": "^(Bash|exec_command|apply_patch)$",
                     "hooks": [
                         {
                             "type": "command",
@@ -71,7 +75,7 @@ def _build_hooks(cmd: str) -> dict:
             ],
             "PostToolUse": [
                 {
-                    "matcher": "^(Bash|apply_patch)$",
+                    "matcher": "^(Bash|exec_command|apply_patch)$",
                     "hooks": [
                         {
                             "type": "command",
@@ -120,6 +124,32 @@ def _build_hooks(cmd: str) -> dict:
             ],
         }
     }
+    for event in ("PermissionRequest", "SubagentStart", "SubagentStop"):
+        hooks["hooks"][event] = [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "_agentlint": "v2",
+                        "command": f"{cmd} observe --event {event} --adapter codex",
+                        "timeout": 30,
+                    }
+                ]
+            }
+        ]
+    hooks["hooks"]["PostToolUse"].append(
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "_agentlint": "v2",
+                    "command": f"{cmd} observe --event PostToolUse --adapter codex",
+                    "timeout": 30,
+                }
+            ]
+        }
+    )
+    return hooks
 
 
 def _hooks_path(scope: str, project_dir: str | None = None) -> Path:

@@ -345,11 +345,29 @@ def test_agents_cannot_self_approve(tmp_path, tool, tool_input):
 
 
 def test_listing_approvals_is_allowed():
+    assert self_approval_attempt("Bash", {"command": "agentlint approve grant --help"}) is None
     assert self_approval_attempt("Bash", {"command": "agentlint approve list"}) is None
     assert (
         self_approval_attempt("Bash", {"command": "cat ~/.cache/agentlint/approvals.jsonl"}) is None
     )
     assert self_approval_attempt("Read", {"file_path": ""}) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "agentlint approve grant --help; agentlint approve grant git-merge --reason x",
+        'agentlint approve grant --reason "--help"',
+        "agentlint approve grant --help $(touch file)",
+    ],
+)
+def test_help_cannot_exempt_a_grant_in_compound_or_opaque_shell(command):
+    assert self_approval_attempt("Bash", {"command": command})
+
+
+def test_shell_wrapper_arguments_cannot_fake_a_help_invocation():
+    command = "sh -c 'agentlint approve grant git-merge --reason x' agentlint approve grant --help"
+    assert self_approval_attempt("Bash", {"command": command})
 
 
 def test_cli_requires_interactive_terminal(tmp_path):

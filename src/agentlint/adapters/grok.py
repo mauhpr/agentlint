@@ -21,7 +21,7 @@ from agentlint.adapters._utils import (
     write_json_config,
 )
 from agentlint.adapters.base import AgentAdapter
-from agentlint.formats.claude_hooks import ClaudeHookFormatter
+from agentlint.formats.grok_hooks import GrokHookFormatter
 from agentlint.models import AgentEvent, NormalizedTool, RuleContext, to_hook_event
 
 # Mapping from Grok native event names to generic AgentEvent
@@ -66,7 +66,7 @@ _GROK_TOOL_MAP: dict[str, NormalizedTool] = {
 
 def _build_hooks(cmd: str) -> dict:
     """Build the Grok hooks configuration for user-settings.json."""
-    return {
+    config = {
         "hooks": {
             "PreToolUse": [
                 {
@@ -157,6 +157,34 @@ def _build_hooks(cmd: str) -> dict:
         }
     }
 
+    for event in ("SessionStart", "PostToolUseFailure"):
+        command = "check" if event == "SessionStart" else "observe"
+        config["hooks"][event] = [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "_agentlint": "v2",
+                        "command": f"{cmd} {command} --event {event} --adapter grok",
+                        "timeout": 5,
+                    }
+                ]
+            }
+        ]
+    config["hooks"]["PostToolUse"].append(
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "_agentlint": "v2",
+                    "command": f"{cmd} observe --event PostToolUse --adapter grok",
+                    "timeout": 5,
+                }
+            ]
+        }
+    )
+    return config
+
 
 def _settings_path(scope: str, project_dir: str | None = None) -> Path:
     """Return the path to the Grok settings file."""
@@ -174,8 +202,8 @@ class GrokAdapter(AgentAdapter):
         return "grok"
 
     @property
-    def formatter(self) -> ClaudeHookFormatter:
-        return ClaudeHookFormatter()
+    def formatter(self) -> GrokHookFormatter:
+        return GrokHookFormatter()
 
     def resolve_project_dir(self) -> str:
         return (

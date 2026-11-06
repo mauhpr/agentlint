@@ -55,6 +55,10 @@ How approvals are scoped:
 - **People only.** `grant` requires an interactive terminal and confirmation.
   If an agent tries to run `agentlint approve grant` or edit the approvals file,
   the call is blocked (`approval-self-grant`).
+  The literal `agentlint approve grant --help` command remains available.
+  Required/locked rules remain non-overridable, and there is no Docker-specific
+  grant class. Unsupported Docker cleanup needs the human's reviewed terminal
+  workflow; a generic approval does not bypass required policy.
 
 For a single reviewed command in configuration, see
 [exceptions](configuration.md#exceptions).

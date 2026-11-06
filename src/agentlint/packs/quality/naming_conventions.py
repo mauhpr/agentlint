@@ -71,6 +71,8 @@ class NamingConventions(Rule):
     def evaluate(self, context: RuleContext) -> list[Violation]:
         if context.tool_name not in ("Write", "Edit"):
             return []
+        if context.tool_input.get("patch_action") == "delete":
+            return []
 
         file_path = context.file_path
         if not file_path:

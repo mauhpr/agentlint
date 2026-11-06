@@ -4,6 +4,8 @@ description: Install AgentLint's Grok CLI hooks and verify that matching tool ca
 
 # Grok CLI
 
+[Host activity status](../diagnostics.md#host-activity-and-pending-approvals) records tool results. Untyped notifications cannot prove a native approval wait, so absent state remains unknown. Activity context uses Grok's top-level `additionalContext` field.
+
 AgentLint runs as Grok CLI command hooks, in the same format as Claude Code, that call `agentlint check --adapter grok`.
 
 Matching pre-tool hooks can deny an action on ERROR findings; post-tool hooks report what has already happened. Verify observation after setup and check the matchers below for the reported tool names. See [Coverage and limits](../coverage.md) and the [quickstart](../quickstart.md).
@@ -35,6 +37,8 @@ The `grok` line reports configured -> enabled -> observed. Make one tool call in
 | `SubagentStart` | all | `agentlint check --event SubagentStart --adapter grok` |
 | `SubagentStop` | all | `agentlint check --event SubagentStop --adapter grok` |
 | `Notification` | all | `agentlint check --event Notification --adapter grok` |
+| `SessionStart` | all | `agentlint check --event SessionStart --adapter grok` |
+| `PostToolUse` / `PostToolUseFailure` (passive) | all | `agentlint observe --event <event> --adapter grok` |
 | `Stop` | all | `agentlint report --adapter grok` |
 
 Output follows the Claude Code format: a PreToolUse block is exit 0 with `hookSpecificOutput.permissionDecision: "deny"`; PostToolUse findings arrive as `additionalContext` (plus `"decision": "block"` for warnings and errors, and exit 2 for errors); other events with an ERROR exit 2 with a `systemMessage`. See [Claude Code](claude.md#what-is-checked).

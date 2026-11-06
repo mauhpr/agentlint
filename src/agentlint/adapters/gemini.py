@@ -55,7 +55,7 @@ _GEMINI_TOOL_MAP: dict[str, NormalizedTool] = {
 
 def _build_hooks(cmd: str) -> dict:
     """Build the Gemini hooks configuration for settings.json."""
-    return {
+    config = {
         "hooks": {
             "BeforeTool": [
                 {
@@ -140,6 +140,34 @@ def _build_hooks(cmd: str) -> dict:
             ],
         }
     }
+
+    config["hooks"]["Notification"] = [
+        {
+            "hooks": [
+                {
+                    "name": "agentlint-activity",
+                    "type": "command",
+                    "_agentlint": "v2",
+                    "command": f"{cmd} observe --event Notification --adapter gemini",
+                    "timeout": 5,
+                }
+            ]
+        }
+    ]
+    config["hooks"]["AfterTool"].append(
+        {
+            "hooks": [
+                {
+                    "name": "agentlint-activity-result",
+                    "type": "command",
+                    "_agentlint": "v2",
+                    "command": f"{cmd} observe --event AfterTool --adapter gemini",
+                    "timeout": 5,
+                }
+            ]
+        }
+    )
+    return config
 
 
 def _settings_path(scope: str, project_dir: str | None = None) -> Path:

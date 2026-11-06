@@ -277,6 +277,11 @@ def self_approval_attempt(tool_name: str, tool_input: dict) -> str | None:
         command = tool_input.get("command") or ""
         if isinstance(command, str):
             if _SELF_GRANT_RE.search(command):
+                # Only exempt a parsed, literal help invocation. A later grant
+                # or opaque shell body must never hide behind an earlier --help.
+                words = simple_words(command)
+                if words == ["agentlint", "approve", "grant", "--help"]:
+                    return None
                 return "runs `agentlint approve grant`"
             if approvals_path().name in command and re.search(
                 r">|\btee\b|\bcp\b|\bmv\b|\bsed\b", command

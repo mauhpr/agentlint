@@ -33,6 +33,14 @@ def _make_context(
 
 
 class TestNoLargeDiff:
+    def test_file_deletion_warning_describes_cleanup(self):
+        ctx = _make_context(file_content="", file_content_before="line\n" * 111)
+        ctx.tool_input["patch_action"] = "delete"
+        result = NoLargeDiff().evaluate(ctx)[0]
+        assert "Deleting file removes 111 lines" in result.message
+        assert result.operation == "delete"
+        assert "recovery" in result.suggestion
+
     def test_small_edit_passes(self):
         rule = NoLargeDiff()
         ctx = _make_context(
@@ -522,6 +530,11 @@ class TestNoFileCreationSprawlExemptPaths:
 
 
 class TestNamingConventions:
+    def test_deletion_never_recommends_renaming_removed_file(self):
+        ctx = self._pre_context("/project/_diagnostic.py")
+        ctx.tool_input["patch_action"] = "delete"
+        assert NamingConventions().evaluate(ctx) == []
+
     def _pre_context(self, file_path: str, config: dict | None = None) -> RuleContext:
         return RuleContext(
             event=HookEvent.PRE_TOOL_USE,

@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import re
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
 
 _FILE_TOOLS = {"Write", "Edit"}
-
-# Python imports: import foo, from foo import bar, from foo import bar, baz
-_PY_IMPORT_RE = re.compile(r"^\s*(?:from\s+\S+\s+)?import\s+(.+)", re.MULTILINE)
 
 # JS/TS imports: import { X, Y } from '...', import X from '...'
 _JS_IMPORT_RE = re.compile(
@@ -21,25 +19,17 @@ _JS_IMPORT_RE = re.compile(
 _IGNORE_BASENAMES = {"__init__.py", "index.ts", "index.js", "index.tsx", "index.jsx"}
 
 
-def _extract_python_names(content: str) -> list[str]:
-    """Extract imported names from Python import statements."""
+def _python_import_names(tree: ast.AST) -> list[str]:
+    """Extract bound names, including aliases and multiline imports."""
     names: list[str] = []
-    for match in _PY_IMPORT_RE.finditer(content):
-        # Skip __future__ imports — they are side-effect imports, never referenced in code
-        line = match.group(0).strip()
-        if line.startswith("from __future__"):
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
             continue
-        imported = match.group(1)
-        # Handle "from x import a, b as c" → extract "a", "c"
-        for item in imported.split(","):
-            item = item.strip()
-            if not item:
-                continue
-            if " as " in item:
-                names.append(item.split(" as ")[-1].strip())
-            else:
-                # "import foo.bar" → use "foo"
-                names.append(item.split(".")[0].strip())
+        if isinstance(node, ast.ImportFrom) and node.module == "__future__":
+            continue
+        for alias in node.names:
+            if alias.name != "*":
+                names.append(alias.asname or alias.name.split(".")[0])
     return names
 
 
@@ -74,7 +64,20 @@ def _is_js_ts_file(path: str) -> bool:
 def _find_unused(file_path: str, content: str) -> list[str]:
     """Find unused import names in file content. Returns list of unused names."""
     if _is_python_file(file_path):
-        names = _extract_python_names(content)
+        try:
+            tree = ast.parse(content)
+        except (SyntaxError, ValueError, RecursionError):
+            return []
+        names = _python_import_names(tree)
+        used = {
+            node.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+        }
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                used.update(re.findall(r"\b[A-Za-z_]\w*\b", node.value))
+        return [name for name in names if not name.startswith("_") and name not in used]
     elif _is_js_ts_file(file_path):
         names = _extract_js_names(content)
     else:

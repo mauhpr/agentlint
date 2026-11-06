@@ -6,6 +6,29 @@ from agentlint.models import HookEvent, RuleContext
 from agentlint.packs.quality.no_dead_imports import NoDeadImports
 
 
+def test_multiline_router_import_is_used_by_include_router():
+    from agentlint.packs.quality.no_dead_imports import _find_unused
+
+    content = "from routers import (\n    api_router,\n)\napp.include_router(api_router)\n"
+    assert _find_unused("app.py", content) == []
+
+
+def test_multiline_router_import_still_warns_when_unused():
+    from agentlint.packs.quality.no_dead_imports import _find_unused
+
+    assert _find_unused("app.py", "from routers import (\n    api_router,\n)\n") == ["api_router"]
+
+
+def test_string_annotations_and_exports_keep_imports_used():
+    from agentlint.packs.quality.no_dead_imports import _find_unused
+
+    assert (
+        _find_unused("app.py", 'from models import User\ndef get_user() -> "User":\n    ...\n')
+        == []
+    )
+    assert _find_unused("api.py", 'from router import api_router\n__all__ = ["api_router"]\n') == []
+
+
 def _ctx(
     tool_name: str = "Write",
     tool_input: dict | None = None,

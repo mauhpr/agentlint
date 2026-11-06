@@ -19,6 +19,12 @@ class TestSafePathPrefixes:
 
 
 class TestIsSafePathDefaults:
+    def test_private_macos_tmpdir_alias_is_safe(self):
+        assert is_safe_path("/private/var/folders/abc/T/session/log")
+
+    def test_parent_traversal_cannot_turn_project_write_into_scratch(self):
+        assert not is_safe_path("/tmp/../project/source.py")
+
     def test_path_under_tmp_is_safe(self):
         assert is_safe_path("/tmp/scratch.txt") is True
 

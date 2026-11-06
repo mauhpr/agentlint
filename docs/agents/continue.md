@@ -4,6 +4,8 @@ description: Connect Continue to AgentLint, verify observed hook calls, and trou
 
 # Continue
 
+[Host activity status](../diagnostics.md#host-activity-and-pending-approvals) records native approval waits when the installed Continue version emits them; absent telemetry remains unknown.
+
 AgentLint runs as Continue command hooks in `.continue/settings.json`, using the same hook protocol as Claude Code.
 
 Matching pre-tool hooks can deny an action on ERROR findings. Post-tool hooks provide feedback after execution. Verify the actual hook calls in your installation rather than assuming that a saved config means checks are running. See [Coverage and limits](../coverage.md); the [quickstart](../quickstart.md) walks through a first check and correction.
@@ -35,6 +37,9 @@ The `continue` line reports configured -> enabled -> observed. Make one tool cal
 | `SubagentStart` | all | `agentlint check --event SubagentStart --adapter continue` |
 | `SubagentStop` | all | `agentlint check --event SubagentStop --adapter continue` |
 | `Notification` | all | `agentlint check --event Notification --adapter continue` |
+| `PermissionRequest` / `PostToolUseFailure` | all | `agentlint observe --event <event> --adapter continue` |
+| `SessionStart` | all | `agentlint check --event SessionStart --adapter continue` |
+| `PostToolUse` (passive) | all | `agentlint observe --event PostToolUse --adapter continue` |
 | `Stop` | all | `agentlint report --adapter continue` |
 
 Output is identical to [Claude Code](claude.md#what-is-checked): a PreToolUse block is exit 0 with `hookSpecificOutput.permissionDecision: "deny"`; PostToolUse findings arrive as `additionalContext` (plus `"decision": "block"` for warnings and errors, and exit 2 for errors); other events with an ERROR exit 2 with a `systemMessage`.

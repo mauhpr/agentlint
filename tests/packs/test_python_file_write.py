@@ -155,7 +155,8 @@ def test_writes_and_unknown_modes_remain_blocked(code):
     result = violations(f".venv/bin/python -c {shlex.quote(code)}")
     assert len(result) == 1
     assert result[0].rule_id == "no-bash-file-write"
-    assert result[0].message.endswith("python -c write")
+    assert result[0].operation
+    assert "Python" in result[0].message
 
 
 @pytest.mark.parametrize(
@@ -173,7 +174,6 @@ def test_writes_and_unknown_modes_remain_blocked(code):
         "python -c\"open('file','w')\"",
         'python -Bu -c "handle.truncate()"',
         "python -X dev -c \"from io import open as save; save('file','w')\"",
-        "python -c \"print(Path('file'))\" | cat",
         "python -c \"open('file', 'w')\" > /dev/null",
         "python -c \"open('file', 'w')\" 2>/tmp/log",
         "python -c \"open('file', 'w')\" > scratch/log",
@@ -203,6 +203,126 @@ def test_parser_failure_keeps_text_detection(monkeypatch, error):
 
 def test_empty_wrapper_is_not_a_python_write():
     assert violations("command") == []
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "> maintained.py",
+        "2> maintained.py",
+        ">> maintained.py",
+        "&> maintained.py",
+        "&>> maintained.py",
+        ">& maintained.py",
+        '> "maintained file.py"',
+    ],
+)
+def test_readonly_python_still_blocks_shell_redirect_writes(suffix):
+    command = "python -c \"from pathlib import Path; print(Path('input').read_text())\" " + suffix
+    assert violations(command)
+
+
+@pytest.mark.parametrize("target", ["/dev/null", "/tmp/check.json", "/private/tmp/check.json"])
+def test_readonly_python_allows_ephemeral_output(target):
+    assert violations(f'python -c "print(1)" > {target}') == []
+
+
+@pytest.mark.parametrize("redirect", ["2>&1", "1>&-", "< input.json"])
+def test_python_descriptor_operations_and_input_are_not_file_writes(redirect):
+    assert violations(f'python -c "print(1)" {redirect}') == []
+
+
+def test_scratch_redirect_does_not_hide_python_write():
+    assert violations("python -c \"open('maintained.py', 'w')\" > /tmp/check.json")
+
+
+def test_cloud_cli_exemption_cannot_hide_shell_redirect():
+    assert violations("gh pr view 85 > maintained.py")
+
+
+def test_later_rg_flags_do_not_turn_sed_read_into_write():
+    assert (
+        violations(
+            "sed -n '1,20p' README.md; rg --files .github | "
+            "rg -i 'pull_request_template|contributing'"
+        )
+        == []
+    )
+    assert violations("python -c \"print(Path('file'))\" | cat") == []
+
+
+def test_literal_string_replace_is_not_path_replace():
+    assert violations("python -c \"print('old'.replace('old', 'new'))\"") == []
+    assert violations("python -c \"from pathlib import Path; Path('old').replace('new')\"")
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "import json; from pathlib import Path; print(json.loads(Path('a').read_text()))",
+        "import hashlib; from pathlib import Path; print(hashlib.sha256(Path('a').read_bytes()).hexdigest() == hashlib.sha256(Path('b').read_bytes()).hexdigest())",
+        "from source import read_bundle; print(read_bundle('a') == read_bundle('b'))",
+    ],
+)
+def test_json_hash_and_repository_helper_inspection(code):
+    assert violations(f"python -c {shlex.quote(code)}") == []
+    assert violations(f"python - <<'PY'\n{code}\nPY") == []
+
+
+def test_python_diagnostic_distinguishes_write_from_unknown():
+    write = violations("python -c \"from pathlib import Path\nPath('a').write_text('b')\"")[0]
+    unknown = violations('python -c "open(path, mode)"')[0]
+    assert write.line == 2
+    assert "write_text" in write.operation
+    assert "confirmed" in write.message.lower()
+    assert "cannot classify" in unknown.message.lower()
+    assert unknown.line == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from pathlib import Path; Path('a').replace('b')",
+        "from pathlib import Path as P; P('a').unlink()",
+        "open('a', 'w')",
+    ],
+)
+def test_known_mutations_remain_confirmed(source):
+    result = violations(f"python -c {shlex.quote(source)}")[0]
+    assert "Confirmed" in result.message
+
+
+def test_untyped_methods_stay_blocked_without_claiming_proven_write():
+    for source in ["obj.replace('a', 'b')", "obj.write('a')", "exec(payload)"]:
+        assert "Cannot classify" in violations(f"python -c {shlex.quote(source)}")[0].message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from pathlib import Path; save=Path('a').write_text; print(save)",
+        "import os; print(os.remove)",
+    ],
+)
+def test_uninvoked_mutator_reference_is_inconclusive(source):
+    assert "Cannot classify" in violations(f"python -c {shlex.quote(source)}")[0].message
+
+
+def test_python_diagnostics_do_not_echo_argument_values():
+    result = violations(
+        "python -c \"from pathlib import Path; Path('secret-path').write_text('secret-value')\""
+    )[0]
+    assert "secret" not in result.message
+    assert "secret" not in result.operation
+
+
+def test_scratch_exemption_cannot_hide_another_operation_write():
+    assert violations("echo x > /tmp/log; cp source maintained.py")
+    assert violations("cp source maintained.py; echo x > /tmp/log")
+    assert violations("sed -i s/a/b/ maintained.py; rg -i query /tmp/log")
+    assert violations("gcloud storage ls; echo x > maintained.py")
+    assert violations("echo x > /tmp/log; tee maintained.py")
+    assert violations("echo x > /tmp/log; echo y > /private/tmp/log") == []
 
 
 def test_unrelated_allow_path_cannot_exempt_python_write():
