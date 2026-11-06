@@ -138,6 +138,32 @@ the result; do not infer that the code failed its tests or that verification
 passed. Use the harness's supported approval/retry mechanism for sandbox
 restrictions. AgentLint does not grant OS permissions or implement that retry.
 
+Native approval waits belong to the host. AgentLint has no parent/child task
+monitor and cannot preserve, cancel or resume those requests. Treat child state
+as unknown unless the host explicitly reports it; a generic “running” label
+does not establish active execution. Keep the original pending request rather
+than interrupting it or creating a duplicate prompt.
+
+For test responses that expose `status: awaiting_approval`, `running`, `unknown`
+or a pending `session_id`, AgentLint does not record completed test evidence or
+clear the edit counter. Drift warnings show the last recognized test fingerprint,
+result and timestamp, plus the files counted in the current session/worktree.
+Fingerprints avoid echoing sensitive command arguments. AgentLint cannot infer
+tests hidden inside arbitrary orchestration code when nested events are absent.
+
+Python write rejections report the Python source line, column and triggering
+callee; argument values are omitted. “Confirmed Python file write” identifies
+a recognized filesystem API or write-mode opener. “Cannot classify Python
+operation safely” means inspection was inconclusive; it remains blocked and
+does not assert a proven write. Unsupported shell syntax may lack an AST
+location and is identified explicitly.
+
+Creating disposable files with shell writes to `/tmp/` or `/private/tmp/` is
+supported by the file-write guard. `apply_patch` still stays inside the selected
+project, including when the OS permits writes elsewhere. A scratch-path boundary
+rejection now points to the shell alternative. Python mutations retain their
+write checks even when a separate shell log target is temporary.
+
 `status` and `doctor` list what is **still enforced locally**: pack rules,
 required workspace rules and the cached organization policy (or an explicit
 statement that no organization rules are cached). `doctor` is read-only by

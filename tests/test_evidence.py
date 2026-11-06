@@ -221,8 +221,12 @@ def test_external_receipts_are_reused(tmp_path):
     assert describe(r).startswith("verified deployment: `smoke prod` passed")
 
 
-def _hook(tmp_path, event, command, response=None, adapter="codex"):
-    payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(tmp_path)}
+def _hook(tmp_path, event, command, response=None, adapter="codex", native=False):
+    payload = {
+        "tool_name": "exec_command" if native else "Bash",
+        "tool_input": {"cmd" if native else "command": command},
+        "cwd": str(tmp_path),
+    }
     if response is not None:
         payload["tool_response"] = response
     return CliRunner().invoke(
@@ -285,6 +289,47 @@ def test_drift_detector_counts_only_real_test_runs(tmp_path):
     assert state["last_test_run"] is False
     rule.evaluate(ctx(HookEvent.POST_TOOL_USE, "Bash", {"command": "uv run pytest > log 2>&1"}))
     assert state["last_test_run"] is True and state["edited_files"] == []
+
+
+def test_running_test_does_not_clear_edits_or_create_receipt(tmp_path):
+    from agentlint.models import HookEvent
+
+    rule, ctx, state = _drift_state(tmp_path)
+    rule.evaluate(
+        ctx(HookEvent.POST_TOOL_USE, "Bash", {"command": "pytest -q"}, {"session_id": 123})
+    )
+    assert state["edited_files"]
+    assert state["last_test_run"] is False
+    assert outcome(failed_event=False, tool_response={"session_id": 123}) == "running"
+    _hook(tmp_path, "PostToolUse", "pytest -q", {"session_id": 123}, native=True)
+    assert not list(receipts_dir().glob("*.json"))
+
+
+def test_native_exec_command_records_successful_test_once(tmp_path):
+    result = _hook(tmp_path, "PostToolUse", "pytest -q", {"exit_code": 0}, native=True)
+    assert result.exit_code == 0
+    receipts = list(receipts_dir().glob("*.json"))
+    assert len(receipts) == 1
+    assert json.loads(receipts[0].read_text())["exit_code"] == 0
+
+
+@pytest.mark.parametrize("status", ["awaiting_approval", "running", "unknown"])
+def test_pending_or_unknown_host_state_does_not_imply_test_completion(tmp_path, status):
+    assert outcome(failed_event=False, tool_response={"status": status}) == status
+    _hook(tmp_path, "PostToolUse", "pytest -q", {"status": status})
+    assert not list(receipts_dir().glob("*.json"))
+
+
+def test_drift_warning_explains_last_test_and_counted_files(tmp_path):
+    from agentlint.models import HookEvent
+
+    rule, ctx, state = _drift_state(tmp_path)
+    rule.evaluate(ctx(HookEvent.POST_TOOL_USE, "Bash", {"command": "pytest -q"}, {"exit_code": 1}))
+    state["_drift_warned_at_commit"] = False
+    warning = rule.evaluate(ctx(HookEvent.PRE_TOOL_USE, "Bash", {"command": "git commit -m x"}))[0]
+    assert "failed" in warning.message
+    assert "f0.py" in warning.message
+    assert "session" in warning.message
 
 
 def test_drift_detector_commit_check_reuses_fresh_receipts(tmp_path):

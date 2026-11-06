@@ -38,6 +38,13 @@ class TestEventTranslation:
 
 
 class TestToolNormalization:
+    def test_native_exec_command_normalizes_shell_input(self):
+        from agentlint.adapters.normalize import canonical_tool_call
+
+        tool, payload = canonical_tool_call(CodexAdapter(), "exec_command", {"cmd": "pytest -q"})
+        assert tool == "Bash"
+        assert payload["command"] == "pytest -q"
+
     def test_bash(self) -> None:
         adapter = CodexAdapter()
         assert adapter.normalize_tool_name("Bash") == NormalizedTool.SHELL.value
@@ -100,8 +107,8 @@ class TestBuildHooks:
 
     def test_shell_and_patch_matcher(self) -> None:
         hooks = _build_hooks("agentlint")
-        assert hooks["hooks"]["PreToolUse"][0]["matcher"] == "^(Bash|apply_patch)$"
-        assert hooks["hooks"]["PostToolUse"][0]["matcher"] == "^(Bash|apply_patch)$"
+        assert hooks["hooks"]["PreToolUse"][0]["matcher"] == "^(Bash|exec_command|apply_patch)$"
+        assert hooks["hooks"]["PostToolUse"][0]["matcher"] == "^(Bash|exec_command|apply_patch)$"
 
     def test_embeds_adapter_flag(self) -> None:
         hooks = _build_hooks("agentlint")

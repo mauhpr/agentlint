@@ -381,6 +381,25 @@ class TestBashRateLimiter:
 class TestCrossAccountGuard:
     rule = CrossAccountGuard()
 
+    def test_expected_audit_projects_only_relax_known_reads(self):
+        state = {"cross_account": {"seen_gcloud_projects": ["audit-a"], "seen_aws_profiles": []}}
+        cfg = {"cross-account-guard": {"expected_gcloud_projects": ["audit-a", "audit-b"]}}
+        read = self._ctx_with_state("gcloud compute instances list --project audit-b", state)
+        read.config = cfg
+        assert self.rule.evaluate(read) == []
+        write = self._ctx_with_state("gcloud compute instances delete vm --project audit-c", state)
+        write.config = cfg
+        assert self.rule.evaluate(write)
+        outside = self._ctx_with_state("gcloud compute instances list --project audit-d", {})
+        outside.config = cfg
+        assert self.rule.evaluate(outside)
+
+    def test_expected_profiles_do_not_relax_mutation_switches(self):
+        state = {"cross_account": {"seen_gcloud_projects": [], "seen_aws_profiles": ["audit-a"]}}
+        ctx = self._ctx_with_state("aws ec2 terminate-instances --profile audit-b", state)
+        ctx.config = {"cross-account-guard": {"expected_aws_profiles": ["audit-a", "audit-b"]}}
+        assert self.rule.evaluate(ctx)
+
     def _ctx_with_state(self, command: str, state: dict | None = None) -> RuleContext:
         return RuleContext(
             event=HookEvent.PRE_TOOL_USE,

@@ -654,7 +654,7 @@ def _record_test_evidence(context) -> None:
             failed_event=context.event == HookEvent.POST_TOOL_USE_FAILURE,
             tool_response=context.tool_response,
         )
-        if result == "failed":
+        if result not in {"passed", "completed"}:
             return
         from agentlint.session import workspace_dir
 

@@ -163,11 +163,17 @@ def exit_status(tool_response: object) -> int | None:
 
 
 def outcome(*, failed_event: bool, tool_response: object) -> str:
-    """passed | failed | completed (ran, result not reported by the agent)."""
+    """Report observed completion or an explicit pending/unknown host state."""
     if failed_event:
         return "failed"
     status = exit_status(tool_response)
     if status is None:
+        if isinstance(tool_response, dict):
+            host_status = tool_response.get("status")
+            if host_status in ("awaiting_approval", "running", "unknown"):
+                return host_status
+            if tool_response.get("session_id") is not None:
+                return "running"
         return "completed"
     return "passed" if status == 0 else "failed"
 

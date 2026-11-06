@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+import shlex
 
 from agentlint.models import HookEvent, Rule, RuleContext, Severity, Violation
-from agentlint.utils.shell import executable_operations, executable_words
+from agentlint.utils.shell import executable_operations, executable_words, is_readonly_cloud_command
 
 _BASH_TOOLS = {"Bash"}
 
@@ -56,11 +57,11 @@ class CrossAccountGuard(Rule):
         violations: list[Violation] = []
 
         operations = executable_operations(command, {"aws", "gcloud"})
-        targets: list[tuple[str, str]] = []
+        targets: list[tuple[str, str, bool]] = []
         if operations is None:
             # Opaque execution contexts retain conservative recognition.
             targets = [
-                (kind, value)
+                (kind, value, False)
                 for kind, value in (
                     (
                         "gcloud",
@@ -95,20 +96,30 @@ class CrossAccountGuard(Rule):
                 if binary == "aws":
                     value = value or env_profile
                 if value:
-                    targets.append((binary, value))
+                    targets.append((binary, value, is_readonly_cloud_command(shlex.join(words))))
 
-        for binary, value in targets:
+        rule_config = context.config.get(self.id, {})
+        for binary, value, readonly in targets:
             key = "seen_gcloud_projects" if binary == "gcloud" else "seen_aws_profiles"
             label = "GCloud project" if binary == "gcloud" else "AWS profile"
             seen = ca.setdefault(key, [])
-            if seen and value not in seen:
+            setting = "expected_gcloud_projects" if binary == "gcloud" else "expected_aws_profiles"
+            expected = {item.lower() for item in rule_config.get(setting, [])}
+            if readonly and value in expected:
+                continue
+            outside = bool(expected) and value not in expected
+            if outside or (seen and value not in seen):
                 violations.append(
                     Violation(
                         rule_id=self.id,
-                        message=f"{label} switch detected: {seen[-1]} → {value}",
+                        message=(
+                            f"{label} outside expected audit set: {value}"
+                            if outside
+                            else f"{label} switch detected: {seen[-1]} → {value}"
+                        ),
                         severity=self.severity,
                         operation=f"{binary} account selector",
-                        suggestion=f"Verify this switch is intentional. Previous {label.lower()}: {seen[-1]}",
+                        suggestion=f"Verify this target is intentional. Previous {label.lower()}: {seen[-1] if seen else 'none'}",
                     )
                 )
             if value not in seen:

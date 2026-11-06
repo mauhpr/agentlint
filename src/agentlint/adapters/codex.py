@@ -40,6 +40,7 @@ _CODEX_EVENT_MAP: dict[str, AgentEvent] = {
 # Mapping from Codex tool names to NormalizedTool
 _CODEX_TOOL_MAP: dict[str, NormalizedTool] = {
     "Bash": NormalizedTool.SHELL,
+    "exec_command": NormalizedTool.SHELL,
     "apply_patch": NormalizedTool.FILE_EDIT,
     "Read": NormalizedTool.FILE_READ,
     "WebSearch": NormalizedTool.WEB_SEARCH,
@@ -57,7 +58,7 @@ def _build_hooks(cmd: str) -> dict:
         "hooks": {
             "PreToolUse": [
                 {
-                    "matcher": "^(Bash|apply_patch)$",
+                    "matcher": "^(Bash|exec_command|apply_patch)$",
                     "hooks": [
                         {
                             "type": "command",
@@ -71,7 +72,7 @@ def _build_hooks(cmd: str) -> dict:
             ],
             "PostToolUse": [
                 {
-                    "matcher": "^(Bash|apply_patch)$",
+                    "matcher": "^(Bash|exec_command|apply_patch)$",
                     "hooks": [
                         {
                             "type": "command",

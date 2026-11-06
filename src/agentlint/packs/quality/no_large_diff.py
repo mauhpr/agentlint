@@ -142,13 +142,23 @@ class NoLargeDiff(Rule):
             )
 
         if removed > max_removed:
+            deleting = context.tool_input.get("patch_action") == "delete"
             violations.append(
                 Violation(
                     rule_id=self.id,
-                    message=f"{removed} lines removed in a single edit (max {max_removed})",
+                    message=(
+                        f"Deleting file removes {removed} lines (max {max_removed})"
+                        if deleting
+                        else f"{removed} lines removed in a single edit (max {max_removed})"
+                    ),
                     severity=self.severity,
                     file_path=context.file_path,
-                    suggestion="Review large deletions carefully before proceeding",
+                    operation="delete" if deleting else "update",
+                    suggestion=(
+                        "Verify the file is no longer needed and recovery is available."
+                        if deleting
+                        else "Review large deletions carefully before proceeding"
+                    ),
                 )
             )
 
