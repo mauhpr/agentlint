@@ -120,6 +120,16 @@ def _verified_relocation(context: RuleContext, before: str, after: str) -> bool:
             return [tree, *(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef))]
 
         for guard in _python_guards(before):
+            # A helper has its own frame: exits and local bindings cannot be
+            # moved there without changing the caller's behavior.
+            if any(
+                isinstance(node, ast.Return | ast.Break | ast.Continue | ast.Yield | ast.YieldFrom)
+                or isinstance(node, ast.Name)
+                and isinstance(node.ctx, ast.Store | ast.Del)
+                for node in ast.walk(guard)
+            ):
+                return False
+            guarded_names = {node.id for node in ast.walk(guard) if isinstance(node, ast.Name)}
             old_scopes = [
                 scope
                 for scope in scopes(old)
@@ -140,9 +150,15 @@ def _verified_relocation(context: RuleContext, before: str, after: str) -> bool:
                     for node in ast.walk(statement)
                 ):
                     break
-            for stmt in reachable:
+            for index, stmt in enumerate(reachable):
                 call = getattr(stmt, "value", None)
                 if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name):
+                    continue
+                if any(
+                    isinstance(node, ast.Name) and node.id in guarded_names
+                    for preceding in reachable[:index]
+                    for node in ast.walk(preceding)
+                ):
                     continue
                 helper = helpers.get(call.func.id)
                 if helper is None or helper.decorator_list or call.keywords:

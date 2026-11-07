@@ -142,6 +142,71 @@ def test_upload_grant_rejects_ambiguous_transport_or_scope(tmp_path, change):
         )
 
 
+def test_authenticated_upload_rechecks_header_file_before_matching(tmp_path):
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"video")
+    headers = tmp_path / "headers"
+    headers.write_text("Authorization: Bearer synthetic-value\nContent-Type: video/mp4\n")
+    command = (
+        f"curl --disable --request POST --upload-file {source} --header @{headers} "
+        "'https://storage.googleapis.com/upload/storage/v1/b/private/o?uploadType=media&name=video.mp4&ifGenerationMatch=0'"
+    )
+    create_grant(
+        "cloud-upload",
+        repository=str(tmp_path),
+        reason="authenticated upload",
+        operation=command,
+        max_bytes=100,
+    )
+    assert matching_grant("no-network-exfil", repository=str(tmp_path), command=command)
+    headers.write_text("Host: attacker.example\n")
+    assert matching_grant("no-network-exfil", repository=str(tmp_path), command=command) is None
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [b"", b"Host: attacker.example\n", b"Authorization: Basic synthetic\n", b"\xff", b"x" * 16385],
+)
+def test_upload_grant_rejects_invalid_header_files(tmp_path, contents):
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"video")
+    headers = tmp_path / "headers"
+    headers.write_bytes(contents)
+    command = (
+        f"curl --disable --request POST --upload-file {source} --header @{headers} "
+        "'https://storage.googleapis.com/upload/storage/v1/b/private/o?uploadType=media&name=video.mp4&ifGenerationMatch=0'"
+    )
+    with pytest.raises(ValueError):
+        create_grant(
+            "cloud-upload",
+            repository=str(tmp_path),
+            reason="invalid headers",
+            operation=command,
+            max_bytes=100,
+        )
+
+
+def test_upload_grant_rejects_header_symlink(tmp_path):
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"video")
+    headers = tmp_path / "headers"
+    headers.write_text("Content-Type: video/mp4\n")
+    link = tmp_path / "header-link"
+    link.symlink_to(headers)
+    command = (
+        f"curl --disable --request POST --upload-file {source} --header @{link} "
+        "'https://storage.googleapis.com/upload/storage/v1/b/private/o?uploadType=media&name=video.mp4&ifGenerationMatch=0'"
+    )
+    with pytest.raises(ValueError, match="regular file"):
+        create_grant(
+            "cloud-upload",
+            repository=str(tmp_path),
+            reason="symlink headers",
+            operation=command,
+            max_bytes=100,
+        )
+
+
 def test_grant_expiry_is_rechecked_after_scope_validation(tmp_path, monkeypatch):
     import agentlint.approvals as approvals
 

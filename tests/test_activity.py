@@ -302,6 +302,32 @@ def test_legacy_approval_id_survives_refresh_and_environment_identity(tmp_path, 
     assert pending_context(str(tmp_path), None) is None
 
 
+def test_legacy_approval_keeps_identity_when_correlated_to_completion(tmp_path, monkeypatch):
+    import sqlite3
+
+    from agentlint.activity import _path, observe, pending_context, snapshot
+
+    monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(tmp_path / "cache"))
+    raw = {"session_id": "legacy", "tool_name": "Bash", "tool_input": {"command": "git status"}}
+    observe(raw, event="PermissionRequest", project_dir=str(tmp_path))
+    with sqlite3.connect(_path()) as db:
+        record = json.loads(db.execute("SELECT payload FROM observations").fetchone()[0])
+        record.pop("observation_id")
+        db.execute("UPDATE observations SET payload=?", (json.dumps(record),))
+    before = snapshot(str(tmp_path))["actions"][0]["observation_id"]
+    assert pending_context(str(tmp_path), "legacy")
+    observe(
+        {**raw, "tool_use_id": "correlated-call", "tool_response": {"exit_code": 0}},
+        event="PostToolUse",
+        project_dir=str(tmp_path),
+    )
+    after = snapshot(str(tmp_path))["actions"][0]
+    assert after["observation_id"] == before
+    assert after["correlation"] == "unique_action_match"
+    assert "completed" in pending_context(str(tmp_path), "legacy")
+    assert pending_context(str(tmp_path), "legacy") is None
+
+
 def test_status_json_summary_and_sections_are_conversation_scoped(tmp_path):
     (tmp_path / "agentlint.yml").write_text("packs: [security]\n")
     _hook(tmp_path, "PermissionRequest", adapter="codex")

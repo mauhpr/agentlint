@@ -179,6 +179,7 @@ def observe(
             "CREATE TABLE IF NOT EXISTS observations (workspace TEXT, session TEXT, key TEXT, kind TEXT, action TEXT, actor TEXT, turn TEXT, invocation TEXT, state TEXT, pending INTEGER, updated REAL, payload TEXT, PRIMARY KEY(workspace, session, key))"
         )
         db.execute("BEGIN IMMEDIATE")
+        previous_key = key
         previous = db.execute(
             "SELECT payload, invocation FROM observations WHERE workspace=? AND session=? AND key=?",
             (workspace, session, key),
@@ -205,6 +206,7 @@ def observe(
             ).fetchall()
             if len(candidates) == 1:
                 matched_key, old_payload, old_invocation = candidates[0]
+                previous_key = matched_key
                 previous = (old_payload, old_invocation)
                 if invocation and matched_key != key:
                     db.execute(
@@ -249,7 +251,7 @@ def observe(
             if old.get("agent_id") and not record["agent_id"] and event != "PermissionRequest":
                 record["agent_id"] = old["agent_id"]
             record["observation_id"] = old.get("observation_id") or (
-                _digest([workspace, session, key])[:16] if old else None
+                _digest([workspace, session, previous_key])[:16] if old else None
             )
             record["approval_seen"] = old.get("approval_seen", old.get("approval_observed", False))
             record["first_observed_at"] = old.get("first_observed_at", old.get("observed_at"))

@@ -188,6 +188,38 @@ class TestNoErrorHandlingRemoval:
         )
         assert self.rule.evaluate(ctx)
 
+    def test_helper_return_does_not_preserve_caller_early_exit(self):
+        old = "def run(result):\n    if result is None:\n        return\n    result.process()\n"
+        new = (
+            "from .guards import check\ndef run(result):\n    check(result)\n    result.process()\n"
+        )
+        ctx = _ctx(
+            tool_name="Edit",
+            tool_input={"file_path": "/tmp/project/app.py", "content": new},
+            file_content=new,
+            file_content_before=old,
+        )
+        ctx.related_files = {
+            "/tmp/project/guards.py": "def check(result):\n    if result is None:\n        return\n"
+        }
+        assert self.rule.evaluate(ctx)
+
+    def test_guard_extraction_must_preserve_call_position(self):
+        old = "def run(result):\n    if result is not None:\n        process(result)\n"
+        new = (
+            "from .guards import check\ndef run(result):\n    result.process()\n    check(result)\n"
+        )
+        ctx = _ctx(
+            tool_name="Edit",
+            tool_input={"file_path": "/tmp/project/app.py", "content": new},
+            file_content=new,
+            file_content_before=old,
+        )
+        ctx.related_files = {
+            "/tmp/project/guards.py": "def check(result):\n    if result is not None:\n        process(result)\n"
+        }
+        assert self.rule.evaluate(ctx)
+
     def test_strings_and_comments_are_not_error_handling(self):
         old = 'MESSAGE = "if result is not None"\n# try:\n'
         ctx = _ctx(

@@ -209,8 +209,25 @@ class NoSecrets(Rule):
         # Check for sensitive filenames (only for Write/Edit).
         if file_path and context.tool_name in _WRITE_TOOLS:
             basename = os.path.basename(file_path).lower()
+            stem, suffix = os.path.splitext(basename)
             for name in _SENSITIVE_FILENAMES:
-                if os.path.splitext(basename)[0] == name:
+                if stem == name or (
+                    suffix
+                    in {
+                        ".json",
+                        ".yaml",
+                        ".yml",
+                        ".toml",
+                        ".ini",
+                        ".cfg",
+                        ".conf",
+                        ".env",
+                        ".txt",
+                        ".xml",
+                        ".csv",
+                    }
+                    and re.search(rf"(?:^|[._-]){name}(?:[._-]|$)", basename)
+                ):
                     violations.append(
                         Violation(
                             rule_id=self.id,
