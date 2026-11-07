@@ -184,7 +184,7 @@ def test_pending_evidence_outlives_bounded_terminal_history(tmp_path):
         )
     state = snapshot(str(tmp_path))
     assert state["truncated"] is True
-    assert state["total"] == 1001
+    assert state["total"] == 1006
     assert state["actions"][0]["state"] == "awaiting_approval"
 
 

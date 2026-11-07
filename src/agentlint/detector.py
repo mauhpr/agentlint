@@ -135,7 +135,8 @@ def _stack_signals(root: Path) -> dict[str, list[str]]:
     from collections import deque
 
     signals: dict[str, list[str]] = {"python": [], "frontend": [], "react": [], "seo": []}
-    component_files = 0
+    seo_roots: list[Path] = []
+    pages: list[Path] = []
     seen = 0
     queue: deque[tuple[Path, int]] = deque([(root, 0)])
     while queue and seen < _MAX_ENTRIES:
@@ -163,11 +164,18 @@ def _stack_signals(root: Path) -> dict[str, list[str]]:
                 if _has_react(entry.parent):
                     signals["react"].append(rel)
                 if _has_seo_framework(entry.parent):
-                    signals["seo"].append(rel)
+                    seo_roots.append(entry.parent)
             elif entry.suffix in _FRONTEND_SUFFIXES:
-                component_files += 1
-    if component_files:
-        signals["frontend"].append(f"{component_files} .tsx/.jsx/.vue/.svelte file(s)")
+                signals["frontend"].append(rel)
+            from agentlint.packs.seo._helpers import is_page_file
+
+            if is_page_file(rel):
+                pages.append(entry)
+    signals["seo"] = [
+        page.relative_to(root).as_posix()
+        for page in pages
+        if any(page.is_relative_to(directory) for directory in seo_roots)
+    ]
     return signals
 
 
@@ -183,15 +191,12 @@ def detect_drift(config, project_dir: str) -> list[dict]:
     ignored = set(getattr(config, "drift_ignore_packs", []) or [])
     findings = []
     for pack, evidence in _stack_signals(Path(project_dir)).items():
-        if not evidence or pack in config.packs or pack in ignored or pack not in PACK_MODULES:
+        if not evidence or pack in ignored or pack not in PACK_MODULES:
             continue
         uncovered = [
             item
             for item in evidence
-            if not any(
-                item.startswith(prefix.rstrip("/") + "/") and pack in (proj.get("packs") or [])
-                for prefix, proj in (config.projects or {}).items()
-            )
+            if pack not in config.resolve_packs_for_file(str(Path(project_dir) / item), project_dir)
         ]
         if uncovered:
             findings.append({"pack": pack, "evidence": uncovered[:5]})

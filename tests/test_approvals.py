@@ -81,6 +81,163 @@ def test_model_spend_is_its_own_class(tmp_path):
     )
 
 
+def test_cloud_upload_grant_binds_hash_object_size_and_create_only(tmp_path):
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"x" * 6_000_000)
+    command = (
+        f"wag-storage guard -- curl --disable --request POST --upload-file {source} "
+        "'https://storage.googleapis.com/upload/storage/v1/b/private/o?uploadType=media&name=video.mp4&ifGenerationMatch=0'"
+    )
+    grant = create_grant(
+        "cloud-upload",
+        repository=str(tmp_path),
+        reason="approved video",
+        operation=command,
+        max_bytes=6_000_000,
+    )
+    assert grant["upload"]["size_bytes"] == 6_000_000
+    assert matching_grant("no-network-exfil", repository=str(tmp_path), command=command)
+    for changed in (
+        command.replace("name=video.mp4", "name=other.mp4"),
+        command.replace("ifGenerationMatch=0", "ifGenerationMatch=1"),
+        command + " && echo extra",
+    ):
+        assert matching_grant("no-network-exfil", repository=str(tmp_path), command=changed) is None
+    source.write_bytes(b"y" * 6_000_000)
+    assert matching_grant("no-network-exfil", repository=str(tmp_path), command=command) is None
+    with pytest.raises(ValueError, match="size"):
+        create_grant(
+            "cloud-upload",
+            repository=str(tmp_path),
+            reason="too large",
+            operation=command,
+            max_bytes=5_000_000,
+        )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda command: command.replace("--disable ", ""),
+        lambda command: command.replace("storage.googleapis.com", "other.example"),
+        lambda command: command.replace("ifGenerationMatch=0", "ifGenerationMatch=1"),
+        lambda command: command.replace("name=video.mp4", "name={one,two}"),
+        lambda command: command + " --location",
+    ],
+)
+def test_upload_grant_rejects_ambiguous_transport_or_scope(tmp_path, change):
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"video")
+    command = (
+        f"curl --disable --request POST --upload-file {source} "
+        "'https://storage.googleapis.com/upload/storage/v1/b/private/o?uploadType=media&name=video.mp4&ifGenerationMatch=0'"
+    )
+    with pytest.raises(ValueError):
+        create_grant(
+            "cloud-upload",
+            repository=str(tmp_path),
+            reason="scope test",
+            operation=change(command),
+            max_bytes=100,
+        )
+
+
+def test_grant_expiry_is_rechecked_after_scope_validation(tmp_path, monkeypatch):
+    import agentlint.approvals as approvals
+
+    grant = create_grant("model-spend", repository=str(tmp_path), reason="expiry boundary")
+    grant["expires_at"] = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
+    monkeypatch.setattr(approvals, "active_grants", lambda: [grant])
+    assert matching_grant("token-budget", repository=str(tmp_path), command=None) is None
+
+
+def test_gcloud_inferred_destination_cannot_receive_exact_object_grant(tmp_path):
+    with pytest.raises(ValueError, match="folder inference"):
+        create_grant(
+            "cloud-upload",
+            repository=str(tmp_path),
+            reason="exact object",
+            max_bytes=100,
+            operation="gcloud storage cp /abs/video.mp4 gs://private/video.mp4 --if-generation-match=0",
+        )
+
+
+def test_finding_grant_is_exact_and_does_not_authorize_other_findings(tmp_path):
+    source = tmp_path / "symbols.py"
+    source.write_text("public_symbol = 1\n")
+    finding = "a" * 64
+    grant = create_grant(
+        "secret-finding",
+        repository=str(tmp_path),
+        reason="reviewed symbol",
+        file_path=str(source),
+        finding_id=finding,
+        rule_id="no-secrets",
+    )
+    assert (
+        matching_grant(
+            "no-secrets",
+            repository=str(tmp_path),
+            command=None,
+            file_path=str(source),
+            finding_id=finding,
+        )
+        == grant
+    )
+    for path, fingerprint in ((str(source), "b" * 64), (str(tmp_path / "other.py"), finding)):
+        assert (
+            matching_grant(
+                "no-secrets",
+                repository=str(tmp_path),
+                command=None,
+                file_path=path,
+                finding_id=fingerprint,
+            )
+            is None
+        )
+    assert matching_grant("no-network-exfil", repository=str(tmp_path), command=None) is None
+    revoke_grant(grant["id"])
+    assert (
+        matching_grant(
+            "no-secrets",
+            repository=str(tmp_path),
+            command=None,
+            file_path=str(source),
+            finding_id=finding,
+        )
+        is None
+    )
+
+
+def test_upload_grant_applies_only_to_upload_rule_and_is_audited(tmp_path):
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"video")
+    command = (
+        f"curl --disable --request POST --upload-file {source} "
+        "'https://storage.googleapis.com/upload/storage/v1/b/private/o?uploadType=media&name=video.mp4&ifGenerationMatch=0'"
+    )
+    config = AgentLintConfig(packs=["security"])
+    context = RuleContext(
+        event=HookEvent.PRE_TOOL_USE,
+        tool_name="Bash",
+        tool_input={"command": command},
+        project_dir=str(tmp_path),
+    )
+    engine = Engine(config, load_rules(config.packs))
+    assert _sev(engine.evaluate(context), "no-network-exfil") == [Severity.ERROR]
+    create_grant(
+        "cloud-upload",
+        repository=str(tmp_path),
+        reason="approved video",
+        operation=command,
+        max_bytes=100,
+    )
+    assert _sev(engine.evaluate(context), "no-network-exfil") == [Severity.WARNING]
+    assert "upload" in Path(os.environ["AGENTLINT_APPROVAL_AUDIT_FILE"]).read_text()
+    config.required_rules = ["no-network-exfil"]
+    assert _sev(engine.evaluate(context), "no-network-exfil") == [Severity.ERROR]
+
+
 def test_fixture_copy_approval_is_exact_hash_bound_and_reusable(tmp_path):
     source = tmp_path / "retained.html"
     source.write_text("<html>retained fixture</html>")

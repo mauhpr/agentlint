@@ -16,6 +16,7 @@ _SAFE_HOST_SUFFIXES = (".local", ".internal", ".localhost", ".test")
 # --- Exfiltration patterns ---
 # Each tuple: (compiled_regex, human-readable label).
 _EXFIL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bcurl\b.*--upload-file\b", re.IGNORECASE), "curl --upload-file"),
     # curl POST/PUT with data or file upload.
     (
         re.compile(
@@ -104,6 +105,41 @@ class NoNetworkExfil(Rule):
         command: str = context.command or ""
         if not command:
             return []
+
+        from agentlint.utils.shell import (
+            split_operations,
+            storage_copy_endpoints,
+            unwrap_simple_command,
+        )
+
+        for operation in split_operations(command) or []:
+            words = unwrap_simple_command(list(operation.words))
+            try:
+                endpoints = storage_copy_endpoints(words or [])
+            except ValueError:
+                endpoints = None  # The file-write rule reports uncertain copy effects.
+            if (
+                endpoints
+                and not endpoints[0].startswith("gs://")
+                and endpoints[-1].startswith("gs://")
+                and re.search(
+                    r"(?:\.env|secret|credential|token|\.pem|\.key|id_rsa)",
+                    endpoints[0],
+                    re.IGNORECASE,
+                )
+            ):
+                return [
+                    Violation(
+                        rule_id=self.id,
+                        severity=self.severity,
+                        message="Cloud storage transfer detected; evaluate as an upload, not a repository edit",
+                        suggestion=(
+                            "Use an explicit-object JSON API upload for a narrow cloud-upload "
+                            "grant bound to source hash, destination and size. "
+                            "Native host approval remains separate."
+                        ),
+                    )
+                ]
 
         # Load config.
         allowed_hosts: list[str] = get_rule_setting(context.config, self.id, "allowed_hosts", [])

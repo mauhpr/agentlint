@@ -45,6 +45,27 @@ def unwrap_simple_command(words: list[str]) -> list[str] | None:
     while words:
         if words[0] == "command":
             words = words[1:]
+        elif Path(words[0]).name == "wag-storage":
+            if len(words) < 3 or words[1] != "guard":
+                return None
+            i = 2
+            while i < len(words) and words[i] != "--":
+                flag, equals, value = words[i].partition("=")
+                if flag not in {"--path", "--allow-low-space"}:
+                    break
+                if equals:
+                    if not value:
+                        return None
+                    i += 1
+                else:
+                    if i + 1 >= len(words) or words[i + 1].startswith("-"):
+                        return None
+                    i += 2
+            if i < len(words) and words[i] == "--":
+                i += 1
+            if i >= len(words) or words[i].startswith("-"):
+                return None
+            words = words[i:]
         elif words[0] in {"env", "/usr/bin/env"}:
             words = words[1:]
             while words and _ASSIGNMENT.fullmatch(words[0]):
@@ -94,6 +115,49 @@ _VALUE_FLAGS = {
     "--output",
     "--query",
 }
+
+
+def storage_copy_endpoints(words: list[str]) -> tuple[str, str] | None:
+    """Classify literal GCS copies; unknown flags cannot prove a local-write exemption.
+
+    None means another command. ValueError means a storage copy whose file
+    effects cannot be classified with the supported grammar.
+    """
+    if not words or Path(words[0]).name != "gcloud":
+        return None
+    if not any(words[i : i + 2] == ["storage", "cp"] for i in range(1, len(words) - 1)):
+        return None
+    positional = []
+    i = 1
+    value_flags = _VALUE_FLAGS | {
+        "--billing-project",
+        "--if-generation-match",
+        "--if-metageneration-match",
+    }
+    bool_flags = {"--quiet", "-q", "--recursive", "-r", "--no-clobber", "-n"}
+    while i < len(words):
+        word = words[i]
+        i += 1
+        if word == "--":
+            positional.extend(words[i:])
+            break
+        if word.startswith("-"):
+            name, equals, value = word.partition("=")
+            if name in bool_flags and not equals:
+                continue
+            if name not in value_flags:
+                raise ValueError("unsupported cloud storage copy option")
+            if not equals:
+                if i == len(words) or words[i].startswith("-"):
+                    raise ValueError("missing cloud storage copy option value")
+                i += 1
+            elif not value:
+                raise ValueError("missing cloud storage copy option value")
+        else:
+            positional.append(word)
+    if positional[:2] != ["storage", "cp"] or len(positional) != 4:
+        raise ValueError("cloud storage copy requires exact source and destination")
+    return positional[2], positional[3]
 
 
 def is_readonly_cloud_command(command: str) -> bool:

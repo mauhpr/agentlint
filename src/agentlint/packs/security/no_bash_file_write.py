@@ -112,13 +112,18 @@ def _python_source_finding(source: str, *, fallback: bool = True) -> _PythonFind
         return _PythonFinding("unknown", "unparseable Python source") if fallback else None
 
     aliases: dict[str, str] = {}
+    import_bindings: dict[str, int] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for name in node.names:
                 aliases[name.asname or name.name] = name.name
+                binding = name.asname or name.name
+                import_bindings[binding] = import_bindings.get(binding, 0) + 1
         elif isinstance(node, ast.ImportFrom):
             for name in node.names:
                 aliases[name.asname or name.name] = f"{node.module}.{name.name}"
+                binding = name.asname or name.name
+                import_bindings[binding] = import_bindings.get(binding, 0) + 1
 
     def name_of(node: ast.expr) -> str:
         attributes: list[str] = []
@@ -129,6 +134,88 @@ def _python_source_finding(source: str, *, fallback: bool = True) -> _PythonFind
         return ".".join([base, *reversed(attributes)])
 
     called_functions = {id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
+    rebound = {
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del)
+    }
+    rebound.update(node.arg for node in ast.walk(tree) if isinstance(node, ast.arg))
+    rebound.update(
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+    )
+    rebound.update(
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ExceptHandler | ast.MatchAs | ast.MatchStar) and node.name
+    )
+    safe_subprocess = set()
+    subprocess_hazard = None
+    for call in ast.walk(tree):
+        if not isinstance(call, ast.Call) or name_of(call.func) != "subprocess.run":
+            continue
+        root = call.func
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        if (
+            not isinstance(root, ast.Name)
+            or root.id in rebound
+            or import_bindings.get(root.id) != 1
+        ):
+            continue
+        if subprocess_hazard is None:
+            subprocess_hazard = any(
+                isinstance(node, ast.Call)
+                and name_of(node.func) in {"setattr", "delattr"}
+                or isinstance(node, ast.Subscript)
+                and isinstance(node.ctx, ast.Store | ast.Del)
+                and name_of(node.value) == "os.environ"
+                or isinstance(node, ast.Attribute)
+                and isinstance(node.ctx, ast.Store | ast.Del)
+                and (name_of(node) == "os.environ" or name_of(node).startswith("subprocess."))
+                or isinstance(node, ast.Call)
+                and name_of(node.func)
+                in {
+                    "os.putenv",
+                    "os.unsetenv",
+                    "os.environ.update",
+                    "os.environ.clear",
+                    "os.environ.pop",
+                    "os.environ.setdefault",
+                }
+                for node in ast.walk(tree)
+            )
+        if subprocess_hazard:
+            continue
+        if len(call.args) != 1 or not isinstance(call.args[0], ast.List | ast.Tuple):
+            continue
+        args = call.args[0].elts
+        if len(args) != 4 or not all(
+            isinstance(arg, ast.Constant) and isinstance(arg.value, str) for arg in args
+        ):
+            continue
+        values = [arg.value for arg in args]
+        if values[:3] != ["git", "cat-file", "-e"] or not re.fullmatch(
+            r"[A-Za-z0-9_][A-Za-z0-9_./:@{}~^+-]*", values[3]
+        ):
+            continue
+        if not all(
+            isinstance(kw.value, ast.Constant)
+            and (
+                kw.arg in {"check", "capture_output", "text"}
+                and isinstance(kw.value.value, bool)
+                or kw.arg == "shell"
+                and kw.value.value is False
+                or kw.arg == "timeout"
+                and isinstance(kw.value.value, int | float)
+                and not isinstance(kw.value.value, bool)
+                and kw.value.value > 0
+            )
+            for kw in call.keywords
+        ):
+            continue
+        safe_subprocess.add(id(call.func))
 
     def expression(node: ast.AST, depth: int = 0) -> str:
         # Preserve the callee, never echo command values or string contents.
@@ -175,6 +262,8 @@ def _python_source_finding(source: str, *, fallback: bool = True) -> _PythonFind
             if leaf in _OPAQUE_ACCESS:
                 return finding(node)
             if leaf in _QUALIFIED_UNSAFE_LEAVES and name_of(node) in _QUALIFIED_UNSAFE_CALLS:
+                if id(node) in safe_subprocess:
+                    continue
                 kind = (
                     "unknown"
                     if id(node) not in called_functions
@@ -459,6 +548,36 @@ class NoBashFileWrite(Rule):
                 ]
 
         # Cloud/infra subcommands (cp, mv) are not local shell file operations.
+        if binary == "gcloud" and operations:
+            from agentlint.utils.shell import storage_copy_endpoints, unwrap_simple_command
+
+            words = unwrap_simple_command(list(operations[0].words)) or []
+            try:
+                endpoints = storage_copy_endpoints(words)
+            except ValueError:
+                return [
+                    Violation(
+                        rule_id=self.id,
+                        severity=self.severity,
+                        message="Cannot classify cloud storage copy file effects safely",
+                        suggestion="Use an exact source and destination with supported literal flags.",
+                    )
+                ]
+            if endpoints:
+                destination = endpoints[-1]
+                if not destination.startswith("gs://") and not _path_allowed(
+                    destination, allow_paths, safe_path_prefixes
+                ):
+                    return [
+                        Violation(
+                            rule_id=self.id,
+                            severity=self.severity,
+                            file_path=destination,
+                            message="Cloud storage copy writes a local file",
+                            operation="gcloud storage cp local destination",
+                            suggestion="Use a scoped scratch destination or the normal file-edit workflow.",
+                        )
+                    ]
         if binary in KNOWN_CLI_TOOLS or binary in safe_binaries:
             return []
 

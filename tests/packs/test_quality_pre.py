@@ -158,6 +158,60 @@ EOF
 class TestNoErrorHandlingRemoval:
     rule = NoErrorHandlingRemoval()
 
+    def test_guard_verified_in_called_shared_helper_is_relocation(self):
+        old = "def run(result):\n    if result is not None:\n        process(result)\n"
+        new = "from .guards import check\ndef run(result):\n    check(result)\n"
+        helper = "def check(result):\n    if result is not None:\n        process(result)\n"
+        ctx = _ctx(
+            tool_name="Edit",
+            tool_input={"file_path": "/tmp/project/app.py", "content": new},
+            file_content=new,
+            file_content_before=old,
+        )
+        ctx.related_files = {"/tmp/project/guards.py": helper}
+        assert self.rule.evaluate(ctx) == []
+        ctx.related_files["/tmp/project/guards.py"] = "def check(result):\n    process(result)\n"
+        assert self.rule.evaluate(ctx)
+        ctx.related_files["/tmp/project/guards.py"] = helper
+        ctx.file_content = new.replace("check(result)", "check(other)")
+        assert self.rule.evaluate(ctx)
+        for changed in (
+            new.replace("    check(result)", "    return\n    check(result)"),
+            new.replace("    check(result)", "    return other()\n    check(result)"),
+            new.replace("def run", "from .other import check\ndef run"),
+        ):
+            ctx.file_content = changed
+            assert self.rule.evaluate(ctx)
+        ctx.file_content = new
+        ctx.related_files["/tmp/project/guards.py"] = (
+            helper + "check = lambda result: process(result)\n"
+        )
+        assert self.rule.evaluate(ctx)
+
+    def test_strings_and_comments_are_not_error_handling(self):
+        old = 'MESSAGE = "if result is not None"\n# try:\n'
+        ctx = _ctx(
+            tool_name="Write",
+            tool_input={"file_path": "app.py", "content": "value = 1\n"},
+            file_content="value = 1\n",
+            file_content_before=old,
+        )
+        assert self.rule.evaluate(ctx) == []
+
+    def test_removed_guard_diagnostic_has_exact_local_evidence(self):
+        old = "if result is not None:\n    process(result)\n"
+        new = "process_with_guard(result)\n"
+        ctx = _ctx(
+            tool_name="Write",
+            tool_input={"file_path": "app.py", "content": new},
+            file_content=new,
+            file_content_before=old,
+        )
+        violation = self.rule.evaluate(ctx)[0]
+        assert violation.line == 1
+        assert "if result is not None:" in violation.message
+        assert "helper" in violation.suggestion
+
     def test_detects_python_try_removal(self):
         old = "try:\n    do_thing()\nexcept ValueError:\n    handle()\n"
         new = "do_thing()\n"
@@ -169,7 +223,7 @@ class TestNoErrorHandlingRemoval:
         )
         violations = self.rule.evaluate(ctx)
         assert len(violations) == 1
-        assert "Error handling removed" in violations[0].message
+        assert "Local handler removed or relocated" in violations[0].message
 
     def test_allows_when_error_handling_preserved(self):
         old = "try:\n    do_thing()\nexcept ValueError:\n    handle()\n"

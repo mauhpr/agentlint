@@ -26,7 +26,7 @@ def _repo(tmp_path, config: str):
 def test_python_only_config_with_frontend_code_drifts(tmp_path):
     repo = _repo(tmp_path, "# Python-only project\npacks: [universal, python]\n")
     drift = {d["pack"]: d["evidence"] for d in detect_drift(load_config(str(repo)), str(repo))}
-    assert drift["frontend"] == ["web/package.json", "1 .tsx/.jsx/.vue/.svelte file(s)"]
+    assert drift["frontend"] == ["web/package.json", "web/src/App.tsx"]
     assert drift["react"] == ["web/package.json"]
     assert "python" not in drift
 
@@ -40,7 +40,18 @@ def test_auto_detection_ignore_list_and_projects_mapping_do_not_drift(tmp_path):
         "packs: [universal, python]\nprojects:\n  web/:\n    packs: [universal, frontend, react]\n"
     )
     drift = detect_drift(load_config(str(repo)), str(repo))
-    assert drift == [{"pack": "frontend", "evidence": ["1 .tsx/.jsx/.vue/.svelte file(s)"]}]
+    assert drift == []
+
+
+def test_seo_drift_needs_page_evidence_not_only_a_manifest(tmp_path):
+    repo = _repo(tmp_path, "packs: [universal, python, frontend, react]\n")
+    (repo / "web/package.json").write_text(json.dumps({"dependencies": {"next": "15"}}))
+    assert detect_drift(load_config(str(repo)), str(repo)) == []
+    (repo / "web/app").mkdir()
+    (repo / "web/app/page.tsx").write_text("export default 1\n")
+    assert detect_drift(load_config(str(repo)), str(repo)) == [
+        {"pack": "seo", "evidence": ["web/app/page.tsx"]},
+    ]
 
 
 def test_workspace_baseline_is_not_judged_for_drift(tmp_path, monkeypatch):

@@ -10,6 +10,49 @@ from agentlint.models import HookEvent, RuleContext
 from agentlint.packs.security.no_bash_file_write import NoBashFileWrite
 
 
+@pytest.mark.parametrize(
+    "code",
+    [
+        "import subprocess; subprocess.run(['git', 'cat-file', '-e', 'HEAD'], check=True)",
+        "import subprocess as sp; sp.run(['git', 'cat-file', '-e', 'HEAD:README.md'])",
+    ],
+)
+def test_literal_git_existence_subprocess_is_classified_read_only(code):
+    assert violations("python3 -c " + shlex.quote(code)) == []
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        ", shell=True",
+        ", env={}",
+        ", executable='/tmp/git'",
+        ", **options",
+    ],
+)
+def test_git_subprocess_overrides_remain_uncertain(tail):
+    code = "import subprocess; subprocess.run(['git', 'cat-file', '-e', 'HEAD']" + tail + ")"
+    assert violations("python3 -c " + shlex.quote(code))
+
+
+def test_reassigned_subprocess_does_not_gain_read_exemption():
+    code = "import subprocess; subprocess = arbitrary; subprocess.run(['git', 'cat-file', '-e', 'HEAD'])"
+    assert violations("python3 -c " + shlex.quote(code))
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "import other as subprocess; import subprocess;",
+        "import subprocess; setattr(subprocess, 'run', other);",
+        "import subprocess; import os; os.environ['PATH'] = '/evil';",
+    ],
+)
+def test_shadowed_subprocess_remains_uncertain(prefix):
+    code = prefix + " subprocess.run(['git', 'cat-file', '-e', 'HEAD'])"
+    assert violations("python3 -c " + shlex.quote(code))
+
+
 def violations(command: str):
     return NoBashFileWrite().evaluate(
         RuleContext(

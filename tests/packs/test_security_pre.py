@@ -25,6 +25,31 @@ def _ctx(tool_name: str, tool_input: dict, config: dict | None = None) -> RuleCo
 class TestNoBashFileWrite:
     rule = NoBashFileWrite()
 
+    def test_storage_guard_preserves_upload_and_local_write_classification(self):
+        upload = "gcloud storage cp /work/video.mp4 gs://private/video.mp4 --if-generation-match=0"
+        assert self.rule.evaluate(_ctx("Bash", {"command": "wag-storage guard -- " + upload})) == []
+        assert (
+            self.rule.evaluate(
+                _ctx(
+                    "Bash",
+                    {
+                        "command": "wag-storage guard --path /work --allow-low-space approved -- "
+                        + upload
+                    },
+                )
+            )
+            == []
+        )
+        for command in (
+            "wag-storage guard -- cp /work/source /work/target",
+            "wag-storage guard -- gcloud storage cp gs://private/video.mp4 /work/video.mp4",
+            "gcloud storage cp gs://private/video.mp4 --project example /work/video.mp4",
+            "/usr/bin/gcloud storage cp gs://private/video.mp4 /work/video.mp4",
+            "wag-storage guard -- " + upload + " > maintained.txt",
+            "wag-storage guard -- " + upload + " && cp /work/source /work/target",
+        ):
+            assert self.rule.evaluate(_ctx("Bash", {"command": command}))
+
     def test_literal_cat_heredoc_is_stdin_not_a_file_write(self):
         command = "cat <<'EOF'\nDocumentation: cp source target; echo x > file\nEOF"
         assert self.rule.evaluate(_ctx("Bash", {"command": command})) == []

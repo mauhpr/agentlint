@@ -396,7 +396,16 @@ class Engine:
         for v in violations:
             if v.severity != Severity.ERROR:
                 continue
-            grant = matching_grant(rule_id, repository=context.project_dir, command=command)
+            path = context.file_path
+            if path and not os.path.isabs(path):
+                path = os.path.join(context.project_dir, path)
+            grant = matching_grant(
+                rule_id,
+                repository=context.project_dir,
+                command=command,
+                file_path=path,
+                finding_id=v.finding_id,
+            )
             if grant and audit_use(
                 grant, rule_id=rule_id, repository=context.project_dir, command=command
             ):

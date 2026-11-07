@@ -147,11 +147,16 @@ Usage: agentlint approve grant [OPTIONS] ACTION_CLASS
   Approve one ACTION_CLASS for this repository until the TTL expires.
 
 Options:
-  --reason TEXT       Why this is approved (recorded)  [required]
-  --ttl TEXT          Lifetime, e.g. 30m, 2h (max 24h)  [default: 1h]
-  --operation TEXT    Restrict to one exact literal command
-  --project-dir TEXT  Repository the approval is bound to
-  --help              Show this message and exit.
+  --reason TEXT              Why this is approved (recorded)  [required]
+  --ttl TEXT                 Lifetime, e.g. 30m, 2h (max 24h)  [default: 1h]
+  --operation TEXT           Restrict to one exact literal command
+  --project-dir TEXT         Repository the approval is bound to
+  --max-bytes INTEGER RANGE  Explicit source size ceiling for a cloud-upload grant
+                             [x>=1]
+  --file-path TEXT           Exact absolute source file for a secret-finding
+  --finding-id TEXT          Exact redacted finding fingerprint
+  --rule-id TEXT             Exact secret detector for a secret-finding
+  --help                     Show this message and exit.
 ```
 
 ## agentlint approve list
@@ -659,9 +664,20 @@ Usage: agentlint status [OPTIONS]
   Show AgentLint coverage, effective policy and cloud health. Read-only.
 
 Options:
-  --project-dir TEXT  Project directory
-  --json              Emit machine-readable JSON
-  --help              Show this message and exit.
+  --project-dir TEXT              Project directory
+  --json                          Emit machine-readable JSON
+  --history                       Show detailed passive host observation history
+  --limit INTEGER RANGE           [default: 100; 1<=x<=1000]
+  --offset INTEGER RANGE          History page offset  [x>=0]
+  --session-id TEXT               Filter observations to one requesting session
+  --conversation TEXT             Alias for --session-id
+  --platform TEXT                 Filter observations to one host platform
+  --summary                       Compact status and current observed blockers
+  --section [activity|agents|policy|cloud|local_protections]
+                                  Include only these JSON sections (repeatable; requires
+                                  --json)
+  --diagnostics                   Include full setup, policy and queue diagnostics
+  --help                          Show this message and exit.
 ```
 
 ## agentlint suppress

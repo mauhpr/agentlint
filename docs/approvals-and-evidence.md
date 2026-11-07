@@ -42,6 +42,8 @@ agentlint approve revoke apr_1a2b3c4d
 | `production-access` | `production-guard` |
 | `model-spend` | `token-budget`, `token-burn-against-team-budget` |
 | `fixture-copy` | `no-bash-file-write`, only for an exact, hash-bound fixture copy |
+| `cloud-upload` | `no-network-exfil`, only for one hash-bound, create-only GCS upload |
+| `secret-finding` | One fingerprint from `no-secrets` in one file |
 
 How approvals are scoped:
 
@@ -62,6 +64,49 @@ How approvals are scoped:
 
 For a single reviewed command in configuration, see
 [exceptions](configuration.md#exceptions).
+
+### Scoped uploads and reviewed findings
+
+Temporary grants live in the local approvals store, outside repository policy.
+They expire automatically, can be revoked, and log each use before allowing it.
+They never approve a native host request or relax another rule.
+
+For a large video, a person can run this in their interactive terminal:
+
+```bash
+agentlint approve grant cloud-upload --project-dir /abs/repo --ttl 30m \
+  --reason "Reviewed private video upload" --max-bytes 2000000000 \
+  --operation "curl --disable --request POST --upload-file /abs/video.mp4 --header @/abs/gcs.headers 'https://storage.googleapis.com/upload/storage/v1/b/private-bucket/o?uploadType=media&name=video.mp4&ifGenerationMatch=0'"
+```
+
+This implementation supports one absolute regular source file and one explicit
+GCS JSON API object name. Use an existing protected header file containing only
+`Authorization: Bearer ...` and optionally `Content-Type: video/mp4`; credentials
+are never copied into the grant. `--disable` prevents curl configuration from
+adding hidden operations. Extra curl flags, redirects and URL globs are rejected.
+The grant streams the SHA-256 calculation, binds
+the file size and explicit ceiling, and rechecks them on every use. It rejects
+wildcards, symlinks, recursive copies, compound commands and missing create-only
+preconditions. Changed bytes, destinations or commands need a new grant. The
+cloud service enforces create-only behavior through `ifGenerationMatch=0`.
+See [objects.insert](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/insert).
+`gcloud storage cp` is classified as a transfer, but cannot receive an exact-object
+grant because its [folder inference](https://docs.cloud.google.com/storage/docs/objects)
+can change the final name. Ordinary nonsensitive uploads do not require this grant.
+The destination's access policy remains the human reviewer's responsibility.
+As with all pre-tool checks, files must remain unchanged between inspection and
+execution; a hook cannot hold the source file open for the host's later upload.
+
+For one false secret finding, use its redacted fingerprint, exact file and rule:
+
+```bash
+agentlint approve grant secret-finding --project-dir /abs/repo --ttl 30m \
+  --reason "Reviewed public identifier" --rule-id no-secrets \
+  --file-path /abs/repo/symbols.py --finding-id FULL_64_CHARACTER_FINGERPRINT
+```
+
+Another finding in that file is still checked. Required and organization rules
+remain non-overridable. No file-wide exclusion or policy restoration is needed.
 
 ### Bounded fixture copies
 

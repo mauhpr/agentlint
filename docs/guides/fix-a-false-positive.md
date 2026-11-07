@@ -55,6 +55,25 @@ This skips only `max-file-size` for matching paths. Other content and security r
 Globs use `fnmatch` and can match the full path, project-relative path, or file name.
 Review rule-specific path exemptions carefully: required workspace rules can still honor them.
 
+### Evidence output paths
+
+`.local/` is not automatically scratch space: redirecting a diff there is still
+a repository write unless your policy explicitly allows the destination.
+For disposable evidence, redirect to `/tmp/` (or `/private/tmp/` on macOS).
+For retained evidence, deliberately configure only the files you need:
+
+```yaml
+rules:
+  no-bash-file-write:
+    allow_paths:
+      - ".local/evidence/*.diff"
+      - ".local/evidence/*.json"
+```
+
+Merge this into the existing configuration. It changes only file-write handling
+for those evidence files; secret and network checks still apply. It does not
+expand the project boundary used by `apply_patch` or relax ambiguous hunk checks.
+
 For a source file with an intentional convention:
 
 ```python
