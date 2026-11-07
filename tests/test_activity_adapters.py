@@ -40,10 +40,15 @@ def test_every_adapter_observes_normalized_host_events_without_approving(tmp_pat
     assert "awaiting_approval" in json.dumps(context)
     assert context.get("permission") != "allow"
     assert context.get("decision") not in {"allow", "approve"}
+    assert pending_context(str(tmp_path), "parent", platform=platform) is None
+    adapter.observe_activity(AgentEvent.PERMISSION_REQUEST, raw, str(tmp_path))
+    assert pending_context(str(tmp_path), "parent", platform=platform) is None
     adapter.observe_activity(
         AgentEvent.POST_TOOL_FAILURE, {**raw, "error": "private-error"}, str(tmp_path)
     )
     assert adapter.activity_status(str(tmp_path))["actions"][0]["state"] == "tool_failed"
+    assert "tool_failed" in pending_context(str(tmp_path), "parent", platform=platform)
+    assert pending_context(str(tmp_path), "parent", platform=platform) is None
     assert "confidential-value" not in json.dumps(waiting)
     assert "private-error" not in json.dumps(adapter.activity_status(str(tmp_path)))
 
