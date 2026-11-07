@@ -303,7 +303,15 @@ def test_legacy_approval_id_survives_refresh_and_environment_identity(tmp_path, 
 
 
 def test_status_json_summary_and_sections_are_conversation_scoped(tmp_path):
+    (tmp_path / "agentlint.yml").write_text("packs: [security]\n")
     _hook(tmp_path, "PermissionRequest", adapter="codex")
+    _hook(
+        tmp_path,
+        "PreToolUse",
+        adapter="codex",
+        tool_use_id="blocked-call",
+        tool_input={"command": "cp source maintained.py"},
+    )
     result = CliRunner().invoke(
         main,
         [
@@ -322,6 +330,8 @@ def test_status_json_summary_and_sections_are_conversation_scoped(tmp_path):
     data = json.loads(result.output)
     assert set(data) == {"version", "project_dir", "scope", "activity"}
     assert len(data["activity"]["observed_blockers"]) == 1
+    assert len(data["activity"]["recent_agentlint_decisions"]) == 1
+    assert data["activity"]["recent_agentlint_decisions"][0]["historical"] is True
     assert data["activity"]["live_host_state"] == "unconfirmed"
     assert len(result.output) < 2000
 

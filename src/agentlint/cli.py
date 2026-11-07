@@ -2412,8 +2412,9 @@ def status(
     blockers = [
         item
         for item in activity["actions"]
-        if item["state"] in {"awaiting_approval", "agentlint_blocked"} and not item["stale"]
+        if item["state"] == "awaiting_approval" and not item["stale"]
     ]
+    past_blocks = [item for item in activity["actions"] if item["state"] == "agentlint_blocked"]
     if as_json:
         payload = {
             "version": ver,
@@ -2459,6 +2460,15 @@ def status(
                         "unknown_states_on_page": sum(
                             item["state"] == "unknown" for item in activity["actions"]
                         ),
+                        "recent_agentlint_decisions": [
+                            {
+                                "observation_id": item["observation_id"],
+                                "blocked_rules": item.get("blocked_rules", []),
+                                "observed_at": item["observed_at"],
+                                "historical": True,
+                            }
+                            for item in past_blocks[:5]
+                        ],
                         "history_page": {
                             "offset": offset,
                             "limit": limit,
@@ -2494,10 +2504,14 @@ def status(
     click.echo(f"Project config: {'ok' if config_ok else 'missing'}")
     if summary:
         click.echo(
-            f"Observed blockers: {len(blockers)} on this history page; live host state unconfirmed"
+            f"Observed host requests: {len(blockers)} on this history page; live state unconfirmed"
         )
         for item in blockers[:5]:
             click.echo(f"  #{item['observation_id']} {item['state']}: {item['next_action']}")
+        if past_blocks:
+            click.echo(
+                f"Past AgentLint blocks: {len(past_blocks)} on this page (historical decisions)"
+            )
         click.echo(f"AgentChute: {cloud['state']}; {cloud['queue']['pending']} retained events")
         click.echo("Details: agentlint status --history or --diagnostics")
         return

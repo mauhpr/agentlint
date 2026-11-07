@@ -328,7 +328,7 @@ def snapshot(
             item["age_seconds"] = max(0, time.time() - item["observed_at"])
             item["stale"] = item["age_seconds"] > 900
             item["live_state_confirmed"] = False
-            item["actionable"] = False
+            item["actionable"] = False if item["state"] in _TERMINAL else None
             item["correlation_confidence"] = {
                 "tool_use_id": "exact",
                 "unique_action_match": "inferred",
