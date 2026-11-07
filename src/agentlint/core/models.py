@@ -304,7 +304,9 @@ class RuleContext:
     working_directory: str | None = None  # Native tool cwd; may be below project_dir.
     # v2.9.0 — PostToolUse tool result (used only for exit status / evidence).
     tool_response: dict | None = None
-    related_files: dict[str, str] = field(default_factory=dict)  # Inspected files in this operation.
+    related_files: dict[str, str] = field(
+        default_factory=dict
+    )  # Inspected files in this operation.
 
     @property
     def file_path(self) -> str | None:
