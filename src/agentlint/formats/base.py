@@ -84,6 +84,8 @@ class OutputFormatter(ABC):
         location = self._location(v)
         if location:
             lines.append(f"{indent}File: {location}")
+        if v.finding_id:
+            lines.append(f"{indent}Finding: {v.finding_id}")
         if v.operation:
             lines.append(f"{indent}Operation: {v.operation}")
         if v.policy_source:

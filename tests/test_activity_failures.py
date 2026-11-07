@@ -95,7 +95,7 @@ def test_corrupt_activity_is_unknown_in_parent_context_and_human_status(tmp_path
     cache.mkdir()
     (cache / "activity.sqlite3").write_text("corrupt-data")
     monkeypatch.setenv("AGENTLINT_CACHE_DIR", str(cache))
-    assert "unknown" in pending_context(str(tmp_path), "parent")
+    assert pending_context(str(tmp_path), "parent") is None
     result = CliRunner().invoke(main, ["status", "--project-dir", str(tmp_path)])
     assert result.exit_code == 0 and "Activity observations unavailable" in result.output
 
@@ -162,7 +162,10 @@ def test_parent_reminder_reports_truncated_observations(tmp_path):
             project_dir=str(tmp_path),
         )
     context = pending_context(str(tmp_path), "parent")
-    assert "100 of 101 observations" in context
+    assert "101 change(s)" in context
+    assert len(context.splitlines()) <= 8
+    assert pending_context(str(tmp_path), "parent") is None
+    assert len(snapshot(str(tmp_path), limit=1000)["actions"]) == 101
     assert "do not interrupt or resubmit" in context
 
 

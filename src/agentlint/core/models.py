@@ -258,6 +258,7 @@ class Violation:
     suggestion: str | None = None
     operation: str | None = None
     policy_source: str | None = None
+    finding_id: str | None = None
 
     def to_dict(self) -> dict:
         result = {
@@ -268,6 +269,8 @@ class Violation:
             "line": self.line,
             "suggestion": self.suggestion,
         }
+        if self.finding_id is not None:
+            result["finding_id"] = self.finding_id
         if self.operation is not None:
             result["operation"] = self.operation
         if self.policy_source is not None:
@@ -301,6 +304,9 @@ class RuleContext:
     working_directory: str | None = None  # Native tool cwd; may be below project_dir.
     # v2.9.0 — PostToolUse tool result (used only for exit status / evidence).
     tool_response: dict | None = None
+    related_files: dict[str, str] = field(
+        default_factory=dict
+    )  # Inspected files in this operation.
 
     @property
     def file_path(self) -> str | None:

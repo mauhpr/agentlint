@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
+from collections import Counter
+from dataclasses import replace
 from fnmatch import fnmatch
 
 from agentlint.config import get_rule_setting
@@ -55,21 +59,29 @@ _TOKEN_PREFIXES = (
     "xoxb-",
     "xoxp-",
     "xoxs-",
-    "_authToken",
 )
 
 # Pattern matching key=value assignments for secret-like keys.
 _KEY_VALUE_RE = re.compile(
-    r"""(api_key|apikey|secret|password|token|secret_key|private_key|auth_token)"""
+    r"""\b([A-Za-z_][A-Za-z_0-9]*)"""
     r"""\s*=\s*["']([^"']{10,})["']""",
     re.IGNORECASE,
 )
+_SECRET_KEY_RE = re.compile(
+    r"(?:api_?key|secret|password|token|secret_?key|private_?key|auth_?token)$",
+    re.IGNORECASE,
+)
+_SYMBOLIC_TOKEN_RE = re.compile(r"[A-Z][a-z]+(?:[A-Z][a-z]+)+")
+_NPM_AUTH_RE = re.compile(r"\b_authToken\s*=\s*['\"]?([A-Za-z0-9_-]{10,})")
 
 # Bearer tokens.
 _BEARER_RE = re.compile(r"Bearer [a-zA-Z0-9\-_.]{20,}")
 
 # Private key blocks.
-_PRIVATE_KEY_RE = re.compile(r"-----BEGIN\s+(?:\w+\s+)?PRIVATE KEY-----")
+_PRIVATE_KEY_RE = re.compile(
+    r"-----BEGIN\s+(?:\w+\s+)?PRIVATE KEY-----[\s\S]*?"
+    r"(?:-----END\s+(?:\w+\s+)?PRIVATE KEY-----|$)"
+)
 
 # Google Cloud service account JSON.
 _GCP_SERVICE_ACCOUNT_RE = re.compile(r'"type"\s*:\s*"service_account"')
@@ -133,6 +145,27 @@ class NoSecrets(Rule):
     pack = "universal"
 
     def evaluate(self, context: RuleContext) -> list[Violation]:
+        findings = self._scan(context)
+        before = context.file_content_before
+        if context.tool_name != "Edit" or before is None:
+            return findings
+        previous = self._scan(
+            replace(
+                context,
+                tool_input={**context.tool_input, "content": before},
+                file_content=before,
+            )
+        )
+        existing = Counter(item.finding_id for item in previous)
+        introduced = []
+        for item in findings:
+            if existing[item.finding_id]:
+                existing[item.finding_id] -= 1
+            else:
+                introduced.append(item)
+        return introduced
+
+    def _scan(self, context: RuleContext) -> list[Violation]:
         if context.tool_name not in _WRITE_TOOLS and context.tool_name not in _BASH_TOOLS:
             return []
 
@@ -143,8 +176,26 @@ class NoSecrets(Rule):
             content = context.command or ""
             file_path = None
         else:
-            content = context.tool_input.get("content", "")
+            content = context.file_content
+            if content is None:
+                content = context.tool_input.get(
+                    "content", context.tool_input.get("new_string", "")
+                )
             file_path = context.file_path
+
+        def report(message: str, evidence: str, offset: int, suggestion: str) -> None:
+            identity = hashlib.sha256((self.id + "\0" + evidence).encode()).hexdigest()
+            violations.append(
+                Violation(
+                    rule_id=self.id,
+                    message=message,
+                    severity=self.severity,
+                    file_path=file_path,
+                    line=content.count("\n", 0, offset) + 1,
+                    finding_id=identity,
+                    suggestion=suggestion,
+                )
+            )
 
         # Load config for extra prefixes and allow_paths.
         extra_prefixes: list[str] = get_rule_setting(context.config, self.id, "extra_prefixes", [])
@@ -158,13 +209,33 @@ class NoSecrets(Rule):
         # Check for sensitive filenames (only for Write/Edit).
         if file_path and context.tool_name in _WRITE_TOOLS:
             basename = os.path.basename(file_path).lower()
+            stem, suffix = os.path.splitext(basename)
             for name in _SENSITIVE_FILENAMES:
-                if name in basename:
+                if stem == name or (
+                    suffix
+                    in {
+                        ".json",
+                        ".yaml",
+                        ".yml",
+                        ".toml",
+                        ".ini",
+                        ".cfg",
+                        ".conf",
+                        ".env",
+                        ".txt",
+                        ".xml",
+                        ".csv",
+                    }
+                    and re.search(rf"(?:^|[._-]){name}(?:[._-]|$)", basename)
+                ):
                     violations.append(
                         Violation(
                             rule_id=self.id,
                             message=f"Writing to a file with sensitive name: {file_path}",
                             severity=self.severity,
+                            finding_id=hashlib.sha256(
+                                ("filename:" + basename).encode()
+                            ).hexdigest(),
                             file_path=file_path,
                             suggestion="Avoid committing files named 'credentials' or 'secrets'.",
                         )
@@ -176,68 +247,72 @@ class NoSecrets(Rule):
         # Check literal token prefixes.
         all_prefixes = list(_TOKEN_PREFIXES) + extra_prefixes
         for prefix in all_prefixes:
-            if prefix in content:
-                violations.append(
-                    Violation(
-                        rule_id=self.id,
-                        message=f"Possible secret token detected (prefix '{prefix}')",
-                        severity=self.severity,
-                        file_path=file_path,
-                        suggestion="Use environment variables instead of hard-coded secrets.",
-                    )
+            for match in re.finditer(re.escape(prefix) + r"[A-Za-z0-9_-]+", content):
+                report(
+                    f"Possible secret token detected (prefix '{prefix}')",
+                    match.group(),
+                    match.start(),
+                    "Use environment variables instead of hard-coded secrets.",
                 )
 
         # Check key=value secret assignments.
         for match in _KEY_VALUE_RE.finditer(content):
             value = match.group(2)
-            if _is_placeholder(value) or _has_env_ref(value):
+            key = match.group(1)
+            if not _SECRET_KEY_RE.search(key):
                 continue
-            violations.append(
-                Violation(
-                    rule_id=self.id,
-                    message=f"Secret assignment detected: {match.group(1)}=...",
-                    severity=self.severity,
-                    file_path=file_path,
-                    suggestion="Use environment variables instead of hard-coded secrets.",
-                )
+            # Constant lexical tokens can name public symbols, such as XBRL axes.
+            # Known credential prefixes remain independently checked above.
+            symbolic = (
+                key.isupper()
+                and key.lower().endswith("token")
+                and _SYMBOLIC_TOKEN_RE.fullmatch(value)
             )
+            if symbolic or _is_placeholder(value) or _has_env_ref(value):
+                continue
+            report(
+                f"Secret assignment detected: {key}=...",
+                key + "\0" + value,
+                match.start(),
+                "Use environment variables instead of hard-coded secrets.",
+            )
+
+        for match in _NPM_AUTH_RE.finditer(content):
+            if not _is_placeholder(match.group(1)):
+                report(
+                    "npm registry credential detected",
+                    match.group(1),
+                    match.start(),
+                    "Use a credential reference instead of a literal npm token.",
+                )
 
         # Check Bearer tokens.
         for match in _BEARER_RE.finditer(content):
             if _has_env_ref(match.group()):
                 continue
-            violations.append(
-                Violation(
-                    rule_id=self.id,
-                    message="Bearer token detected in content",
-                    severity=self.severity,
-                    file_path=file_path,
-                    suggestion="Use environment variables instead of hard-coded Bearer tokens.",
-                )
+            report(
+                "Bearer token detected in content",
+                match.group(),
+                match.start(),
+                "Use environment variables instead of hard-coded Bearer tokens.",
             )
 
         # Private key blocks.
-        if _PRIVATE_KEY_RE.search(content):
-            violations.append(
-                Violation(
-                    rule_id=self.id,
-                    message="Private key detected in content",
-                    severity=self.severity,
-                    file_path=file_path,
-                    suggestion="Never commit private keys. Use a secrets manager or environment variables.",
-                )
+        for match in _PRIVATE_KEY_RE.finditer(content):
+            report(
+                "Private key detected in content",
+                match.group(),
+                match.start(),
+                "Never commit private keys. Use a secrets manager or environment variables.",
             )
 
         # GCP service account JSON.
-        if _GCP_SERVICE_ACCOUNT_RE.search(content):
-            violations.append(
-                Violation(
-                    rule_id=self.id,
-                    message="Google Cloud service account key detected",
-                    severity=self.severity,
-                    file_path=file_path,
-                    suggestion="Use workload identity or environment variables instead of service account keys.",
-                )
+        for match in _GCP_SERVICE_ACCOUNT_RE.finditer(content):
+            report(
+                "Google Cloud service account key detected",
+                "service-account-type",
+                match.start(),
+                "Use workload identity or environment variables instead of service account keys.",
             )
 
         # Database connection strings with real passwords.
@@ -252,50 +327,42 @@ class NoSecrets(Rule):
             for match in _DB_CONN_RE.finditer(content):
                 password = match.group(1)
                 if not _is_db_placeholder(password):
-                    violations.append(
-                        Violation(
-                            rule_id=self.id,
-                            message="Database connection string with embedded credentials detected",
-                            severity=self.severity,
-                            file_path=file_path,
-                            suggestion="Use environment variables for database connection strings.",
-                        )
+                    report(
+                        "Database connection string with embedded credentials detected",
+                        match.group(),
+                        match.start(),
+                        "Use environment variables for database connection strings.",
                     )
 
         # JWT tokens.
-        if _JWT_RE.search(content):
-            violations.append(
-                Violation(
-                    rule_id=self.id,
-                    message="JWT token detected in content",
-                    severity=self.severity,
-                    file_path=file_path,
-                    suggestion="Never hard-code JWT tokens. Use environment variables or a token service.",
-                )
+        for match in _JWT_RE.finditer(content):
+            report(
+                "JWT token detected in content",
+                match.group(),
+                match.start(),
+                "Never hard-code JWT tokens. Use environment variables or a token service.",
             )
 
         # Curl with embedded credentials (Bash only).
-        if context.tool_name in _BASH_TOOLS and _CURL_AUTH_RE.search(content):
-            violations.append(
-                Violation(
-                    rule_id=self.id,
-                    message="Curl command with embedded credentials detected",
-                    severity=self.severity,
-                    file_path=file_path,
-                    suggestion="Use environment variables or a credentials file instead of inline credentials.",
-                )
+        if context.tool_name in _BASH_TOOLS and (match := _CURL_AUTH_RE.search(content)):
+            report(
+                "Curl command with embedded credentials detected",
+                match.group(),
+                match.start(),
+                "Use environment variables or a credentials file instead of inline credentials.",
             )
 
         # Terraform state detection.
-        if _TERRAFORM_STATE_RE.search(content):
-            violations.append(
-                Violation(
-                    rule_id=self.id,
-                    message="Terraform state file detected (may contain secrets)",
-                    severity=self.severity,
-                    file_path=file_path,
-                    suggestion="Use remote state storage (S3, GCS) instead of committing terraform.tfstate.",
-                )
+        if match := _TERRAFORM_STATE_RE.search(content):
+            try:
+                evidence = json.dumps(json.loads(content), sort_keys=True, separators=(",", ":"))
+            except (ValueError, RecursionError):
+                evidence = match.group()
+            report(
+                "Terraform state file detected (may contain secrets)",
+                evidence,
+                match.start(),
+                "Use remote state storage (S3, GCS) instead of committing terraform.tfstate.",
             )
 
         return violations

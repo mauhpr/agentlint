@@ -62,6 +62,10 @@ Add the pack, enable it for that directory with [`projects`](#monorepos), or
 list it under `drift_ignore_packs`. Workspace baselines are not checked for
 drift.
 
+Drift reports name uncovered paths and respect the effective longest-prefix
+`projects:` mapping. SEO drift requires page/route evidence under an SSR/SSG
+project; a package manifest alone is not evidence that SEO checks are needed.
+
 ## Severity
 
 `severity` changes how findings are reported:

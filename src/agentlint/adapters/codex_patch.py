@@ -19,11 +19,38 @@ _SECRETISH_RE = re.compile(
     r"|[A-Za-z0-9_\-+/]{24,}"
 )
 _EXCERPT_CHARS = 120
+_CREDENTIAL_LABEL_RE = re.compile(
+    r"(?i)\b(?:api[_-]?key|token|secret|passw(?:or)?d|bearer|authorization)\b"
+)
+_GIT_OID = r"(?:[0-9a-f]{64}|[0-9a-f]{40})\b"
+_TYPED_GIT_RE = re.compile(
+    r"(?i)\b(?:commit(?:[_ -]?(?:sha|hash|id))?|(?:base|head)[_-]?(?:commit|sha)"
+    r'|git[_ -]?(?:sha|hash))[\s"\']*[:=]?[\s"\'`]*(' + _GIT_OID + ")"
+)
+_GIT_COMMAND_RE = re.compile(
+    r"(?i)\bgit\s+(?:show|log|diff|rev-parse|cat-file\s+-e)\s+("
+    + _GIT_OID
+    + r")(?:\.{2,3}("
+    + _GIT_OID
+    + "))?"
+)
 
 
 def _excerpt(text: str) -> str:
     """Return a short single-line excerpt with credential-like values masked."""
-    text = _SECRETISH_RE.sub("[redacted]", text.strip())
+    text = text.strip()
+    public_ids = {
+        match.span(group)
+        for pattern in (_TYPED_GIT_RE, _GIT_COMMAND_RE)
+        for match in pattern.finditer(text)
+        for group in range(1, len(match.groups()) + 1)
+        if match.group(group) is not None
+        and not _CREDENTIAL_LABEL_RE.search(text[: match.start(group)])
+    }
+    text = _SECRETISH_RE.sub(
+        lambda match: match.group() if match.span() in public_ids else "[redacted]",
+        text,
+    )
     if len(text) > _EXCERPT_CHARS:
         text = text[: _EXCERPT_CHARS - 1] + "\u2026"
     return text
@@ -352,4 +379,5 @@ def patch_contexts(context: RuleContext) -> list[RuleContext]:
             emit(destination, None, after, "add")
         else:
             emit(path, before, after, action.lower())
-    return contexts
+    related = {item.file_path: item.file_content for item in contexts}
+    return [replace(item, related_files=related) for item in contexts]

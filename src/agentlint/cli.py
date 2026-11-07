@@ -967,7 +967,9 @@ def check(
         HookEvent.USER_PROMPT_SUBMIT,
         HookEvent.POST_TOOL_USE,
         HookEvent.POST_TOOL_USE_FAILURE,
-    }:
+    } and not (
+        adapter_obj.platform_name == "cursor" and hook_event == HookEvent.USER_PROMPT_SUBMIT
+    ):
         from agentlint.activity import pending_context
         from agentlint.adapters.normalize import activity_payload
 
@@ -1129,7 +1131,18 @@ def approve():
 @click.option("--ttl", default="1h", show_default=True, help="Lifetime, e.g. 30m, 2h (max 24h)")
 @click.option("--operation", default=None, help="Restrict to one exact literal command")
 @click.option("--project-dir", default=None, help="Repository the approval is bound to")
-def approve_grant(action_class, reason, ttl, operation, project_dir):
+@click.option(
+    "--max-bytes",
+    type=click.IntRange(1),
+    default=None,
+    help="Explicit source size ceiling for a cloud-upload grant",
+)
+@click.option("--file-path", default=None, help="Exact absolute source file for a secret-finding")
+@click.option("--finding-id", default=None, help="Exact redacted finding fingerprint")
+@click.option("--rule-id", default=None, help="Exact secret detector for a secret-finding")
+def approve_grant(
+    action_class, reason, ttl, operation, project_dir, max_bytes, file_path, finding_id, rule_id
+):
     """Approve one ACTION_CLASS for this repository until the TTL expires."""
     from agentlint.approvals import ACTION_CLASSES, create_grant, parse_ttl
 
@@ -1148,6 +1161,8 @@ def approve_grant(action_class, reason, ttl, operation, project_dir):
         sys.exit(2)
     repository = os.path.abspath(_resolve_project_dir(project_dir))
     scope = f"exactly `{operation}`" if operation else "any matching command"
+    if action_class == "secret-finding":
+        scope = f"{rule_id} finding {finding_id} in {file_path}"
     click.echo(f"Approve '{action_class}' ({ACTION_CLASSES[action_class]})")
     click.echo(f"  repository: {repository}\n  scope: {scope}\n  expires in: {ttl}")
     if not click.confirm("Grant this approval?", default=False):
@@ -1155,6 +1170,10 @@ def approve_grant(action_class, reason, ttl, operation, project_dir):
     try:
         grant = create_grant(
             action_class,
+            max_bytes=max_bytes,
+            file_path=file_path,
+            finding_id=finding_id,
+            rule_id=rule_id,
             repository=repository,
             reason=reason,
             ttl=lifetime,
@@ -2330,7 +2349,35 @@ def observe(event: str, adapter: str, project_dir: str | None):
 @main.command()
 @click.option("--project-dir", default=None, help="Project directory")
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON")
-def status(project_dir: str | None, as_json: bool):
+@click.option("--history", is_flag=True, help="Show detailed passive host observation history")
+@click.option("--limit", default=100, type=click.IntRange(1, 1000), show_default=True)
+@click.option("--offset", default=0, type=click.IntRange(0), help="History page offset")
+@click.option("--session-id", default=None, help="Filter observations to one requesting session")
+@click.option("--conversation", default=None, help="Alias for --session-id")
+@click.option("--platform", default=None, help="Filter observations to one host platform")
+@click.option("--summary", is_flag=True, help="Compact status and current observed blockers")
+@click.option(
+    "--section",
+    multiple=True,
+    type=click.Choice(["activity", "agents", "policy", "cloud", "local_protections"]),
+    help="Include only these JSON sections (repeatable; requires --json)",
+)
+@click.option(
+    "--diagnostics", is_flag=True, help="Include full setup, policy and queue diagnostics"
+)
+def status(
+    project_dir: str | None,
+    as_json: bool,
+    history: bool,
+    limit: int,
+    offset: int,
+    session_id: str | None,
+    conversation: str | None,
+    platform: str | None,
+    diagnostics: bool,
+    summary: bool,
+    section: tuple[str, ...],
+):
     """Show AgentLint coverage, effective policy and cloud health. Read-only."""
     from importlib.metadata import version as get_version
 
@@ -2343,6 +2390,11 @@ def status(project_dir: str | None, as_json: bool):
     except Exception:
         ver = "dev"
     install_kind, update_cmd = _detect_update_command()
+    if conversation and session_id and conversation != session_id:
+        raise click.UsageError("--conversation and --session-id must name the same session")
+    session_id = conversation or session_id
+    if section and not as_json:
+        raise click.UsageError("--section requires --json")
     config = load_config(project_dir)
     config_ok = bool(config.layers)
     detected = _detected_agent_platforms(project_dir)
@@ -2353,27 +2405,94 @@ def status(project_dir: str | None, as_json: bool):
     local = _local_protections(config, rules, cloud["policy"])
     from agentlint.activity import snapshot
 
-    activity = snapshot(project_dir)
+    activity = snapshot(
+        project_dir, session_id=session_id, platform=platform, limit=limit, offset=offset
+    )
 
+    blockers = [
+        item
+        for item in activity["actions"]
+        if item["state"] == "awaiting_approval" and not item["stale"]
+    ]
+    past_blocks = [item for item in activity["actions"] if item["state"] == "agentlint_blocked"]
     if as_json:
+        payload = {
+            "version": ver,
+            "project_dir": project_dir,
+            "scope": {"session_id": session_id, "platform": platform},
+            "agents": {
+                p: {
+                    **c.to_dict(),
+                    "detected": p in detected,
+                    "observation_warning": c.observation_warning(project_dir),
+                }
+                for p, c in coverage.items()
+            },
+            "policy": {**policy, "active_rules": len(rules)},
+            "cloud": cloud,
+            "local_protections": local,
+            "activity": activity,
+        }
+        if summary:
+            payload.update(
+                {
+                    "activity": {
+                        "retained": activity["total"],
+                        "live_host_state": "unconfirmed",
+                        "error": activity["error"],
+                        "observed_blockers": [
+                            {
+                                key: item.get(key)
+                                for key in (
+                                    "observation_id",
+                                    "session_id",
+                                    "agent_id",
+                                    "approval_owner",
+                                    "state",
+                                    "action_summary",
+                                    "observed_at",
+                                    "stale",
+                                    "next_action",
+                                )
+                            }
+                            for item in blockers[:5]
+                        ],
+                        "unknown_states_on_page": sum(
+                            item["state"] == "unknown" for item in activity["actions"]
+                        ),
+                        "recent_agentlint_decisions": [
+                            {
+                                "observation_id": item["observation_id"],
+                                "blocked_rules": item.get("blocked_rules", []),
+                                "observed_at": item["observed_at"],
+                                "historical": True,
+                            }
+                            for item in past_blocks[:5]
+                        ],
+                        "history_page": {
+                            "offset": offset,
+                            "limit": limit,
+                            "truncated": activity["truncated"],
+                        },
+                    },
+                    "agents": {p: {"state": c.state} for p, c in coverage.items() if p in detected},
+                    "policy": {"active_rules": len(rules), "drift": policy["drift"]},
+                    "cloud": {
+                        "state": cloud["state"],
+                        "retained_events": cloud["queue"]["pending"],
+                        "problems": cloud["problems"],
+                    },
+                }
+            )
+        if section:
+            payload = {
+                key: value
+                for key, value in payload.items()
+                if key in {"version", "project_dir", "scope"} or key in section
+            }
         click.echo(
             json.dumps(
-                {
-                    "version": ver,
-                    "project_dir": project_dir,
-                    "agents": {
-                        p: {
-                            **c.to_dict(),
-                            "detected": p in detected,
-                            "observation_warning": c.observation_warning(project_dir),
-                        }
-                        for p, c in coverage.items()
-                    },
-                    "policy": {**policy, "active_rules": len(rules)},
-                    "cloud": cloud,
-                    "local_protections": local,
-                    "activity": activity,
-                },
+                payload,
                 indent=2,
                 default=str,
             )
@@ -2383,17 +2502,50 @@ def status(project_dir: str | None, as_json: bool):
     click.echo(f"AgentLint v{ver}")
     click.echo(f"Install: {install_kind} ({' '.join(update_cmd)})")
     click.echo(f"Project config: {'ok' if config_ok else 'missing'}")
+    if summary:
+        click.echo(
+            f"Observed host requests: {len(blockers)} on this history page; live state unconfirmed"
+        )
+        for item in blockers[:5]:
+            click.echo(f"  #{item['observation_id']} {item['state']}: {item['next_action']}")
+        if past_blocks:
+            click.echo(
+                f"Past AgentLint blocks: {len(past_blocks)} on this page (historical decisions)"
+            )
+        click.echo(f"AgentChute: {cloud['state']}; {cloud['queue']['pending']} retained events")
+        click.echo("Details: agentlint status --history or --diagnostics")
+        return
 
     click.echo("Host activity (last observed, not a live execution guarantee):")
     if activity["error"]:
         click.echo(f"  {activity['error']}")
-    for item in activity["actions"]:
-        click.echo(
-            f"  {item['platform']} {item['state']}: agent={item['agent_id'] or 'unknown'} owner={item['approval_owner'] or 'unknown'} action={('#' + item['action_fingerprint'][:12]) if item['action_fingerprint'] else 'unknown'} observed={item['observed_at']:.0f}"
-        )
+    click.echo(
+        f"  {activity['total']} retained observations; scope="
+        f"{session_id or 'all sessions in this project'}; confirmed live approvals: unknown"
+    )
+    if history:
+        for item in activity["actions"]:
+            decision = ",".join(item.get("blocked_rules", [])) or "no recorded block"
+            click.echo(
+                f"  #{item.get('observation_id', item.get('action_fingerprint', 'unknown'))} "
+                f"{item['platform']} session={item.get('session_id') or item['session_fingerprint']} "
+                f"tool_call={item.get('tool_use_id') or 'unknown'} "
+                f"agent={item['agent_id'] or 'unknown'}: AgentLint={decision}; "
+                f"host={item['state']}{' (stale observation)' if item['stale'] else ''}; "
+                f"owner={item['approval_owner'] or 'unknown (host UI)'}; "
+                f"correlation={item['correlation']}; observed={item['observed_at']:.0f} "
+                f"({item['age_seconds']:.0f}s ago); actionable=unconfirmed; "
+                f"action={item.get('action_summary', '[not recorded]')}; "
+                f"next={item['next_action']}"
+            )
+        if activity["truncated"]:
+            click.echo(f"  More: --history --offset {offset + limit} --limit {limit}")
+        click.echo("  Exact commands remain in the host UI; arguments are not persisted here.")
+    elif activity["total"]:
+        click.echo("  Inspect: agentlint status --history [--session-id SESSION]")
     if not activity["actions"]:
         click.echo("  unknown — no tool lifecycle observations")
-    for item in activity["agents"]:
+    for item in activity["agents"][: limit if history else 3]:
         click.echo(
             f"  agent={item['agent_id'] or 'unknown'}: {item['state']} (last lifecycle event)"
         )
@@ -2448,39 +2600,48 @@ def status(project_dir: str | None, as_json: bool):
 
     queue = cloud["queue"]
     click.echo(f"AgentChute: {cloud['state']}")
-    click.echo(f"  Enabled: {str(cloud['enabled']).lower()} | API: {get_api_url()}")
-    click.echo(
-        f"  Key: {'set' if cloud['credential_present'] else 'missing'} "
-        f"| Credential file: {local_credentials_path()}"
-    )
-    click.echo(
-        f"  Events queued: {queue['pending']} pending / {queue['queued']} total"
-        + (
-            f", oldest {_format_seconds(queue['oldest_pending_age_s'])} old"
-            if queue.get("oldest_pending_age_s") is not None
-            else ""
+    if not diagnostics:
+        click.echo(
+            f"  {queue['pending']} retained undelivered event(s); "
+            f"{'delivery enabled' if cloud['enabled'] else 'not being sent'}; "
+            "details: agentlint queue inspect"
         )
-    )
-    if queue.get("failures") and cloud["enabled"]:
-        retry = (
-            f"next attempt in {_format_seconds(queue['next_attempt_in_s'])}"
-            if queue.get("next_attempt_in_s")
-            else "retry due now"
+        click.echo("Details: agentlint status --diagnostics")
+    if diagnostics or cloud["enabled"]:
+        click.echo(f"  Enabled: {str(cloud['enabled']).lower()} | API: {get_api_url()}")
+        click.echo(
+            f"  Key: {'set' if cloud['credential_present'] else 'missing'} "
+            f"| Credential file: {local_credentials_path()}"
         )
-        click.echo(f"  Delivery: {queue['failures']} consecutive failure(s), {retry}")
-    pol = cloud["policy"]
-    policy_line = "none"
-    if pol.get("cached"):
-        policy_line = f"v{pol.get('version')} updated {pol.get('updated_at') or 'unknown'}"
-    if pol.get("error"):
-        policy_line += f" (error: {pol['error']})"
-    click.echo(f"  Cloud policy: {policy_line}")
+        click.echo(
+            f"  Events queued: {queue['pending']} pending / {queue['queued']} total"
+            + (
+                f", oldest {_format_seconds(queue['oldest_pending_age_s'])} old"
+                if queue.get("oldest_pending_age_s") is not None
+                else ""
+            )
+        )
+        if queue.get("failures") and cloud["enabled"]:
+            retry = (
+                f"next attempt in {_format_seconds(queue['next_attempt_in_s'])}"
+                if queue.get("next_attempt_in_s")
+                else "retry due now"
+            )
+            click.echo(f"  Delivery: {queue['failures']} consecutive failure(s), {retry}")
+        pol = cloud["policy"]
+        policy_line = "none"
+        if pol.get("cached"):
+            policy_line = f"v{pol.get('version')} updated {pol.get('updated_at') or 'unknown'}"
+        if pol.get("error"):
+            policy_line += f" (error: {pol['error']})"
+        click.echo(f"  Cloud policy: {policy_line}")
     for problem in cloud["problems"]:
         click.echo(f"  ! {problem}")
-    for note in cloud["notes"]:
-        click.echo(f"  - {note}")
-    for alert in cloud.get("alerts", []):
-        click.echo(f"  ! {alert}")
+    if diagnostics:
+        for note in cloud["notes"]:
+            click.echo(f"  - {note}")
+        for alert in cloud.get("alerts", []):
+            click.echo(f"  ! {alert}")
     click.echo("Still enforced locally:")
     for line in local:
         click.echo(f"  - {line}")
@@ -2514,7 +2675,7 @@ def status(project_dir: str | None, as_json: bool):
         click.echo(
             f"Next: verify hook coverage for {', '.join(coverage_warnings)} in this project."
         )
-    elif cloud.get("alerts"):
+    elif cloud.get("alerts") and diagnostics:
         click.echo("Next: review the retained queue backlog above.")
     elif cloud["state"] == "degraded":
         click.echo("Next: AgentChute delivery is degraded; local protections above still apply.")

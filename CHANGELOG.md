@@ -2,6 +2,66 @@
 
 ## Unreleased
 
+## v2.12.0 (2026-11-07) — Precise Approval Feedback and Scoped Authorization
+
+Upgrade both the Python engine and the Claude Code plugin to receive these fixes.
+Reload or trust native hooks when your host requires it, when it is safe to do
+so without interrupting an existing approval request. Existing configuration,
+pending host requests and retained delivery events are preserved.
+
+### Added
+
+- Human-issued, expiring `cloud-upload` grants bound to one source SHA-256,
+  destination object and explicit size ceiling, with create-only behavior and
+  an audit trail. Exact-object grants support GCS JSON API media uploads;
+  `gcloud storage cp` destination inference is not treated as an exact-object
+  guarantee. Large sources are hashed with bounded memory.
+- Human-issued `secret-finding` grants for one reviewed fingerprint, rule and
+  file, without excluding the whole file or editing repository policy.
+- Compact status with `--summary`, JSON `--section` filters, `--conversation`
+  and `--session-id` scoping, and explicit paginated `--history` and
+  `--diagnostics` views.
+
+### Fixed
+
+- Deliver unchanged approval observations once per session across concurrent
+  check and observer hooks. Emit genuine state changes, including completion,
+  while retaining passive history separately from notification delivery.
+- Preserve stable action identities across incomplete correlation and legacy
+  records. Report requesting sessions, tool-call IDs, correlation confidence,
+  observation timestamps and age without inventing live approval ownership.
+  Unknown actionability remains unknown; past AgentLint decisions remain
+  distinct from observed native approval requests.
+- Keep default host history and disabled-cloud backlog output compact. Status
+  reads never consume notifications or discard retained events. Command
+  arguments remain private; inspect the exact command in the host approval UI.
+- Recognize `wag-storage guard` wrappers and classify storage-copy source and
+  destination separately. Preserve local-write and redirect checks, including
+  cloud downloads and compound commands.
+- Allow constrained literal `git cat-file -e` subprocess checks while keeping
+  dynamic arguments, execution overrides, shadowed imports and visible
+  execution-environment mutations uncertain or blocked.
+- Recognize public XBRL axis constants without treating a TOKEN suffix alone
+  as a credential. Report full assignment names, line numbers and redacted
+  finding fingerprints. Patch checks identify introduced findings; full writes
+  and scans retain full secret detection. Preserve npm credential checks while
+  accepting bare public detector-prefix literals.
+- Preserve typed Git object IDs in patch diagnostics while retaining credential
+  redaction and strict ambiguous/mismatched-patch rejection.
+- Use Python syntax for removed-handler and guard evidence. Recognize directly
+  verified helper extractions within one inspected patch; reject unreachable,
+  shadowed or mismatched relocation evidence and describe unverified local moves
+  without asserting that handling disappeared globally.
+- Resolve monorepo drift against actual paths and effective directory mappings.
+  Require page evidence for SEO drift instead of inferring it from a manifest.
+
+### Documentation
+
+- Explain narrow upload and finding grants, native approval ownership, compact
+  history inspection and retained event handling.
+- Clarify that `.local/` is not automatically scratch space and show narrow
+  evidence-file `allow_paths` configuration alongside `/tmp/` guidance.
+
 ## v2.11.0 (2026-11-05) — Accurate Diagnostics and Activity Observations
 
 After upgrading, rerun setup for your native integration and reload or trust the

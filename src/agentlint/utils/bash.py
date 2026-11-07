@@ -31,7 +31,14 @@ def get_command_binary(command: str) -> str:
     Handles common prefixes: ``sudo cmd``, ``env VAR=val cmd``,
     ``nohup cmd``. Returns the actual binary, not the wrapper.
     """
-    parts = command.strip().split()
+    from agentlint.utils.shell import split_operations, unwrap_simple_command
+
+    operations = split_operations(command)
+    parts = (
+        list(operations[0].words)
+        if operations and len(operations) == 1
+        else command.strip().split()
+    )
     if not parts:
         return ""
     # Skip common wrappers
@@ -42,7 +49,8 @@ def get_command_binary(command: str) -> str:
             i += 1
         else:
             break
-    return parts[i] if i < len(parts) else parts[0]
+    words = unwrap_simple_command(parts[i:]) if i < len(parts) else None
+    return words[0].rsplit("/", 1)[-1] if words else parts[0]
 
 
 def strip_string_args(command: str) -> str:

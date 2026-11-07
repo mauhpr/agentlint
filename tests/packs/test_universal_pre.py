@@ -32,6 +32,52 @@ def _ctx(tool_name: str, tool_input: dict, config: dict | None = None) -> RuleCo
 class TestNoSecrets:
     rule = NoSecrets()
 
+    def test_xbrl_axis_tokens_are_public_identifiers(self):
+        for name, value in (
+            ("_SEG_AXIS_TOKEN", "BusinessSegmentsAxis"),
+            ("_SEG_PRODUCT_AXIS_TOKEN", "ProductOrServiceAxis"),
+        ):
+            assert (
+                self.rule.evaluate(
+                    _ctx(
+                        "Write",
+                        {
+                            "file_path": "segments.py",
+                            "content": f'{name} = "{value}"',
+                        },
+                    )
+                )
+                == []
+            )
+
+    def test_assignment_diagnostic_has_full_name_and_line(self):
+        content = "\nSERVICE_AUTH_TOKEN = " + repr("a1b2c3d4e5f6g7h8")
+        violations = self.rule.evaluate(
+            _ctx(
+                "Edit",
+                {
+                    "file_path": "settings.py",
+                    "new_string": content,
+                },
+            )
+        )
+        assert len(violations) == 1
+        assert "SERVICE_AUTH_TOKEN" in violations[0].message
+        assert violations[0].line == 2
+        assert "a1b2c3d4" not in violations[0].message
+        assert violations[0].finding_id
+
+    def test_patch_only_blocks_introduced_secrets(self):
+        before = "SERVICE_AUTH_TOKEN = " + repr("a1b2c3d4e5f6g7h8") + "\nold = 1\n"
+        after = before.replace("old = 1", "new = 2")
+        ctx = _ctx("Edit", {"file_path": "settings.py", "content": after})
+        ctx.file_content_before = before
+        assert self.rule.evaluate(ctx) == []
+        ctx.tool_input["content"] += "OTHER_AUTH_TOKEN = " + repr("q1w2e3r4t5y6u7i8") + "\n"
+        violations = self.rule.evaluate(ctx)
+        assert len(violations) == 1
+        assert "OTHER_AUTH_TOKEN" in violations[0].message
+
     def test_blocks_api_key_in_write(self):
         ctx = _ctx(
             "Write",

@@ -16,6 +16,7 @@ from contextlib import closing
 from pathlib import Path
 
 from agentlint.evidence import exit_status
+from agentlint.recorder import safe_command_summary
 from agentlint.session import _cache_dir, workspace_dir
 
 _TERMINAL = {"completed", "tool_failed", "cancelled", "agentlint_blocked", "host_denied"}
@@ -37,7 +38,7 @@ def _digest(value: object) -> str:
 def _label(value: object) -> str | None:
     if not isinstance(value, str) or not value:
         return None
-    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,47}", value):
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", value):
         return value
     return "id-" + _digest(value)[:12]
 
@@ -46,16 +47,31 @@ def _path() -> Path:
     return _cache_dir().absolute() / "activity.sqlite3"
 
 
-def _identity(raw: dict, platform: str) -> str:
+def _session_id(raw: dict, platform: str) -> str:
     return (
-        platform
-        + ":"
-        + _digest(
-            raw.get("session_id")
-            or os.environ.get(f"{platform.upper()}_SESSION_ID")
-            or os.environ.get("AGENTLINT_SESSION_ID")
-            or "unknown"
-        )
+        raw.get("session_id")
+        or os.environ.get(f"{platform.upper()}_SESSION_ID")
+        or os.environ.get("AGENTLINT_SESSION_ID")
+        or "unknown"
+    )
+
+
+def _identity(raw: dict, platform: str) -> str:
+    return platform + ":" + _digest(_session_id(raw, platform))
+
+
+def _revision(item: dict) -> str:
+    return _digest(
+        {
+            key: item.get(key)
+            for key in (
+                "state",
+                "agent_id",
+                "approval_owner",
+                "correlation",
+                "blocked_rules",
+            )
+        }
     )
 
 
@@ -137,6 +153,12 @@ def observe(
         state = "unknown"
     record = {
         "platform": platform,
+        "tool_name": _label(raw.get("tool_name")),
+        "session_id": _label(_session_id(raw, platform)),
+        "tool_use_id": _label(invocation),
+        "action_summary": safe_command_summary(
+            tool_input["command"] if isinstance(tool_input.get("command"), str) else ""
+        ),
         "session_fingerprint": _digest(session)[:12],
         "agent_id": actor,
         "state": state,
@@ -157,6 +179,7 @@ def observe(
             "CREATE TABLE IF NOT EXISTS observations (workspace TEXT, session TEXT, key TEXT, kind TEXT, action TEXT, actor TEXT, turn TEXT, invocation TEXT, state TEXT, pending INTEGER, updated REAL, payload TEXT, PRIMARY KEY(workspace, session, key))"
         )
         db.execute("BEGIN IMMEDIATE")
+        previous_key = key
         previous = db.execute(
             "SELECT payload, invocation FROM observations WHERE workspace=? AND session=? AND key=?",
             (workspace, session, key),
@@ -183,6 +206,7 @@ def observe(
             ).fetchall()
             if len(candidates) == 1:
                 matched_key, old_payload, old_invocation = candidates[0]
+                previous_key = matched_key
                 previous = (old_payload, old_invocation)
                 if invocation and matched_key != key:
                     db.execute(
@@ -207,23 +231,41 @@ def observe(
             ):
                 record["correlation"] = "unidentified_request"
                 record["state"] = state = "unknown"
+        old = {}
         if previous:
             old = json.loads(previous[0])
             if not agent_event and old["state"] in _TERMINAL:
                 if invocation_hash or event != "PreToolUse":
-                    return
+                    # A late notification is evidence of observation, not a
+                    # reason to reopen a terminal action.
+                    record = dict(old)
+                    state = old["state"]
                 # A new ID-less action can reuse the same fingerprint. Its
                 # pre-hook proves a new observation, not the old outcome/owner.
-                old = {}
+                else:
+                    old = {}
             if old.get("approval_observed") and state == "unknown":
                 record["approval_observed"] = True
             if old.get("approval_owner") and not record["approval_owner"]:
                 record["approval_owner"] = old["approval_owner"]
             if old.get("agent_id") and not record["agent_id"] and event != "PermissionRequest":
                 record["agent_id"] = old["agent_id"]
-            if {key: value for key, value in old.items() if key != "observed_at"} == record:
-                return
+            record["observation_id"] = old.get("observation_id") or (
+                _digest([workspace, session, previous_key])[:16] if old else None
+            )
+            record["approval_seen"] = old.get("approval_seen", old.get("approval_observed", False))
+            record["first_observed_at"] = old.get("first_observed_at", old.get("observed_at"))
+        record["observation_id"] = (
+            record.get("observation_id") or _digest([workspace, session, key, time.time_ns()])[:16]
+        )
+        record["approval_seen"] = record.get("approval_seen", False) or record["approval_observed"]
+        record["first_observed_at"] = record.get("first_observed_at") or time.time()
         record["observed_at"] = time.time()
+        record["changed_at"] = (
+            old.get("changed_at", old.get("observed_at", record["observed_at"]))
+            if old and _revision(old) == _revision(record)
+            else record["observed_at"]
+        )
         db.execute(
             "INSERT OR REPLACE INTO observations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
@@ -241,13 +283,15 @@ def observe(
                 json.dumps(record),
             ),
         )
-        db.execute(
-            "DELETE FROM observations WHERE rowid IN (SELECT rowid FROM observations WHERE pending=0 ORDER BY updated DESC LIMIT -1 OFFSET 1000)"
-        )
 
 
 def snapshot(
-    project_dir: str, *, session_id: str | None = None, platform: str | None = None
+    project_dir: str,
+    *,
+    session_id: str | None = None,
+    platform: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> dict:
     """Read observations without changing files; absence/failure is explicitly unknown."""
     result = {
@@ -261,23 +305,44 @@ def snapshot(
     destination = _path()
     if not destination.exists():
         return result
-    query = "SELECT kind, payload FROM observations WHERE workspace=?"
+    query = "SELECT kind, payload, key, session FROM observations WHERE workspace=?"
     args = [_digest(workspace_dir(project_dir))]
     if platform:
         query += " AND session LIKE ?"
         args.append(platform + ":%")
-    if session_id and platform:
-        query += " AND session=?"
-        args.append(_identity({"session_id": session_id}, platform))
-    count_query = query.replace("SELECT kind, payload", "SELECT COUNT(*)")
-    query += " ORDER BY pending DESC, updated DESC LIMIT 100"
+    if session_id:
+        if platform:
+            query += " AND session=?"
+            args.append(_identity({"session_id": session_id}, platform))
+        else:
+            query += " AND substr(session, instr(session, ':') + 1)=?"
+            args.append(_digest(session_id))
+    count_query = query.replace("SELECT kind, payload, key, session", "SELECT COUNT(*)")
+    query += " ORDER BY pending DESC, updated DESC LIMIT ? OFFSET ?"
     try:
         with closing(sqlite3.connect(destination.as_uri() + "?mode=ro", uri=True, timeout=1)) as db:
             result["total"] = db.execute(count_query, args).fetchone()[0]
-            result["truncated"] = result["total"] > 100
-            rows = db.execute(query, args).fetchall()
-        for kind, payload in rows:
-            result["agents" if kind == "agent" else "actions"].append(json.loads(payload))
+            result["truncated"] = result["total"] > offset + limit
+            rows = db.execute(query, (*args, limit, offset)).fetchall()
+        for kind, payload, key, session in rows:
+            item = json.loads(payload)
+            item.setdefault("observation_id", _digest([args[0], session, key])[:16])
+            item["age_seconds"] = max(0, time.time() - item["observed_at"])
+            item["stale"] = item["age_seconds"] > 900
+            item["live_state_confirmed"] = False
+            item["actionable"] = False if item["state"] in _TERMINAL else None
+            item["correlation_confidence"] = {
+                "tool_use_id": "exact",
+                "unique_action_match": "inferred",
+            }.get(item.get("correlation"), "uncertain")
+            item["next_action"] = (
+                "Resolve AgentLint rules: " + ", ".join(item.get("blocked_rules", []))
+                if item["state"] == "agentlint_blocked"
+                else "Verify existing request in host approval UI"
+                if item.get("approval_observed")
+                else "No approval action observed"
+            )
+            result["agents" if kind == "agent" else "actions"].append(item)
         result["state"] = "observed" if rows else "unknown"
     except (OSError, sqlite3.Error, ValueError, TypeError):
         result["actions"], result["agents"], result["state"] = [], [], "unknown"
@@ -288,25 +353,82 @@ def snapshot(
 def pending_context(
     project_dir: str, session_id: str | None, *, platform: str = "codex"
 ) -> str | None:
-    """Give the parent a safe reminder about existing native requests on resume."""
-    if not session_id:
+    """Deliver semantic changes once per session, across concurrent hook processes.
+
+    Delivery never changes the observation or the native approval request.
+    Timestamps are deliberately excluded: a refresh is not a state change.
+    """
+    session_id = _session_id({"session_id": session_id}, platform)
+    if session_id == "unknown" or not _path().exists():
         return None
-    observed = snapshot(project_dir, session_id=session_id, platform=platform)
-    if observed["error"]:
-        return observed["error"]
-    pending = [item for item in observed["actions"] if item.get("approval_observed")]
-    if not pending:
+    workspace = _digest(workspace_dir(project_dir))
+    session = _identity({"session_id": session_id}, platform)
+    changed = []
+    try:
+        with closing(sqlite3.connect(_path(), timeout=1)) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS notification_delivery "
+                "(workspace TEXT, session TEXT, observation TEXT, revision TEXT, "
+                "PRIMARY KEY(workspace, session, observation))"
+            )
+            rows = db.execute(
+                "SELECT key, payload FROM observations WHERE workspace=? AND session=? "
+                "AND kind='action' AND (pending=1 OR json_extract(payload, '$.approval_seen')=1) "
+                "ORDER BY updated DESC",
+                (workspace, session),
+            ).fetchall()
+            for key, payload in rows:
+                item = json.loads(payload)
+                if not item.get("approval_seen", item.get("approval_observed")):
+                    continue
+                identity = item.get("observation_id") or _digest([workspace, session, key])[:16]
+                revision = _revision(item)
+                previous = db.execute(
+                    "SELECT revision FROM notification_delivery "
+                    "WHERE workspace=? AND session=? AND observation=?",
+                    (workspace, session, identity),
+                ).fetchone()
+                if previous and previous[0] == revision:
+                    continue
+                # Historical terminal events need no initial notification.
+                if previous or item.get("approval_observed"):
+                    changed.append({**item, "observation_id": identity})
+                db.execute(
+                    "INSERT OR REPLACE INTO notification_delivery VALUES (?, ?, ?, ?)",
+                    (workspace, session, identity, revision),
+                )
+    except (OSError, sqlite3.Error, ValueError, TypeError):
+        # A broken observer must not inject an identical failure on every hook.
+        # Read-only status exposes the observation error for diagnosis.
         return None
-    lines = ["Native host approval observations (last reported state; live state may be unknown):"]
-    for item in pending:
-        lines.append(
-            f"{item['state']}: agent={item['agent_id'] or 'unknown'}, owner={item['approval_owner'] or 'unknown (host approval UI)'}, action={('#' + item['action_fingerprint'][:12]) if item['action_fingerprint'] else 'unknown'}, correlation={item['correlation']}"
+    if not changed:
+        return None
+    lines = [
+        f"Native host approval observations: {len(changed)} change(s) in this session; "
+        "last observed, live state unconfirmed."
+    ]
+    for item in changed[:5]:
+        age = max(0, time.time() - item["observed_at"])
+        stale = " stale" if age > 900 else ""
+        next_action = (
+            "verify the existing request in the host UI"
+            if item.get("approval_observed")
+            else "no approval action remains observed"
         )
-    lines.append(
-        "Keep the existing host request; do not interrupt or resubmit it. AgentLint does not approve or resume host actions."
-    )
-    if observed["truncated"]:
         lines.append(
-            f"Showing at most 100 of {observed['total']} observations; inspect agentlint status for scope and last-observed state."
+            f"#{item['observation_id']}: host={item['state']}{stale}, "
+            f"agent={item.get('agent_id') or 'unknown'}, "
+            f"owner={item.get('approval_owner') or 'host approval UI'}, "
+            f"correlation={item['correlation']}, observed={age:.0f}s ago. "
+            f"Next: {next_action}."
         )
+    if any(item.get("approval_observed") for item in changed):
+        lines.append(
+            "Keep the existing host request; do not interrupt or resubmit it. "
+            "AgentLint does not approve or resume host actions."
+        )
+    else:
+        lines.append("AgentLint does not approve or resume host actions.")
+    lines.append("Details: agentlint status --history --session-id <session>.")
     return "\n".join(lines)

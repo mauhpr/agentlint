@@ -34,6 +34,42 @@ Check **configured**, **enabled**, and a recent **observed** hook call from the 
 
 If observation is missing or stale, use [diagnostics](diagnostics.md) before relying on protection.
 
+### Host approval observations
+
+AgentLint decisions and native host approvals are separate. A local grant can
+relax its matching AgentLint rule; only the host's approval UI can resolve a
+native request. AgentLint never submits, interrupts or resubmits that request.
+
+Hooks emit approval changes once per project, platform and session, even when
+two hooks observe the same result concurrently. Unchanged observations do not
+get reinjected. A notification contains a count and at most five changed
+actions; the remaining details stay in local history:
+
+```bash
+agentlint status --history --session-id SESSION --platform codex
+agentlint status --json --summary --conversation SESSION --section activity
+agentlint status --history --limit 100 --offset 100
+agentlint status --diagnostics
+agentlint queue inspect
+```
+
+History separates the AgentLint decision, last host state and next action/owner.
+It includes a stable observation ID, requesting session, tool-call ID,
+correlation, timestamp and age. Exact tool IDs have stronger correlation than a
+unique action match; missing or ambiguous attribution stays uncertain. An
+observation older than 15 minutes is labeled stale. A fresh observation still
+does not establish that a host request is currently actionable. Command
+arguments are not persisted because they can contain secrets; inspect the
+original exact command in the host UI.
+
+Default status summarizes retained observations and undelivered events. Use
+`--summary` for a compact blocker view (also available with `--json`), and repeat
+`--section` to select JSON sections. `--conversation` aliases `--session-id`.
+Unknown or stale observations are not presented as confirmed live approvals. Use
+`--history` for paged observations and `--diagnostics` or `queue inspect` for
+maintenance detail. These commands are read-only and do not consume notification
+changes or delete the queue. Cloud delivery being off does not discard events.
+
 ## Blocking is different from feedback
 
 | When the check runs | What an ERROR can do |

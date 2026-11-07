@@ -277,7 +277,7 @@ def test_disabled_cloud_backlog_is_a_note_not_degraded(tmp_path, monkeypatch):
     out = CliRunner().invoke(main, ["status", "--project-dir", str(tmp_path)]).output
     assert "AgentChute: off" in out
     assert "degraded" not in out and "consecutive failure" not in out
-    assert "1 undelivered event(s) remain" in out and "not being sent" in out
+    assert "1 retained undelivered event(s)" in out and "not being sent" in out
     doc = CliRunner().invoke(main, ["doctor", "--project-dir", str(tmp_path)]).output
     assert "..  AgentChute: 1 undelivered event(s) remain" in doc
 
@@ -326,8 +326,11 @@ def test_large_disabled_cloud_backlog_is_an_alert_without_deleting_events(tmp_pa
     (qdir / "queue.jsonl").write_text(payload * 1001)
     result = CliRunner().invoke(main, ["status", "--project-dir", str(tmp_path)])
     assert "AgentChute: off" in result.output
-    assert "! Retained queue backlog" in result.output
-    assert "discard-pending" in result.output
+    assert "1001 retained undelivered event(s)" in result.output
+    assert "! Retained queue backlog" not in result.output
+    assert "discard-pending" not in result.output
+    details = CliRunner().invoke(main, ["status", "--diagnostics", "--project-dir", str(tmp_path)])
+    assert "! Retained queue backlog" in details.output
     assert (qdir / "queue.jsonl").read_text() == payload * 1001
 
 

@@ -16,8 +16,9 @@ import secrets
 import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
-from agentlint.utils.shell import simple_words
+from agentlint.utils.shell import simple_words, unwrap_simple_command
 
 ACTION_CLASSES = {
     "git-push-protected": "Push (including force-with-lease) to a protected branch",
@@ -31,6 +32,8 @@ ACTION_CLASSES = {
     "production-access": "Run commands against production targets",
     "model-spend": "Spend model/API budget beyond the configured limit",
     "fixture-copy": "Copy one hash-bound local file into a repository fixture directory",
+    "cloud-upload": "Upload one hash-bound file to one create-only cloud object",
+    "secret-finding": "Acknowledge one reviewed secret finding in one source file",
 }
 
 # Built-in rules that a typed approval may relax, and the class each requires.
@@ -49,6 +52,8 @@ RULE_ACTION_CLASS = {
     "token-budget": "model-spend",
     "token-burn-against-team-budget": "model-spend",
     "no-bash-file-write": "fixture-copy",
+    "no-network-exfil": "cloud-upload",
+    "no-secrets": "secret-finding",
 }
 
 MAX_TTL = timedelta(hours=24)
@@ -85,8 +90,6 @@ def parse_ttl(value: str) -> timedelta:
 
 
 def _literal(command: str) -> list[str] | None:
-    if any(char in command for char in ";|&<>()"):
-        return None
     return simple_words(command) or None
 
 
@@ -139,6 +142,99 @@ def _append(path: Path, record: dict) -> None:
         os.fsync(file.fileno())
 
 
+def _upload_scope(operation: str | None, max_bytes: int | None) -> dict:
+    """Inspect an exact create-only GCS upload with bounded-memory hashing."""
+    words = _literal(operation) if operation else None
+    words = unwrap_simple_command(words) if words else None
+    if (
+        not words
+        or Path(words[0]).name != "curl"
+        or len(words) not in {7, 9}
+        or words[1:5] != ["--disable", "--request", "POST", "--upload-file"]
+    ):
+        raise ValueError(
+            "cloud-upload requires curl --disable --request POST --upload-file /source [--header @/headers] EXACT_GCS_JSON_UPLOAD_URL; gcloud cp has folder inference"
+        )
+    source_name = words[5]
+    if any(char in source_name for char in "*?[]{}") or any(char in words[-1] for char in "[]{}*"):
+        raise ValueError("cloud-upload requires literal paths without shell or URL globs")
+    if len(words) == 9:
+        if words[6] != "--header" or not words[7].startswith("@/"):
+            raise ValueError("cloud-upload authentication must use --header @/absolute/header-file")
+        headers = Path(words[7][1:])
+        if headers.is_symlink():
+            raise ValueError("cloud-upload header file must be a small regular file")
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        with os.fdopen(os.open(headers, flags), "rb") as file:
+            metadata = os.fstat(file.fileno())
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 16384:
+                raise ValueError("cloud-upload header file must be a small regular file")
+            data = file.read(16385)
+        if len(data) > 16384:
+            raise ValueError("cloud-upload header file exceeds its size limit")
+        lines = data.decode().splitlines()
+        if not lines or not all(
+            re.fullmatch(
+                r"(?:Authorization: Bearer [A-Za-z0-9._~+/-]+=*|Content-Type: [A-Za-z0-9.+/-]+)",
+                line,
+            )
+            for line in lines
+        ):
+            raise ValueError(
+                "cloud-upload header file may only supply Authorization and Content-Type"
+            )
+    url = urlsplit(words[-1])
+    path = re.fullmatch(r"/upload/storage/v1/b/([A-Za-z0-9][A-Za-z0-9._-]*)/o", url.path)
+    query = parse_qs(url.query, keep_blank_values=True)
+    if (
+        url.scheme != "https"
+        or url.netloc != "storage.googleapis.com"
+        or url.fragment
+        or not path
+        or set(query) != {"uploadType", "name", "ifGenerationMatch"}
+        or query["uploadType"] != ["media"]
+        or query["ifGenerationMatch"] != ["0"]
+        or len(query["name"]) != 1
+        or not query["name"][0]
+    ):
+        raise ValueError(
+            "cloud-upload requires an exact JSON media upload URL with name and ifGenerationMatch=0"
+        )
+    destination = f"gs://{path[1]}/{query['name'][0]}"
+    source = Path(source_name)
+    if not source.is_absolute() or source.is_symlink() or not source.is_file():
+        raise ValueError("cloud-upload source must be an absolute regular file, not a symlink")
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+        raise ValueError("cloud-upload requires a positive --max-bytes size limit")
+    digest = hashlib.sha256()
+    size = 0
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    with os.fdopen(os.open(source, flags), "rb") as file:
+        before = os.fstat(file.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_size > max_bytes:
+            raise ValueError("cloud-upload source exceeds its size limit or is not a regular file")
+        while data := file.read(1024 * 1024):
+            size += len(data)
+            if size > max_bytes:
+                raise ValueError("cloud-upload source exceeds its size limit")
+            digest.update(data)
+        after = os.fstat(file.fileno())
+    if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    ):
+        raise ValueError("cloud-upload source changed during inspection")
+    return {
+        "source": str(source.resolve()),
+        "destination": destination,
+        "source_sha256": digest.hexdigest(),
+        "size_bytes": size,
+        "max_bytes": max_bytes,
+        "create_only": True,
+    }
+
+
 def _records() -> list[dict]:
     try:
         lines = approvals_path().read_text(encoding="utf-8").splitlines()
@@ -162,6 +258,10 @@ def create_grant(
     reason: str,
     ttl: timedelta = DEFAULT_TTL,
     operation: str | None = None,
+    max_bytes: int | None = None,
+    file_path: str | None = None,
+    finding_id: str | None = None,
+    rule_id: str | None = None,
     now: datetime | None = None,
 ) -> dict:
     if action_class not in ACTION_CLASSES:
@@ -188,6 +288,19 @@ def create_grant(
     }
     if copy_scope:
         grant["fixture_copy"] = copy_scope
+    if action_class == "cloud-upload":
+        grant["upload"] = _upload_scope(operation, max_bytes)
+    if action_class == "secret-finding":
+        if rule_id != "no-secrets":
+            raise ValueError("secret-finding requires the exact --rule-id")
+        if not finding_id or not re.fullmatch(r"[a-f0-9]{64}", finding_id):
+            raise ValueError("secret-finding requires a 64-character --finding-id")
+        if not file_path or not Path(file_path).is_absolute():
+            raise ValueError("secret-finding requires an absolute --file-path")
+        path = Path(file_path).resolve()
+        if not path.is_relative_to(Path(repository).resolve()) or not path.is_file():
+            raise ValueError("secret-finding file must exist inside the approved repository")
+        grant["finding"] = {"file_path": str(path), "finding_id": finding_id, "rule_id": rule_id}
     _append(approvals_path(), grant)
     return grant
 
@@ -222,7 +335,14 @@ def active_grants(now: datetime | None = None) -> list[dict]:
     return grants
 
 
-def matching_grant(rule_id: str, *, repository: str, command: str | None) -> dict | None:
+def matching_grant(
+    rule_id: str,
+    *,
+    repository: str,
+    command: str | None,
+    file_path: str | None = None,
+    finding_id: str | None = None,
+) -> dict | None:
     """Return an active grant whose class matches this rule, repository and command."""
     action_class = RULE_ACTION_CLASS.get(rule_id)
     if action_class is None:
@@ -245,6 +365,27 @@ def matching_grant(rule_id: str, *, repository: str, command: str | None) -> dic
                     continue
             except (ValueError, OSError):
                 continue
+        if action_class == "cloud-upload":
+            upload = grant.get("upload")
+            if not isinstance(upload, dict):
+                continue
+            try:
+                if _upload_scope(command, upload.get("max_bytes")) != upload:
+                    continue
+            except (ValueError, OSError):
+                continue
+        if action_class == "secret-finding":
+            if not file_path or not finding_id:
+                continue
+            if grant.get("finding") != {
+                "file_path": str(Path(file_path).resolve()),
+                "finding_id": finding_id,
+                "rule_id": rule_id,
+            }:
+                continue
+        # Hashing a large upload can outlast the grant's remaining lifetime.
+        if datetime.now(UTC) >= datetime.fromisoformat(grant["expires_at"]):
+            continue
         return grant
     return None
 
@@ -261,6 +402,10 @@ def audit_use(grant: dict, *, rule_id: str, repository: str, command: str | None
     }
     if grant.get("action_class") == "fixture-copy":
         record["fixture_copy"] = grant["fixture_copy"]
+    if grant.get("action_class") == "cloud-upload":
+        record["upload"] = grant["upload"]
+    if grant.get("action_class") == "secret-finding":
+        record["finding"] = grant["finding"]
     try:
         _append(_audit_path(), record)
     except OSError:
